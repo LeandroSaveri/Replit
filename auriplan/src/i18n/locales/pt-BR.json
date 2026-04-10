@@ -1,0 +1,96 @@
+{
+  "app": {
+    "name": "AuriPlan",
+    "tagline": "Design de Interiores Profissional"
+  },
+  "nav": {
+    "home": "Início",
+    "projects": "Projetos",
+    "templates": "Templates",
+    "help": "Ajuda",
+    "settings": "Configurações"
+  },
+  "auth": {
+    "login": "Entrar",
+    "register": "Criar Conta",
+    "logout": "Sair",
+    "email": "Email",
+    "password": "Senha",
+    "name": "Nome",
+    "forgotPassword": "Esqueceu a senha?",
+    "rememberMe": "Lembrar-me",
+    "orContinueWith": "ou continue com",
+    "noAccount": "Não tem uma conta?",
+    "hasAccount": "Já tem uma conta?",
+    "createAccount": "Criar conta",
+    "termsAccept": "Eu aceito os Termos de Uso e Política de Privacidade"
+  },
+  "editor": {
+    "title": "Editor",
+    "2dView": "Vista 2D",
+    "3dView": "Vista 3D",
+    "splitView": "Vista Dividida",
+    "tools": {
+      "select": "Selecionar",
+      "wall": "Parede",
+      "room": "Cômodo",
+      "door": "Porta",
+      "window": "Janela",
+      "furniture": "Móvel",
+      "measure": "Medir"
+    },
+    "properties": {
+      "title": "Propriedades",
+      "position": "Posição",
+      "rotation": "Rotação",
+      "scale": "Escala",
+      "dimensions": "Dimensões",
+      "color": "Cor",
+      "material": "Material"
+    },
+    "catalog": {
+      "title": "Catálogo",
+      "search": "Buscar móveis...",
+      "categories": "Categorias",
+      "living": "Sala",
+      "bedroom": "Quarto",
+      "kitchen": "Cozinha",
+      "bathroom": "Banheiro",
+      "lighting": "Iluminação",
+      "decor": "Decoração"
+    }
+  },
+  "project": {
+    "new": "Novo Projeto",
+    "open": "Abrir Projeto",
+    "save": "Salvar",
+    "export": "Exportar",
+    "import": "Importar",
+    "share": "Compartilhar",
+    "delete": "Excluir",
+    "rename": "Renomear",
+    "duplicate": "Duplicar",
+    "floors": "Andares",
+    "addFloor": "Adicionar Andar",
+    "statistics": {
+      "title": "Estatísticas",
+      "rooms": "Cômodos",
+      "walls": "Paredes",
+      "furniture": "Móveis",
+      "area": "Área Total"
+    }
+  },
+  "common": {
+    "cancel": "Cancelar",
+    "confirm": "Confirmar",
+    "save": "Salvar",
+    "delete": "Excluir",
+    "edit": "Editar",
+    "close": "Fechar",
+    "loading": "Carregando...",
+    "error": "Erro",
+    "success": "Sucesso",
+    "warning": "Aviso",
+    "info": "Informação"
+  }
+}

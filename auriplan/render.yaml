@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: auriplan
+    runtime: static
+    buildCommand: npm install && npm run build:ci
+    staticPublishPath: ./dist
+    envVars: []
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html

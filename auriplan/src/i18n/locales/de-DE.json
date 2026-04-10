@@ -1,0 +1,96 @@
+{
+  "app": {
+    "name": "AuriPlan",
+    "tagline": "Professionelles Innendesign"
+  },
+  "nav": {
+    "home": "Startseite",
+    "projects": "Projekte",
+    "templates": "Vorlagen",
+    "help": "Hilfe",
+    "settings": "Einstellungen"
+  },
+  "auth": {
+    "login": "Anmelden",
+    "register": "Registrieren",
+    "logout": "Abmelden",
+    "email": "E-Mail",
+    "password": "Passwort",
+    "name": "Name",
+    "forgotPassword": "Passwort vergessen?",
+    "rememberMe": "Angemeldet bleiben",
+    "orContinueWith": "oder weiter mit",
+    "noAccount": "Kein Konto?",
+    "hasAccount": "Bereits ein Konto?",
+    "createAccount": "Konto erstellen",
+    "termsAccept": "Ich akzeptiere die Nutzungsbedingungen und Datenschutzrichtlinie"
+  },
+  "editor": {
+    "title": "Editor",
+    "2dView": "2D-Ansicht",
+    "3dView": "3D-Ansicht",
+    "splitView": "Geteilte Ansicht",
+    "tools": {
+      "select": "Auswählen",
+      "wall": "Wand",
+      "room": "Raum",
+      "door": "Tür",
+      "window": "Fenster",
+      "furniture": "Möbel",
+      "measure": "Messen"
+    },
+    "properties": {
+      "title": "Eigenschaften",
+      "position": "Position",
+      "rotation": "Rotation",
+      "scale": "Skalierung",
+      "dimensions": "Abmessungen",
+      "color": "Farbe",
+      "material": "Material"
+    },
+    "catalog": {
+      "title": "Katalog",
+      "search": "Möbel suchen...",
+      "categories": "Kategorien",
+      "living": "Wohnzimmer",
+      "bedroom": "Schlafzimmer",
+      "kitchen": "Küche",
+      "bathroom": "Badezimmer",
+      "lighting": "Beleuchtung",
+      "decor": "Dekoration"
+    }
+  },
+  "project": {
+    "new": "Neues Projekt",
+    "open": "Projekt öffnen",
+    "save": "Speichern",
+    "export": "Exportieren",
+    "import": "Importieren",
+    "share": "Teilen",
+    "delete": "Löschen",
+    "rename": "Umbenennen",
+    "duplicate": "Duplizieren",
+    "floors": "Etagen",
+    "addFloor": "Etage hinzufügen",
+    "statistics": {
+      "title": "Statistiken",
+      "rooms": "Räume",
+      "walls": "Wände",
+      "furniture": "Möbel",
+      "area": "Gesamtfläche"
+    }
+  },
+  "common": {
+    "cancel": "Abbrechen",
+    "confirm": "Bestätigen",
+    "save": "Speichern",
+    "delete": "Löschen",
+    "edit": "Bearbeiten",
+    "close": "Schließen",
+    "loading": "Laden...",
+    "error": "Fehler",
+    "success": "Erfolg",
+    "warning": "Warnung",
+    "info": "Information"
+  }
+}

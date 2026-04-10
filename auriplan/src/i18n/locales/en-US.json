@@ -1,0 +1,96 @@
+{
+  "app": {
+    "name": "AuriPlan",
+    "tagline": "Professional Interior Design"
+  },
+  "nav": {
+    "home": "Home",
+    "projects": "Projects",
+    "templates": "Templates",
+    "help": "Help",
+    "settings": "Settings"
+  },
+  "auth": {
+    "login": "Sign In",
+    "register": "Sign Up",
+    "logout": "Sign Out",
+    "email": "Email",
+    "password": "Password",
+    "name": "Name",
+    "forgotPassword": "Forgot password?",
+    "rememberMe": "Remember me",
+    "orContinueWith": "or continue with",
+    "noAccount": "Don't have an account?",
+    "hasAccount": "Already have an account?",
+    "createAccount": "Create account",
+    "termsAccept": "I accept the Terms of Use and Privacy Policy"
+  },
+  "editor": {
+    "title": "Editor",
+    "2dView": "2D View",
+    "3dView": "3D View",
+    "splitView": "Split View",
+    "tools": {
+      "select": "Select",
+      "wall": "Wall",
+      "room": "Room",
+      "door": "Door",
+      "window": "Window",
+      "furniture": "Furniture",
+      "measure": "Measure"
+    },
+    "properties": {
+      "title": "Properties",
+      "position": "Position",
+      "rotation": "Rotation",
+      "scale": "Scale",
+      "dimensions": "Dimensions",
+      "color": "Color",
+      "material": "Material"
+    },
+    "catalog": {
+      "title": "Catalog",
+      "search": "Search furniture...",
+      "categories": "Categories",
+      "living": "Living Room",
+      "bedroom": "Bedroom",
+      "kitchen": "Kitchen",
+      "bathroom": "Bathroom",
+      "lighting": "Lighting",
+      "decor": "Decor"
+    }
+  },
+  "project": {
+    "new": "New Project",
+    "open": "Open Project",
+    "save": "Save",
+    "export": "Export",
+    "import": "Import",
+    "share": "Share",
+    "delete": "Delete",
+    "rename": "Rename",
+    "duplicate": "Duplicate",
+    "floors": "Floors",
+    "addFloor": "Add Floor",
+    "statistics": {
+      "title": "Statistics",
+      "rooms": "Rooms",
+      "walls": "Walls",
+      "furniture": "Furniture",
+      "area": "Total Area"
+    }
+  },
+  "common": {
+    "cancel": "Cancel",
+    "confirm": "Confirm",
+    "save": "Save",
+    "delete": "Delete",
+    "edit": "Edit",
+    "close": "Close",
+    "loading": "Loading...",
+    "error": "Error",
+    "success": "Success",
+    "warning": "Warning",
+    "info": "Information"
+  }
+}

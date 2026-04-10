@@ -1,0 +1,96 @@
+{
+  "app": {
+    "name": "AuriPlan",
+    "tagline": "Design d'Intérieur Professionnel"
+  },
+  "nav": {
+    "home": "Accueil",
+    "projects": "Projets",
+    "templates": "Modèles",
+    "help": "Aide",
+    "settings": "Paramètres"
+  },
+  "auth": {
+    "login": "Connexion",
+    "register": "S'inscrire",
+    "logout": "Déconnexion",
+    "email": "Email",
+    "password": "Mot de passe",
+    "name": "Nom",
+    "forgotPassword": "Mot de passe oublié?",
+    "rememberMe": "Se souvenir de moi",
+    "orContinueWith": "ou continuer avec",
+    "noAccount": "Pas de compte?",
+    "hasAccount": "Déjà un compte?",
+    "createAccount": "Créer un compte",
+    "termsAccept": "J'accepte les Conditions d'Utilisation et la Politique de Confidentialité"
+  },
+  "editor": {
+    "title": "Éditeur",
+    "2dView": "Vue 2D",
+    "3dView": "Vue 3D",
+    "splitView": "Vue Partagée",
+    "tools": {
+      "select": "Sélectionner",
+      "wall": "Mur",
+      "room": "Pièce",
+      "door": "Porte",
+      "window": "Fenêtre",
+      "furniture": "Meuble",
+      "measure": "Mesurer"
+    },
+    "properties": {
+      "title": "Propriétés",
+      "position": "Position",
+      "rotation": "Rotation",
+      "scale": "Échelle",
+      "dimensions": "Dimensions",
+      "color": "Couleur",
+      "material": "Matériau"
+    },
+    "catalog": {
+      "title": "Catalogue",
+      "search": "Rechercher des meubles...",
+      "categories": "Catégories",
+      "living": "Salon",
+      "bedroom": "Chambre",
+      "kitchen": "Cuisine",
+      "bathroom": "Salle de Bain",
+      "lighting": "Éclairage",
+      "decor": "Décoration"
+    }
+  },
+  "project": {
+    "new": "Nouveau Projet",
+    "open": "Ouvrir le Projet",
+    "save": "Enregistrer",
+    "export": "Exporter",
+    "import": "Importer",
+    "share": "Partager",
+    "delete": "Supprimer",
+    "rename": "Renommer",
+    "duplicate": "Dupliquer",
+    "floors": "Étages",
+    "addFloor": "Ajouter un Étage",
+    "statistics": {
+      "title": "Statistiques",
+      "rooms": "Pièces",
+      "walls": "Murs",
+      "furniture": "Meubles",
+      "area": "Surface Totale"
+    }
+  },
+  "common": {
+    "cancel": "Annuler",
+    "confirm": "Confirmer",
+    "save": "Enregistrer",
+    "delete": "Supprimer",
+    "edit": "Modifier",
+    "close": "Fermer",
+    "loading": "Chargement...",
+    "error": "Erreur",
+    "success": "Succès",
+    "warning": "Avertissement",
+    "info": "Information"
+  }
+}
