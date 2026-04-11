@@ -5,6 +5,7 @@
 // - Undo/Redo sempre visíveis
 // - Layout responsivo (landscape)
 // - Estilo premium (gradientes, sombras, transições)
+// - Sidebar agora recebe viewMode e onViewModeChange
 // ============================================================
 
 import { useState, useCallback, useEffect, useRef } from 'react';
@@ -385,6 +386,8 @@ export function Editor({ onBack, openScanOnMount }: EditorProps) {
                   onOpenCatalog={() => setIsCatalogOpen(true)}
                   onShare={() => setShowShare(true)}
                   onSave={() => { saveProject(); toast.success('Projeto salvo', 'Salvo com sucesso.'); }}
+                  viewMode={viewMode}
+                  onViewModeChange={setViewMode}
                 />
               </motion.div>
             )}
@@ -426,6 +429,8 @@ export function Editor({ onBack, openScanOnMount }: EditorProps) {
                   onSave={() => { saveProject(); toast.success('Projeto salvo', 'Salvo com sucesso.'); }}
                   isMobile
                   onClose={() => setIsSidebarOpen(false)}
+                  viewMode={viewMode}
+                  onViewModeChange={setViewMode}
                 />
               </motion.div>
             </motion.div>
