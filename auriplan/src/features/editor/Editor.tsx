@@ -1,3 +1,10 @@
+// ============================================================
+// CAMINHO ORIGINAL: src/features/editor/Editor.tsx
+// VERSÃO: Com sidebar responsiva, top bar com 2D/3D/Split,
+//         barra inferior apenas com botão "+" no mobile,
+//         FABs de zoom e eventos editor:zoom/center/rotate
+// ============================================================
+
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useEditorStore, selectProjectStats } from '@store/editorStore';
@@ -56,15 +63,15 @@ function OverflowMenu({
       animate={{ opacity: 1, scale: 1, y: 0 }}
       exit={{ opacity: 0, scale: 0.95, y: -4 }}
       transition={{ duration: 0.12 }}
-      className="absolute top-full right-0 mt-1.5 w-44 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl shadow-black/50 z-50 overflow-hidden"
+      className="absolute top-full right-0 mt-1.5 w-44 bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded-xl shadow-2xl z-50 overflow-hidden"
     >
       {items.map(({ icon: Icon, label, action }) => (
         <button
           key={label}
           onClick={() => { action(); onClose(); }}
-          className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-slate-300 hover:bg-slate-800 hover:text-white transition-colors"
+          className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 dark:text-slate-300 hover:bg-gray-100 dark:hover:bg-slate-800 transition-colors"
         >
-          <Icon className="w-4 h-4 text-slate-400 flex-shrink-0" />
+          <Icon className="w-4 h-4 text-gray-500 dark:text-slate-400 flex-shrink-0" />
           {label}
         </button>
       ))}
@@ -177,7 +184,7 @@ export function Editor({ onBack, openScanOnMount }: EditorProps) {
   // ── Handlers para zoom / centralizar / girar (eventos customizados) ──
   const handleZoom = (delta: number) => {
     window.dispatchEvent(new CustomEvent('editor:zoom', { detail: delta }));
-    toast.info('Zoom', `Zoom ${delta > 0 ? '+' : '-'} disparado. Integre no Canvas2D/3D.`);
+    toast.info('Zoom', `Zoom ${delta > 0 ? '+' : '-'} disparado.`);
   };
   const handleCenter = () => {
     window.dispatchEvent(new CustomEvent('editor:center'));
@@ -188,27 +195,19 @@ export function Editor({ onBack, openScanOnMount }: EditorProps) {
     toast.info('Girar', 'Evento de rotação enviado.');
   };
 
-  // Alternar viewMode com FAB
-  const cycleViewMode = () => {
-    const next: Record<ViewMode, ViewMode> = { '2d': '3d', '3d': 'split', 'split': '2d' };
-    const newMode = next[viewMode];
-    setViewMode(newMode);
-    toast.success(`Modo ${newMode.toUpperCase()}`, `Visualização alterada para ${newMode.toUpperCase()}`);
-  };
-
   // ── RENDER ─────────────────────────────────────────────────
   return (
-    <div className="h-screen flex flex-col bg-slate-950 overflow-hidden">
+    <div className="h-screen flex flex-col bg-white dark:bg-slate-950 overflow-hidden">
 
       {/* ── TOP BAR ─────────────────────────────────────────── */}
-      <header className="h-14 bg-slate-900/95 backdrop-blur-sm border-b border-slate-800 flex items-center px-3 gap-2 flex-shrink-0 z-30">
+      <header className="h-14 bg-white/95 dark:bg-slate-900/95 backdrop-blur-sm border-b border-gray-200 dark:border-slate-800 flex items-center px-3 gap-2 flex-shrink-0 z-30">
 
         {/* Left: Back + Logo + Menu button (mobile) */}
         <div className="flex items-center gap-2 min-w-0">
           {onBack && (
             <button
               onClick={onBack}
-              className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors flex-shrink-0"
+              className="p-2 text-gray-500 dark:text-slate-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-slate-800 rounded-lg transition-colors flex-shrink-0"
               title="Voltar"
             >
               <ChevronLeft className="w-[18px] h-[18px]" />
@@ -217,20 +216,20 @@ export function Editor({ onBack, openScanOnMount }: EditorProps) {
           {/* Botão Menu (hamburger) apenas no mobile para abrir sidebar drawer */}
           <button
             onClick={() => setIsSidebarOpen(v => !v)}
-            className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors flex-shrink-0 md:hidden"
+            className="p-2 text-gray-500 dark:text-slate-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-slate-800 rounded-lg transition-colors flex-shrink-0 md:hidden"
             title="Menu lateral"
           >
             <Menu className="w-[18px] h-[18px]" />
           </button>
           <div className="flex items-center gap-2.5 min-w-0">
-            <div className="w-7 h-7 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg flex items-center justify-center flex-shrink-0">
+            <div className="w-7 h-7 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-lg flex items-center justify-center flex-shrink-0">
               <Box className="w-3.5 h-3.5 text-white" />
             </div>
             <div className="min-w-0 hidden sm:block">
-              <h1 className="text-sm font-semibold text-white truncate leading-tight">
+              <h1 className="text-sm font-semibold text-gray-900 dark:text-white truncate leading-tight">
                 {project?.name || 'Novo Projeto'}
               </h1>
-              <p className="text-[10px] text-slate-500 truncate leading-tight">
+              <p className="text-[10px] text-gray-500 dark:text-slate-500 truncate leading-tight">
                 {currentScene?.name || 'Planta Baixa'}
               </p>
             </div>
@@ -243,14 +242,14 @@ export function Editor({ onBack, openScanOnMount }: EditorProps) {
         <div className="flex items-center gap-1.5">
 
           {/* Undo / Redo (desktop) */}
-          <div className="hidden sm:flex items-center bg-slate-800 rounded-lg p-0.5">
+          <div className="hidden sm:flex items-center bg-gray-100 dark:bg-slate-800 rounded-lg p-0.5">
             <button onClick={undo} disabled={!canUndo()}
-              className="p-1.5 text-slate-400 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed rounded-md transition-colors"
+              className="p-1.5 text-gray-600 dark:text-slate-400 hover:text-gray-900 dark:hover:text-white disabled:opacity-30 disabled:cursor-not-allowed rounded-md transition-colors"
               title="Desfazer (Ctrl+Z)">
               <Undo className="w-4 h-4" />
             </button>
             <button onClick={redo} disabled={!canRedo()}
-              className="p-1.5 text-slate-400 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed rounded-md transition-colors"
+              className="p-1.5 text-gray-600 dark:text-slate-400 hover:text-gray-900 dark:hover:text-white disabled:opacity-30 disabled:cursor-not-allowed rounded-md transition-colors"
               title="Refazer (Ctrl+Y)">
               <Redo className="w-4 h-4" />
             </button>
@@ -259,19 +258,55 @@ export function Editor({ onBack, openScanOnMount }: EditorProps) {
           {/* Save (desktop) */}
           <button
             onClick={() => { saveProject(); toast.success('Projeto salvo', 'Todas as alterações foram salvas.'); }}
-            className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 text-sm text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors"
+            className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-600 dark:text-slate-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-slate-800 rounded-lg transition-colors"
             title="Salvar (Ctrl+S)"
           >
             <Save className="w-3.5 h-3.5" />
             <span className="hidden md:inline text-xs">Salvar</span>
           </button>
 
-          <div className="hidden sm:block w-px h-5 bg-slate-700 mx-0.5" />
+          <div className="hidden sm:block w-px h-5 bg-gray-300 dark:bg-slate-700 mx-0.5" />
+
+          {/* View mode switcher (2D/3D/Split) */}
+          <div className="hidden sm:flex items-center bg-gray-100 dark:bg-slate-800 rounded-lg p-0.5">
+            <button
+              onClick={() => setViewMode('2d')}
+              className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-all ${
+                viewMode === '2d'
+                  ? 'bg-emerald-500 text-white shadow-sm'
+                  : 'text-gray-600 dark:text-slate-400 hover:text-gray-900 dark:hover:text-white'
+              }`}
+            >
+              2D
+            </button>
+            <button
+              onClick={() => setViewMode('3d')}
+              className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-all ${
+                viewMode === '3d'
+                  ? 'bg-emerald-500 text-white shadow-sm'
+                  : 'text-gray-600 dark:text-slate-400 hover:text-gray-900 dark:hover:text-white'
+              }`}
+            >
+              3D
+            </button>
+            <button
+              onClick={() => setViewMode('split')}
+              className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-all ${
+                viewMode === 'split'
+                  ? 'bg-emerald-500 text-white shadow-sm'
+                  : 'text-gray-600 dark:text-slate-400 hover:text-gray-900 dark:hover:text-white'
+              }`}
+            >
+              Split
+            </button>
+          </div>
+
+          <div className="hidden sm:block w-px h-5 bg-gray-300 dark:bg-slate-700 mx-0.5" />
 
           {/* Scan button (sempre visível) */}
           <button
             onClick={() => setShowScan(true)}
-            className="flex items-center gap-1.5 px-2.5 py-1.5 text-sm bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-white rounded-lg transition-all shadow-sm shadow-emerald-500/20"
+            className="flex items-center gap-1.5 px-2.5 py-1.5 text-sm bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-white rounded-lg transition-all shadow-sm"
             title="Escanear Cômodo"
           >
             <Camera className="w-4 h-4" />
@@ -281,7 +316,7 @@ export function Editor({ onBack, openScanOnMount }: EditorProps) {
           {/* AI button (sempre visível) */}
           <button
             onClick={() => setShowAIAssistant(true)}
-            className="flex items-center gap-1.5 px-2.5 py-1.5 text-sm bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-400 hover:to-pink-400 text-white rounded-lg transition-all shadow-sm shadow-purple-500/20"
+            className="flex items-center gap-1.5 px-2.5 py-1.5 text-sm bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-400 hover:to-pink-400 text-white rounded-lg transition-all shadow-sm"
             title="Assistente IA"
           >
             <Sparkles className="w-4 h-4" />
@@ -302,7 +337,11 @@ export function Editor({ onBack, openScanOnMount }: EditorProps) {
           <div ref={overflowRef} className="relative">
             <button
               onClick={() => setShowOverflow(v => !v)}
-              className={`p-2 rounded-lg transition-colors ${showOverflow ? 'bg-slate-700 text-white' : 'text-slate-400 hover:text-white hover:bg-slate-800'}`}
+              className={`p-2 rounded-lg transition-colors ${
+                showOverflow
+                  ? 'bg-gray-200 dark:bg-slate-700 text-gray-900 dark:text-white'
+                  : 'text-gray-500 dark:text-slate-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-slate-800'
+              }`}
               title="Mais opções"
             >
               <MoreHorizontal className="w-4 h-4" />
@@ -324,7 +363,7 @@ export function Editor({ onBack, openScanOnMount }: EditorProps) {
         </div>
       </header>
 
-      {/* ── TOOLBAR (escondida em mobile, pois temos FAB e controles flutuantes) ── */}
+      {/* ── TOOLBAR (escondida em mobile) ── */}
       <div className="hidden md:block flex-shrink-0">
         <Toolbar
           viewMode={viewMode}
@@ -344,10 +383,10 @@ export function Editor({ onBack, openScanOnMount }: EditorProps) {
             {isSidebarOpen && (
               <motion.div
                 initial={{ width: 0, opacity: 0 }}
-                animate={{ width: 264, opacity: 1 }}
+                animate={{ width: 288, opacity: 1 }}
                 exit={{ width: 0, opacity: 0 }}
                 transition={{ duration: 0.18, ease: 'easeInOut' }}
-                className="border-r border-slate-800 bg-slate-900 overflow-hidden flex-shrink-0"
+                className="border-r border-gray-200 dark:border-slate-800 overflow-hidden flex-shrink-0"
               >
                 <Sidebar
                   scenes={scenes}
@@ -355,6 +394,9 @@ export function Editor({ onBack, openScanOnMount }: EditorProps) {
                   onSceneChange={setCurrentScene}
                   onAddScene={addScene}
                   stats={stats}
+                  onOpenCatalog={() => setIsCatalogOpen(true)}
+                  onShare={() => setShowShare(true)}
+                  onSave={() => { saveProject(); toast.success('Projeto salvo', 'Salvo com sucesso.'); }}
                 />
               </motion.div>
             )}
@@ -377,15 +419,25 @@ export function Editor({ onBack, openScanOnMount }: EditorProps) {
                 animate={{ x: 0 }}
                 exit={{ x: -280 }}
                 transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-                className="absolute left-0 top-0 bottom-0 w-64 bg-slate-900 border-r border-slate-800 shadow-2xl"
+                className="absolute left-0 top-0 bottom-0 w-72 bg-white dark:bg-slate-900 shadow-2xl"
                 onClick={(e) => e.stopPropagation()}
               >
+                <div className="flex justify-end p-2">
+                  <button onClick={() => setIsSidebarOpen(false)} className="p-2 text-gray-500 dark:text-slate-400">
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
                 <Sidebar
                   scenes={scenes}
                   currentSceneId={currentSceneId}
                   onSceneChange={setCurrentScene}
                   onAddScene={addScene}
                   stats={stats}
+                  onOpenCatalog={() => setIsCatalogOpen(true)}
+                  onShare={() => setShowShare(true)}
+                  onSave={() => { saveProject(); toast.success('Projeto salvo', 'Salvo com sucesso.'); }}
+                  isMobile
+                  onClose={() => setIsSidebarOpen(false)}
                 />
               </motion.div>
             </motion.div>
@@ -398,82 +450,46 @@ export function Editor({ onBack, openScanOnMount }: EditorProps) {
           {viewMode === '3d' && <Canvas3D />}
           {viewMode === 'split' && (
             <div className="flex h-full">
-              <div className="w-1/2 border-r border-slate-800"><Canvas2D /></div>
+              <div className="w-1/2 border-r border-gray-200 dark:border-slate-800"><Canvas2D /></div>
               <div className="w-1/2"><Canvas3D /></div>
             </div>
           )}
 
           {/* ── BOTÕES FLUTUANTES (Zoom, Centralizar) ── */}
-          <div className="fixed bottom-24 left-4 z-20 flex flex-col gap-2 md:bottom-6">
+          <div className="fixed bottom-6 left-4 z-20 flex flex-col gap-2">
             <button
               onClick={() => handleZoom(1)}
-              className="w-10 h-10 rounded-full bg-slate-800/90 backdrop-blur-sm border border-slate-700 text-white flex items-center justify-center shadow-lg hover:bg-slate-700 transition-all active:scale-95"
+              className="w-10 h-10 rounded-full bg-white/90 dark:bg-slate-800/90 backdrop-blur-sm border border-gray-200 dark:border-slate-700 text-gray-700 dark:text-white flex items-center justify-center shadow-lg hover:bg-gray-100 dark:hover:bg-slate-700 transition-all active:scale-95"
               title="Aproximar (+)"
             >
               <ZoomIn className="w-5 h-5" />
             </button>
             <button
               onClick={() => handleZoom(-1)}
-              className="w-10 h-10 rounded-full bg-slate-800/90 backdrop-blur-sm border border-slate-700 text-white flex items-center justify-center shadow-lg hover:bg-slate-700 transition-all active:scale-95"
+              className="w-10 h-10 rounded-full bg-white/90 dark:bg-slate-800/90 backdrop-blur-sm border border-gray-200 dark:border-slate-700 text-gray-700 dark:text-white flex items-center justify-center shadow-lg hover:bg-gray-100 dark:hover:bg-slate-700 transition-all active:scale-95"
               title="Afastar (-)"
             >
               <ZoomOut className="w-5 h-5" />
             </button>
             <button
               onClick={handleCenter}
-              className="w-10 h-10 rounded-full bg-slate-800/90 backdrop-blur-sm border border-slate-700 text-white flex items-center justify-center shadow-lg hover:bg-slate-700 transition-all active:scale-95"
+              className="w-10 h-10 rounded-full bg-white/90 dark:bg-slate-800/90 backdrop-blur-sm border border-gray-200 dark:border-slate-700 text-gray-700 dark:text-white flex items-center justify-center shadow-lg hover:bg-gray-100 dark:hover:bg-slate-700 transition-all active:scale-95"
               title="Centralizar visualização"
             >
               <Maximize className="w-5 h-5" />
             </button>
           </div>
 
-          {/* ── BOTÃO FLUTUANTE PARA ALTERNAR VIEWMODE (2D/3D/Split) ── */}
-          <button
-            onClick={cycleViewMode}
-            className="fixed bottom-24 right-4 z-20 w-12 h-12 rounded-full bg-gradient-to-r from-blue-500 to-indigo-600 text-white shadow-xl flex items-center justify-center hover:from-blue-400 hover:to-indigo-500 transition-all active:scale-95 md:bottom-6"
-            title={`Alternar modo (atual: ${viewMode.toUpperCase()})`}
-          >
-            <View className="w-5 h-5" />
-          </button>
-
-          {/* ── MOBILE BOTTOM ACTION BAR (MagicPlan style) ── */}
+          {/* ── MOBILE BOTTOM ACTION BAR (apenas botão "+") ── */}
           <div className="absolute bottom-0 left-0 right-0 md:hidden bg-white/95 dark:bg-slate-900/95 backdrop-blur-sm border-t border-gray-200 dark:border-slate-800 z-10">
-            <div className="flex items-stretch divide-x divide-gray-200 dark:divide-slate-800">
+            <div className="flex items-center justify-center py-3">
               <button
                 onClick={() => setShowAddRoom(true)}
-                className="flex-1 flex flex-col items-center justify-center gap-1 py-3 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-slate-800 active:bg-gray-100 transition-colors"
+                className="flex flex-col items-center justify-center gap-1 px-6 py-2 rounded-full bg-gradient-to-r from-emerald-500 to-teal-600 shadow-lg shadow-emerald-500/30 active:scale-95 transition-transform"
               >
-                <div className="w-8 h-8 rounded-full bg-blue-500 flex items-center justify-center shadow-md shadow-blue-500/30">
-                  <Plus className="w-4 h-4 text-white" />
-                </div>
-                <span className="text-[11px] font-medium">Inserir</span>
+                <Plus className="w-6 h-6 text-white" />
+                <span className="text-[10px] font-medium text-white">Inserir</span>
               </button>
-              <button
-                onClick={() => setIsCatalogOpen(true)}
-                className="flex-1 flex flex-col items-center justify-center gap-1 py-3 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-slate-800 active:bg-gray-100 transition-colors"
-              >
-                <Box className="w-5 h-5" />
-                <span className="text-[11px] font-medium">Catálogo</span>
-              </button>
-              <button
-                onClick={() => setShowAIAssistant(true)}
-                className="flex-1 flex flex-col items-center justify-center gap-1 py-3 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-slate-800 active:bg-gray-100 transition-colors"
-              >
-                <Sparkles className="w-5 h-5 text-purple-500" />
-                <span className="text-[11px] font-medium">IA</span>
-              </button>
-              <button
-                onClick={handleRotate}
-                className="flex-1 flex flex-col items-center justify-center gap-1 py-3 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-slate-800 active:bg-gray-100 transition-colors"
-              >
-                <RotateCw className="w-5 h-5" />
-                <span className="text-[11px] font-medium">Girar</span>
-              </button>
-            </div>
-            {/* iOS-style swipe hint */}
-            <div className="pb-1 pt-0.5 text-center">
-              <p className="text-[10px] text-gray-400">Deslize para cima ↑ ↺ para informações</p>
             </div>
           </div>
         </div>
@@ -481,15 +497,7 @@ export function Editor({ onBack, openScanOnMount }: EditorProps) {
         {/* Properties Panel (sem alterações) */}
         <AnimatePresence initial={false}>
           {selectedIds.length > 0 && (
-            <motion.div
-              initial={{ width: 0, opacity: 0 }}
-              animate={{ width: 296, opacity: 1 }}
-              exit={{ width: 0, opacity: 0 }}
-              transition={{ duration: 0.18, ease: 'easeInOut' }}
-              className="border-l border-slate-800 bg-slate-900 overflow-hidden flex-shrink-0"
-            >
-              <PropertiesPanel />
-            </motion.div>
+            <PropertiesPanel />
           )}
         </AnimatePresence>
       </div>
@@ -516,16 +524,16 @@ export function Editor({ onBack, openScanOnMount }: EditorProps) {
               animate={{ scale: 1, opacity: 1, y: 0 }}
               exit={{ scale: 0.92, opacity: 0, y: 16 }}
               transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-              className="w-full max-w-4xl h-[80vh] bg-slate-900 rounded-2xl border border-slate-700 shadow-2xl overflow-hidden"
+              className="w-full max-w-4xl h-[80vh] bg-white dark:bg-slate-900 rounded-2xl border border-gray-200 dark:border-slate-700 shadow-2xl overflow-hidden"
               onClick={e => e.stopPropagation()}
             >
-              <div className="h-12 border-b border-slate-800 flex items-center justify-between px-5 py-3.5">
+              <div className="h-12 border-b border-gray-200 dark:border-slate-800 flex items-center justify-between px-5 py-3.5">
                 <div className="flex items-center gap-2.5">
                   <Box className="w-5 h-5 text-blue-400" />
-                  <h2 className="text-base font-semibold text-white">Catálogo de Móveis</h2>
+                  <h2 className="text-base font-semibold text-gray-900 dark:text-white">Catálogo de Móveis</h2>
                 </div>
                 <button onClick={() => setIsCatalogOpen(false)}
-                  className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors">
+                  className="p-1.5 text-gray-500 dark:text-slate-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-slate-800 rounded-lg transition-colors">
                   <X className="w-[18px] h-[18px]" />
                 </button>
               </div>
