@@ -1,8 +1,3 @@
-// ============================================
-// EDITOR — Interface Premium SaaS
-// Layout limpo, sem duplicatas, mobile-first
-// ============================================
-
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useEditorStore, selectProjectStats } from '@store/editorStore';
@@ -28,10 +23,11 @@ import {
   ChevronLeft, Sparkles, Camera, Box, Save, Settings,
   LayoutTemplate, Calculator, View, Share2, FolderOpen,
   Undo, Redo, MoreHorizontal, X, Plus, RotateCw,
+  Menu, ZoomIn, ZoomOut, Maximize,
 } from 'lucide-react';
 import { AddRoomModal } from './components/AddRoomModal';
 
-// ── Overflow menu ─────────────────────────────────────────────
+// ── Overflow menu (top bar) ─────────────────────────────────
 interface OverflowMenuProps {
   onTemplates: () => void;
   onQuotation: () => void;
@@ -150,7 +146,6 @@ export function Editor({ onBack, openScanOnMount }: EditorProps) {
   // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Ignore when typing in inputs
       if (['INPUT', 'TEXTAREA'].includes((e.target as HTMLElement)?.tagName)) return;
 
       if (e.ctrlKey || e.metaKey) {
@@ -179,6 +174,28 @@ export function Editor({ onBack, openScanOnMount }: EditorProps) {
 
   const currentScene = scenes.find(s => s.id === currentSceneId);
 
+  // ── Handlers para zoom / centralizar / girar (eventos customizados) ──
+  const handleZoom = (delta: number) => {
+    window.dispatchEvent(new CustomEvent('editor:zoom', { detail: delta }));
+    toast.info('Zoom', `Zoom ${delta > 0 ? '+' : '-'} disparado. Integre no Canvas2D/3D.`);
+  };
+  const handleCenter = () => {
+    window.dispatchEvent(new CustomEvent('editor:center'));
+    toast.info('Centralizar', 'Evento de centralização enviado.');
+  };
+  const handleRotate = () => {
+    window.dispatchEvent(new CustomEvent('editor:rotate'));
+    toast.info('Girar', 'Evento de rotação enviado.');
+  };
+
+  // Alternar viewMode com FAB
+  const cycleViewMode = () => {
+    const next: Record<ViewMode, ViewMode> = { '2d': '3d', '3d': 'split', 'split': '2d' };
+    const newMode = next[viewMode];
+    setViewMode(newMode);
+    toast.success(`Modo ${newMode.toUpperCase()}`, `Visualização alterada para ${newMode.toUpperCase()}`);
+  };
+
   // ── RENDER ─────────────────────────────────────────────────
   return (
     <div className="h-screen flex flex-col bg-slate-950 overflow-hidden">
@@ -186,7 +203,7 @@ export function Editor({ onBack, openScanOnMount }: EditorProps) {
       {/* ── TOP BAR ─────────────────────────────────────────── */}
       <header className="h-14 bg-slate-900/95 backdrop-blur-sm border-b border-slate-800 flex items-center px-3 gap-2 flex-shrink-0 z-30">
 
-        {/* Left: Back + Logo */}
+        {/* Left: Back + Logo + Menu button (mobile) */}
         <div className="flex items-center gap-2 min-w-0">
           {onBack && (
             <button
@@ -197,6 +214,14 @@ export function Editor({ onBack, openScanOnMount }: EditorProps) {
               <ChevronLeft className="w-[18px] h-[18px]" />
             </button>
           )}
+          {/* Botão Menu (hamburger) apenas no mobile para abrir sidebar drawer */}
+          <button
+            onClick={() => setIsSidebarOpen(v => !v)}
+            className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors flex-shrink-0 md:hidden"
+            title="Menu lateral"
+          >
+            <Menu className="w-[18px] h-[18px]" />
+          </button>
           <div className="flex items-center gap-2.5 min-w-0">
             <div className="w-7 h-7 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg flex items-center justify-center flex-shrink-0">
               <Box className="w-3.5 h-3.5 text-white" />
@@ -217,7 +242,7 @@ export function Editor({ onBack, openScanOnMount }: EditorProps) {
         {/* Center/Right: Actions */}
         <div className="flex items-center gap-1.5">
 
-          {/* Undo / Redo */}
+          {/* Undo / Redo (desktop) */}
           <div className="hidden sm:flex items-center bg-slate-800 rounded-lg p-0.5">
             <button onClick={undo} disabled={!canUndo()}
               className="p-1.5 text-slate-400 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed rounded-md transition-colors"
@@ -243,7 +268,7 @@ export function Editor({ onBack, openScanOnMount }: EditorProps) {
 
           <div className="hidden sm:block w-px h-5 bg-slate-700 mx-0.5" />
 
-          {/* Scan button */}
+          {/* Scan button (sempre visível) */}
           <button
             onClick={() => setShowScan(true)}
             className="flex items-center gap-1.5 px-2.5 py-1.5 text-sm bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-white rounded-lg transition-all shadow-sm shadow-emerald-500/20"
@@ -253,7 +278,7 @@ export function Editor({ onBack, openScanOnMount }: EditorProps) {
             <span className="hidden sm:inline text-xs font-medium">Scan</span>
           </button>
 
-          {/* AI button */}
+          {/* AI button (sempre visível) */}
           <button
             onClick={() => setShowAIAssistant(true)}
             className="flex items-center gap-1.5 px-2.5 py-1.5 text-sm bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-400 hover:to-pink-400 text-white rounded-lg transition-all shadow-sm shadow-purple-500/20"
@@ -263,7 +288,7 @@ export function Editor({ onBack, openScanOnMount }: EditorProps) {
             <span className="hidden sm:inline text-xs font-medium">IA</span>
           </button>
 
-          {/* Catalog (desktop) */}
+          {/* Catalog (apenas desktop) */}
           <button
             onClick={() => setIsCatalogOpen(true)}
             className="hidden md:flex items-center gap-1.5 px-2.5 py-1.5 text-sm bg-blue-500 hover:bg-blue-400 text-white rounded-lg transition-colors shadow-sm"
@@ -273,7 +298,7 @@ export function Editor({ onBack, openScanOnMount }: EditorProps) {
             <span className="text-xs font-medium">Catálogo</span>
           </button>
 
-          {/* Overflow menu */}
+          {/* Overflow menu (sempre visível) */}
           <div ref={overflowRef} className="relative">
             <button
               onClick={() => setShowOverflow(v => !v)}
@@ -299,39 +324,75 @@ export function Editor({ onBack, openScanOnMount }: EditorProps) {
         </div>
       </header>
 
-      {/* ── TOOLBAR ─────────────────────────────────────────── */}
-      <Toolbar
-        viewMode={viewMode}
-        onViewModeChange={setViewMode}
-        onToggleSidebar={() => setIsSidebarOpen(v => !v)}
-        isSidebarOpen={isSidebarOpen}
-      />
+      {/* ── TOOLBAR (escondida em mobile, pois temos FAB e controles flutuantes) ── */}
+      <div className="hidden md:block flex-shrink-0">
+        <Toolbar
+          viewMode={viewMode}
+          onViewModeChange={setViewMode}
+          onToggleSidebar={() => setIsSidebarOpen(v => !v)}
+          isSidebarOpen={isSidebarOpen}
+        />
+      </div>
 
       {/* ── MAIN CONTENT ────────────────────────────────────── */}
-      <div className="flex-1 flex overflow-hidden min-h-0">
+      <div className="flex-1 flex overflow-hidden min-h-0 relative">
 
-        {/* Sidebar (hidden on mobile by default) */}
-        <AnimatePresence initial={false}>
+        {/* Sidebar: desktop (ao lado com animação) / mobile (drawer sobreposto) */}
+        {/* Desktop sidebar */}
+        <div className="hidden md:block">
+          <AnimatePresence initial={false}>
+            {isSidebarOpen && (
+              <motion.div
+                initial={{ width: 0, opacity: 0 }}
+                animate={{ width: 264, opacity: 1 }}
+                exit={{ width: 0, opacity: 0 }}
+                transition={{ duration: 0.18, ease: 'easeInOut' }}
+                className="border-r border-slate-800 bg-slate-900 overflow-hidden flex-shrink-0"
+              >
+                <Sidebar
+                  scenes={scenes}
+                  currentSceneId={currentSceneId}
+                  onSceneChange={setCurrentScene}
+                  onAddScene={addScene}
+                  stats={stats}
+                />
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+
+        {/* Mobile sidebar drawer */}
+        <AnimatePresence>
           {isSidebarOpen && (
             <motion.div
-              initial={{ width: 0, opacity: 0 }}
-              animate={{ width: 264, opacity: 1 }}
-              exit={{ width: 0, opacity: 0 }}
-              transition={{ duration: 0.18, ease: 'easeInOut' }}
-              className="border-r border-slate-800 bg-slate-900 overflow-hidden flex-shrink-0"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 z-40 md:hidden"
+              onClick={() => setIsSidebarOpen(false)}
             >
-              <Sidebar
-                scenes={scenes}
-                currentSceneId={currentSceneId}
-                onSceneChange={setCurrentScene}
-                onAddScene={addScene}
-                stats={stats}
-              />
+              <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
+              <motion.div
+                initial={{ x: -280 }}
+                animate={{ x: 0 }}
+                exit={{ x: -280 }}
+                transition={{ type: 'spring', damping: 25, stiffness: 300 }}
+                className="absolute left-0 top-0 bottom-0 w-64 bg-slate-900 border-r border-slate-800 shadow-2xl"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <Sidebar
+                  scenes={scenes}
+                  currentSceneId={currentSceneId}
+                  onSceneChange={setCurrentScene}
+                  onAddScene={addScene}
+                  stats={stats}
+                />
+              </motion.div>
             </motion.div>
           )}
         </AnimatePresence>
 
-        {/* Canvas */}
+        {/* Canvas area */}
         <div className="flex-1 relative overflow-hidden">
           {viewMode === '2d' && <Canvas2D />}
           {viewMode === '3d' && <Canvas3D />}
@@ -342,38 +403,72 @@ export function Editor({ onBack, openScanOnMount }: EditorProps) {
             </div>
           )}
 
-          {/* Mobile bottom action bar — MagicPlan style */}
-          <div className="absolute bottom-0 left-0 right-0 md:hidden bg-white/95 dark:bg-slate-900/95 backdrop-blur-sm border-t border-gray-200 dark:border-slate-800">
+          {/* ── BOTÕES FLUTUANTES (Zoom, Centralizar) ── */}
+          <div className="fixed bottom-24 left-4 z-20 flex flex-col gap-2 md:bottom-6">
+            <button
+              onClick={() => handleZoom(1)}
+              className="w-10 h-10 rounded-full bg-slate-800/90 backdrop-blur-sm border border-slate-700 text-white flex items-center justify-center shadow-lg hover:bg-slate-700 transition-all active:scale-95"
+              title="Aproximar (+)"
+            >
+              <ZoomIn className="w-5 h-5" />
+            </button>
+            <button
+              onClick={() => handleZoom(-1)}
+              className="w-10 h-10 rounded-full bg-slate-800/90 backdrop-blur-sm border border-slate-700 text-white flex items-center justify-center shadow-lg hover:bg-slate-700 transition-all active:scale-95"
+              title="Afastar (-)"
+            >
+              <ZoomOut className="w-5 h-5" />
+            </button>
+            <button
+              onClick={handleCenter}
+              className="w-10 h-10 rounded-full bg-slate-800/90 backdrop-blur-sm border border-slate-700 text-white flex items-center justify-center shadow-lg hover:bg-slate-700 transition-all active:scale-95"
+              title="Centralizar visualização"
+            >
+              <Maximize className="w-5 h-5" />
+            </button>
+          </div>
+
+          {/* ── BOTÃO FLUTUANTE PARA ALTERNAR VIEWMODE (2D/3D/Split) ── */}
+          <button
+            onClick={cycleViewMode}
+            className="fixed bottom-24 right-4 z-20 w-12 h-12 rounded-full bg-gradient-to-r from-blue-500 to-indigo-600 text-white shadow-xl flex items-center justify-center hover:from-blue-400 hover:to-indigo-500 transition-all active:scale-95 md:bottom-6"
+            title={`Alternar modo (atual: ${viewMode.toUpperCase()})`}
+          >
+            <View className="w-5 h-5" />
+          </button>
+
+          {/* ── MOBILE BOTTOM ACTION BAR (MagicPlan style) ── */}
+          <div className="absolute bottom-0 left-0 right-0 md:hidden bg-white/95 dark:bg-slate-900/95 backdrop-blur-sm border-t border-gray-200 dark:border-slate-800 z-10">
             <div className="flex items-stretch divide-x divide-gray-200 dark:divide-slate-800">
               <button
                 onClick={() => setShowAddRoom(true)}
-                className="flex-1 flex flex-col items-center justify-center gap-1 py-3 text-gray-700 hover:bg-gray-50 active:bg-gray-100 transition-colors"
+                className="flex-1 flex flex-col items-center justify-center gap-1 py-3 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-slate-800 active:bg-gray-100 transition-colors"
               >
                 <div className="w-8 h-8 rounded-full bg-blue-500 flex items-center justify-center shadow-md shadow-blue-500/30">
                   <Plus className="w-4 h-4 text-white" />
                 </div>
-                <span className="text-[11px] font-medium text-gray-700">Inserir</span>
+                <span className="text-[11px] font-medium">Inserir</span>
               </button>
               <button
                 onClick={() => setIsCatalogOpen(true)}
-                className="flex-1 flex flex-col items-center justify-center gap-1 py-3 text-gray-700 hover:bg-gray-50 active:bg-gray-100 transition-colors"
+                className="flex-1 flex flex-col items-center justify-center gap-1 py-3 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-slate-800 active:bg-gray-100 transition-colors"
               >
-                <Box className="w-5 h-5 text-gray-600" />
-                <span className="text-[11px] font-medium text-gray-700">Catálogo</span>
+                <Box className="w-5 h-5" />
+                <span className="text-[11px] font-medium">Catálogo</span>
               </button>
               <button
                 onClick={() => setShowAIAssistant(true)}
-                className="flex-1 flex flex-col items-center justify-center gap-1 py-3 text-gray-700 hover:bg-gray-50 active:bg-gray-100 transition-colors"
+                className="flex-1 flex flex-col items-center justify-center gap-1 py-3 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-slate-800 active:bg-gray-100 transition-colors"
               >
                 <Sparkles className="w-5 h-5 text-purple-500" />
-                <span className="text-[11px] font-medium text-gray-700">IA</span>
+                <span className="text-[11px] font-medium">IA</span>
               </button>
               <button
-                onClick={() => { saveProject(); toast.success('Salvo', 'Projeto salvo.'); }}
-                className="flex-1 flex flex-col items-center justify-center gap-1 py-3 text-gray-700 hover:bg-gray-50 active:bg-gray-100 transition-colors"
+                onClick={handleRotate}
+                className="flex-1 flex flex-col items-center justify-center gap-1 py-3 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-slate-800 active:bg-gray-100 transition-colors"
               >
-                <RotateCw className="w-5 h-5 text-gray-600" />
-                <span className="text-[11px] font-medium text-gray-700">Girar</span>
+                <RotateCw className="w-5 h-5" />
+                <span className="text-[11px] font-medium">Girar</span>
               </button>
             </div>
             {/* iOS-style swipe hint */}
@@ -383,7 +478,7 @@ export function Editor({ onBack, openScanOnMount }: EditorProps) {
           </div>
         </div>
 
-        {/* Properties Panel */}
+        {/* Properties Panel (sem alterações) */}
         <AnimatePresence initial={false}>
           {selectedIds.length > 0 && (
             <motion.div
@@ -399,13 +494,13 @@ export function Editor({ onBack, openScanOnMount }: EditorProps) {
         </AnimatePresence>
       </div>
 
-      {/* ── STATUS BAR ──────────────────────────────────────── */}
+      {/* ── STATUS BAR (apenas desktop) ── */}
       <div className="hidden md:block flex-shrink-0">
         <StatusBar viewMode={viewMode} tool={tool} stats={stats} selectedCount={selectedIds.length} />
       </div>
 
       {/* ═══════════════════════════════════════════════════════
-          MODALS — all using portal-style fixed positioning
+          MODAIS (mantidos inalterados)
           ═══════════════════════════════════════════════════════ */}
 
       {/* Furniture Catalog */}
