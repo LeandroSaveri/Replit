@@ -195,14 +195,14 @@ export function Editor({ onBack, openScanOnMount }: EditorProps) {
     <div className="h-screen flex flex-col bg-white dark:bg-slate-950 overflow-hidden">
 
       {/* ── TOP BAR ─────────────────────────────────────────── */}
-      <header className="h-14 bg-white/95 dark:bg-slate-900/95 backdrop-blur-sm border-b border-gray-200 dark:border-slate-800 flex items-center px-3 gap-2 flex-shrink-0 z-30">
+      <header className="h-14 bg-white/95 dark:bg-slate-900/95 backdrop-blur-sm border-b border-gray-200 dark:border-slate-800 flex items-center px-2 sm:px-3 gap-1.5 sm:gap-2 flex-shrink-0 z-30">
 
         {/* Left: Back + Logo + Menu button (mobile) */}
-        <div className="flex items-center gap-2 min-w-0">
+        <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
           {onBack && (
             <button
               onClick={onBack}
-              className="p-2 text-gray-500 dark:text-slate-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-slate-800 rounded-lg transition-colors flex-shrink-0"
+              className="p-1.5 sm:p-2 text-gray-500 dark:text-slate-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-slate-800 rounded-lg transition-colors flex-shrink-0"
               title="Voltar"
             >
               <ChevronLeft className="w-[18px] h-[18px]" />
@@ -210,17 +210,17 @@ export function Editor({ onBack, openScanOnMount }: EditorProps) {
           )}
           <button
             onClick={() => setIsSidebarOpen(v => !v)}
-            className="p-2 text-gray-500 dark:text-slate-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-slate-800 rounded-lg transition-colors flex-shrink-0 md:hidden"
+            className="p-1.5 sm:p-2 text-gray-500 dark:text-slate-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-slate-800 rounded-lg transition-colors flex-shrink-0 md:hidden"
             title="Menu lateral"
           >
             <Menu className="w-[18px] h-[18px]" />
           </button>
-          <div className="flex items-center gap-2.5 min-w-0">
-            <div className="w-7 h-7 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-lg flex items-center justify-center flex-shrink-0 shadow-sm">
-              <Box className="w-3.5 h-3.5 text-white" />
+          <div className="flex items-center gap-2 sm:gap-2.5 min-w-0">
+            <div className="w-6 h-6 sm:w-7 sm:h-7 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-lg flex items-center justify-center flex-shrink-0 shadow-sm">
+              <Box className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-white" />
             </div>
             <div className="min-w-0 hidden sm:block">
-              <h1 className="text-sm font-semibold text-gray-900 dark:text-white truncate leading-tight">
+              <h1 className="text-xs sm:text-sm font-semibold text-gray-900 dark:text-white truncate leading-tight">
                 {project?.name || 'Novo Projeto'}
               </h1>
               <p className="text-[10px] text-gray-500 dark:text-slate-500 truncate leading-tight">
@@ -230,36 +230,36 @@ export function Editor({ onBack, openScanOnMount }: EditorProps) {
           </div>
         </div>
 
-        <div className="flex-1" />
+        <div className="flex-1 min-w-2" />
 
         {/* Right side actions */}
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-0.5 sm:gap-1.5">
 
           {/* Undo / Redo (sempre visíveis, sem texto em mobile) */}
-          <div className="flex items-center bg-gray-100 dark:bg-slate-800 rounded-lg p-0.5">
+          <div className="flex items-center bg-gray-100 dark:bg-slate-800 rounded-lg p-0.5 flex-shrink-0">
             <button
               onClick={undo}
               disabled={!canUndo()}
-              className="p-1.5 text-gray-600 dark:text-slate-400 hover:text-gray-900 dark:hover:text-white disabled:opacity-30 disabled:cursor-not-allowed rounded-md transition-colors"
+              className="p-1 sm:p-1.5 text-gray-600 dark:text-slate-400 hover:text-gray-900 dark:hover:text-white disabled:opacity-30 disabled:cursor-not-allowed rounded-md transition-colors"
               title="Desfazer (Ctrl+Z)"
             >
-              <Undo className="w-4 h-4" />
+              <Undo className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
             </button>
             <button
               onClick={redo}
               disabled={!canRedo()}
-              className="p-1.5 text-gray-600 dark:text-slate-400 hover:text-gray-900 dark:hover:text-white disabled:opacity-30 disabled:cursor-not-allowed rounded-md transition-colors"
+              className="p-1 sm:p-1.5 text-gray-600 dark:text-slate-400 hover:text-gray-900 dark:hover:text-white disabled:opacity-30 disabled:cursor-not-allowed rounded-md transition-colors"
               title="Refazer (Ctrl+Y)"
             >
-              <Redo className="w-4 h-4" />
+              <Redo className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
             </button>
           </div>
 
-          {/* View mode switcher (2D/3D/Split) - visível em telas médias+ */}
-          <div className="hidden sm:flex items-center bg-gray-100 dark:bg-slate-800 rounded-lg p-0.5">
+          {/* View mode switcher (2D/3D/Split) - VISÍVEL EM TODOS OS DISPOSITIVOS */}
+          <div className="flex items-center bg-gray-100 dark:bg-slate-800 rounded-lg p-0.5 flex-shrink-0">
             <button
               onClick={() => setViewMode('2d')}
-              className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-all ${
+              className={`px-2 sm:px-3 py-1 sm:py-1.5 text-[10px] sm:text-xs font-semibold rounded-md transition-all ${
                 viewMode === '2d'
                   ? 'bg-emerald-500 text-white shadow-sm'
                   : 'text-gray-600 dark:text-slate-400 hover:text-gray-900 dark:hover:text-white'
@@ -269,7 +269,7 @@ export function Editor({ onBack, openScanOnMount }: EditorProps) {
             </button>
             <button
               onClick={() => setViewMode('3d')}
-              className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-all ${
+              className={`px-2 sm:px-3 py-1 sm:py-1.5 text-[10px] sm:text-xs font-semibold rounded-md transition-all ${
                 viewMode === '3d'
                   ? 'bg-emerald-500 text-white shadow-sm'
                   : 'text-gray-600 dark:text-slate-400 hover:text-gray-900 dark:hover:text-white'
@@ -279,7 +279,7 @@ export function Editor({ onBack, openScanOnMount }: EditorProps) {
             </button>
             <button
               onClick={() => setViewMode('split')}
-              className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-all ${
+              className={`px-2 sm:px-3 py-1 sm:py-1.5 text-[10px] sm:text-xs font-semibold rounded-md transition-all ${
                 viewMode === 'split'
                   ? 'bg-emerald-500 text-white shadow-sm'
                   : 'text-gray-600 dark:text-slate-400 hover:text-gray-900 dark:hover:text-white'
@@ -295,20 +295,20 @@ export function Editor({ onBack, openScanOnMount }: EditorProps) {
           {/* Scan button */}
           <button
             onClick={() => setShowScan(true)}
-            className="flex items-center gap-1.5 px-2.5 py-1.5 text-sm bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-white rounded-lg transition-all shadow-md hover:shadow-lg"
+            className="flex items-center gap-1 sm:gap-1.5 px-2 sm:px-2.5 py-1 sm:py-1.5 text-xs sm:text-sm bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-white rounded-lg transition-all shadow-md hover:shadow-lg flex-shrink-0"
             title="Escanear Cômodo"
           >
-            <Camera className="w-4 h-4" />
+            <Camera className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
             <span className="hidden sm:inline text-xs font-medium">Scan</span>
           </button>
 
           {/* AI button */}
           <button
             onClick={() => setShowAIAssistant(true)}
-            className="flex items-center gap-1.5 px-2.5 py-1.5 text-sm bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-400 hover:to-pink-400 text-white rounded-lg transition-all shadow-md hover:shadow-lg"
+            className="flex items-center gap-1 sm:gap-1.5 px-2 sm:px-2.5 py-1 sm:py-1.5 text-xs sm:text-sm bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-400 hover:to-pink-400 text-white rounded-lg transition-all shadow-md hover:shadow-lg flex-shrink-0"
             title="Assistente IA"
           >
-            <Sparkles className="w-4 h-4" />
+            <Sparkles className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
             <span className="hidden sm:inline text-xs font-medium">IA</span>
           </button>
 
@@ -323,10 +323,10 @@ export function Editor({ onBack, openScanOnMount }: EditorProps) {
           </button>
 
           {/* Overflow menu */}
-          <div ref={overflowRef} className="relative">
+          <div ref={overflowRef} className="relative flex-shrink-0">
             <button
               onClick={() => setShowOverflow(v => !v)}
-              className={`p-2 rounded-lg transition-colors ${
+              className={`p-1.5 sm:p-2 rounded-lg transition-colors ${
                 showOverflow
                   ? 'bg-gray-200 dark:bg-slate-700 text-gray-900 dark:text-white'
                   : 'text-gray-500 dark:text-slate-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-slate-800'
