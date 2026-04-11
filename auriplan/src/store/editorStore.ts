@@ -76,6 +76,7 @@ import type {
     _liveUpdateWall: (id: string, start: import('@auriplan-types').Vec2, end: import('@auriplan-types').Vec2) => void;
     _liveUpdateRoomPoints: (id: string, points: import('@auriplan-types').Vec2[]) => void;
     _liveUpdateFurniturePos: (id: string, position: [number, number, number]) => void;
+    _liveUpdateWallsBatch: (updates: Array<{ id: string; start: Vec2; end: Vec2 }>) => void;
 
     // Actions - Rooms
     addRoom: (points: import('@auriplan-types').Vec2[]) => void;
@@ -554,6 +555,22 @@ export const useEditorStore = create<EditorState>()(
           if (!scene) return;
           const furn = scene.furniture.find(f => f.id === id);
           if (furn) furn.position = [...position] as [number, number, number];
+        });
+      },
+
+      // Batch update for multiple walls (used by SelectToolHandler for connected walls)
+      _liveUpdateWallsBatch: (updates) => {
+        set(state => {
+          const scene = getCurrentScene(state);
+          if (!scene) return;
+          for (const upd of updates) {
+            const wall = scene.walls.find(w => w.id === upd.id);
+            if (wall) {
+              wall.start = [...upd.start] as Vec2;
+              wall.end = [...upd.end] as Vec2;
+            }
+          }
+          updateJunctionsForScene(state, scene.id);
         });
       },
 
