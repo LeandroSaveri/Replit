@@ -1,6 +1,4 @@
-
-# Criar Sidebar.tsx corrigido
-new_sidebar = '''// ============================================
+// ============================================
 // SIDEBAR - Painel Lateral Otimizado
 // Mobile: Drawer overlay (não empurra canvas)
 // Desktop: Slide lateral (empurra canvas)
