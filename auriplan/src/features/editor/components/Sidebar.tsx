@@ -49,7 +49,7 @@ interface SidebarProps {
 }
 
 interface LayerItemProps {
-  icon: React.FC<{ className?: string }>;
+ icon: (props: { className?: string }) => JSX.Element;
   name: string;
   count: number;
   visible: boolean;
