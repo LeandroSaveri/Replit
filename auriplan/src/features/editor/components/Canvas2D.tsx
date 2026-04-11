@@ -1,6 +1,7 @@
 // ============================================================
 // Canvas2D — Orquestrador de desenho 2D
 // Fluxo: ResizeObserver → buffer correto → engine → preview overlay
+// CORREÇÃO: Adicionados handlers touch para mobile (Magicplan style)
 // ============================================================
 
 import { useRef, useEffect, useState, useCallback, useLayoutEffect } from 'react';
@@ -10,7 +11,7 @@ import { ToolManager, ToolContext, ROOM_SHAPES, RoomToolHandler } from '../handl
 import type { Vec2 } from '@auriplan-types';
 
 interface CanvasInteractionEvent {
-  type: 'mousedown' | 'mousemove' | 'mouseup' | 'keydown' | 'dblclick';
+  type: 'mousedown' | 'mousemove' | 'mouseup' | 'keydown' | 'dblclick' | 'touchstart' | 'touchmove' | 'touchend';
   position: Vec2;
   modifiers: string[];
   key?: string;
@@ -38,18 +39,22 @@ export function Canvas2D() {
   // Use refs for transform to avoid stale closures in event handlers
   const scaleRef = useRef(60);
   const panRef = useRef<Vec2>([0, 0]);
-  const rotationRef = useRef(0); // nova: rotação da câmera em radianos
+  const rotationRef = useRef(0);
   const isPanningRef = useRef(false);
   const panStartRef = useRef({ x: 0, y: 0 });
   const isSpacePressedRef = useRef(false);
 
-  // Multi-touch (pinch-to-zoom) tracking
+  // Multi-touch tracking
   const activePointersRef = useRef<Map<number, { x: number; y: number }>>(new Map());
   const pinchStartDistRef = useRef(0);
   const pinchStartScaleRef = useRef(60);
   const pinchStartPanRef = useRef<Vec2>([0, 0]);
   const pinchStartMidRef = useRef({ x: 0, y: 0 });
   const pinchStartRotationRef = useRef(0);
+
+  // Touch tracking para ferramentas
+  const touchStartPosRef = useRef<Vec2 | null>(null);
+  const isTouchDrawingRef = useRef(false);
 
   const [scale, setScaleState] = useState(60);
   const [pan, setPanState] = useState<Vec2>([0, 0]);
@@ -64,7 +69,7 @@ export function Canvas2D() {
   const [renameRoom, setRenameRoom] = useState<{ id: string; name: string } | null>(null);
   const renameInputRef = useRef<HTMLInputElement>(null);
 
-  // Context menu (right-click)
+  // Context menu
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; worldPos: Vec2 } | null>(null);
 
   const store = useEditorStore;
@@ -101,7 +106,7 @@ export function Canvas2D() {
     });
   };
 
-  // ── Canvas resize (critical fix) ──────────────────────────────
+  // ── Canvas resize ──────────────────────────────────────────────
   useLayoutEffect(() => {
     const container = containerRef.current;
     const canvas = canvasRef.current;
@@ -129,7 +134,7 @@ export function Canvas2D() {
     return () => ro.disconnect();
   }, []);
 
-  // ── Coordinate transforms (use canvas BUFFER size for consistency) ─
+  // ── Coordinate transforms ───────────────────────────────────────
   const screenToWorld = useCallback((screenX: number, screenY: number): Vec2 => {
     const canvas = canvasRef.current;
     if (!canvas) return [0, 0];
@@ -142,7 +147,6 @@ export function Canvas2D() {
     const rot = rotationRef.current;
     const cos = Math.cos(rot);
     const sin = Math.sin(rot);
-    // Transform screen to world (inverse of worldToScreen)
     const xCenter = (xPx - canvas.width / 2 - p[0] * dpr);
     const yCenter = -(yPx - canvas.height / 2 - p[1] * dpr);
     const x = (xCenter * cos - yCenter * sin) / s;
@@ -159,7 +163,6 @@ export function Canvas2D() {
     const rot = rotationRef.current;
     const cos = Math.cos(rot);
     const sin = Math.sin(rot);
-    // Rotate world point
     const xRot = worldX * cos - worldY * sin;
     const yRot = worldX * sin + worldY * cos;
     return {
@@ -228,7 +231,7 @@ export function Canvas2D() {
     setCursorStyle(TOOL_CURSORS[tool] ?? 'default');
   }, [tool]);
 
-  // Sync engine transform (scale, pan, rotation)
+  // Sync engine transform
   useEffect(() => {
     const dpr = window.devicePixelRatio || 1;
     renderEngineRef.current?.setTransform({
@@ -239,7 +242,7 @@ export function Canvas2D() {
     requestRenderFrame();
   }, [scale, pan, cameraRotation]);
 
-  // Re-render on data change (including hover)
+  // Re-render on data change
   useEffect(() => {
     requestRenderFrame();
   }, [walls, rooms, previewState, selectedIds, gridSettings, hoveredId]);
@@ -273,7 +276,7 @@ export function Canvas2D() {
       hoveredId: hoveredIdRef.current,
     });
 
-    // Overlay: preview (drawn in canvas pixel space)
+    // Overlay: preview
     if (previewState?.type === 'wall') {
       drawGhostWall(ctx, previewState.start, previewState.end);
     } else if (previewState?.type === 'polygon') {
@@ -287,7 +290,7 @@ export function Canvas2D() {
 
   doRenderRef.current = doRender;
 
-  // Ghost wall preview (blue dashed polygon)
+  // Ghost wall preview
   const drawGhostWall = (ctx: CanvasRenderingContext2D, start: Vec2, end: Vec2) => {
     const p1 = worldToScreenPx(start[0], start[1]);
     const p2 = worldToScreenPx(end[0], end[1]);
@@ -397,7 +400,7 @@ export function Canvas2D() {
     return m;
   };
 
-  // ── Pointer events (with pinch-to-zoom support) ────────────────
+  // ── Pointer events ─────────────────────────────────────────────
   const handlePointerDown = (e: React.PointerEvent) => {
     if (e.button !== 2) e.preventDefault();
     (e.target as HTMLElement).setPointerCapture(e.pointerId);
@@ -518,6 +521,69 @@ export function Canvas2D() {
       modifiers: getModifiers(e),
     } as any);
     requestRenderFrame();
+  };
+
+  // ── Touch events específicos para mobile (Magicplan style) ───────────
+  const handleTouchStart = (e: React.TouchEvent) => {
+    // Ignora se for pinch (2 dedos)
+    if (e.touches.length !== 1) return;
+    
+    const touch = e.touches[0];
+    const worldPos = screenToWorld(touch.clientX, touch.clientY);
+    
+    // Salva posição inicial
+    touchStartPosRef.current = worldPos;
+    isTouchDrawingRef.current = true;
+    
+    // Delega para ToolManager como mousedown
+    toolManagerRef.current?.handleEvent({
+      type: 'mousedown',
+      position: worldPos,
+      modifiers: [],
+    } as any);
+    requestRenderFrame();
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    // Previne scroll da página durante desenho
+    if (isTouchDrawingRef.current) {
+      e.preventDefault();
+    }
+    
+    // Ignora pinch (2 dedos) - deixa o PointerEvent lidar
+    if (e.touches.length !== 1) return;
+    
+    const touch = e.touches[0];
+    const worldPos = screenToWorld(touch.clientX, touch.clientY);
+    
+    // Delega para ToolManager como mousemove
+    toolManagerRef.current?.handleEvent({
+      type: 'mousemove',
+      position: worldPos,
+      modifiers: [],
+    } as any);
+    requestRenderFrame();
+  };
+
+  const handleTouchEnd = (e: React.TouchEvent) => {
+    if (!isTouchDrawingRef.current) return;
+    
+    const touch = e.changedTouches[0];
+    if (touch) {
+      const worldPos = screenToWorld(touch.clientX, touch.clientY);
+      
+      // Delega para ToolManager como mouseup
+      toolManagerRef.current?.handleEvent({
+        type: 'mouseup',
+        position: worldPos,
+        modifiers: [],
+      } as any);
+      requestRenderFrame();
+    }
+    
+    // Reseta estado touch
+    isTouchDrawingRef.current = false;
+    touchStartPosRef.current = null;
   };
 
   const handleDoubleClick = (e: React.MouseEvent) => {
@@ -716,7 +782,7 @@ export function Canvas2D() {
     };
   }, [store]);
 
-  // ── Controles de zoom / rotação (expostos via eventos) ─────────
+  // ── Controles de zoom / rotação ────────────────────────────────
   const zoomIn = useCallback(() => {
     setScale(s => Math.min(400, s * 1.25));
   }, []);
@@ -735,7 +801,6 @@ export function Canvas2D() {
     setRotation(r => (r + Math.PI / 2) % (2 * Math.PI));
   }, []);
 
-  // Escutar eventos globais disparados pelo Editor
   useEffect(() => {
     const handleZoom = (e: CustomEvent<number>) => {
       if (e.detail > 0) zoomIn();
@@ -755,7 +820,6 @@ export function Canvas2D() {
     };
   }, [zoomIn, zoomOut, resetView, rotateCamera]);
 
-  // Insert room shape (preset)
   const insertShape = (shapeName: string) => {
     const handler = (toolManagerRef.current as any)?.currentHandler;
     if (handler instanceof RoomToolHandler) {
@@ -764,21 +828,20 @@ export function Canvas2D() {
     }
   };
 
-  // Tool hint messages
   const isMobile = typeof window !== 'undefined' && window.matchMedia('(max-width: 768px)').matches;
   const toolHints: Record<string, string> = {
     wall: isMobile
-      ? 'Toque para colocar parede • Esc para cancelar'
-      : 'Clique para iniciar • Clique para colocar segmento • Esc para cancelar',
+      ? 'Toque para iniciar • Arraste • Solte para colocar'
+      : 'Clique para iniciar • Arraste • Solte para colocar',
     room: isMobile
       ? 'Toque para adicionar vértices • toque no início para fechar'
       : 'Clique para adicionar vértices • Enter ou clique no início para fechar',
     select: isMobile
       ? 'Toque para selecionar • 2 dedos para navegar • Duplo toque = dividir parede'
       : 'Clique para selecionar • Shift para múltiplos • Duplo clique = dividir parede/renomear cômodo',
-    door: 'Clique/toque em uma parede para adicionar porta',
-    window: 'Clique/toque em uma parede para adicionar janela',
-    measure: 'Clique/toque para iniciar medição',
+    door: 'Toque em uma parede para adicionar porta',
+    window: 'Toque em uma parede para adicionar janela',
+    measure: 'Toque para iniciar medição',
     pan: isMobile ? 'Arraste para navegar • 2 dedos para zoom' : 'Arraste para navegar',
   };
 
@@ -798,6 +861,10 @@ export function Canvas2D() {
           onPointerUp={handlePointerUp}
           onDoubleClick={handleDoubleClick}
           onContextMenu={handleContextMenu}
+          // Touch events para mobile (Magicplan style)
+          onTouchStart={handleTouchStart}
+          onTouchMove={handleTouchMove}
+          onTouchEnd={handleTouchEnd}
         />
 
         {/* Room shape picker */}
@@ -816,7 +883,7 @@ export function Canvas2D() {
               </button>
             ))}
             <div className="border-t border-slate-100 mt-2 pt-2 px-2">
-              <p className="text-[10px] text-slate-400">Ou desenhe clicando no canvas</p>
+              <p className="text-[10px] text-slate-400">Ou desenhe toque no canvas</p>
             </div>
           </div>
         )}
@@ -837,11 +904,11 @@ export function Canvas2D() {
 
         {tool === 'wall' && previewState?.type === 'wall' && (
           <div className="absolute top-12 left-1/2 -translate-x-1/2 bg-blue-600/90 backdrop-blur px-3 py-1.5 rounded-full text-xs text-white pointer-events-none">
-            Segmento em andamento • Shift = ortogonal • Esc = cancelar
+            Segmento em andamento • Solte para colocar • Esc = cancelar
           </div>
         )}
 
-        {/* Scale info (mantido, útil) */}
+        {/* Scale info */}
         <div className="absolute bottom-4 left-4 bg-white/80 backdrop-blur-sm px-3 py-1.5 rounded-lg text-xs text-slate-600 border border-slate-200 shadow-sm z-10">
           1 : {(100 / scale * 10).toFixed(0)} &nbsp;|&nbsp; {scale.toFixed(0)} px/m
         </div>
