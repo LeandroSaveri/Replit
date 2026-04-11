@@ -1,10 +1,10 @@
 // ============================================================
 // CAMINHO ORIGINAL: src/features/editor/Editor.tsx
-// CORREÇÕES:
-// - Botão "+" flutuante (FAB) no canto inferior direito
-// - Undo/Redo sempre visíveis (mobile e desktop)
-// - Layout responsivo para landscape
-// - Estilo premium (sombras, gradientes, transições)
+// VERSÃO FINAL COM TODAS AS CORREÇÕES SOLICITADAS:
+// - Botão "+" flutuante APENAS mobile (md:hidden)
+// - Undo/Redo sempre visíveis
+// - Layout responsivo (landscape)
+// - Estilo premium (gradientes, sombras, transições)
 // ============================================================
 
 import { useState, useCallback, useEffect, useRef } from 'react';
@@ -468,14 +468,15 @@ export function Editor({ onBack, openScanOnMount }: EditorProps) {
             </button>
           </div>
 
-         {/* ── BOTÃO FLUTUANTE "+" (INSERIR) - APENAS MOBILE ── */}
-<button
-  onClick={() => setShowAddRoom(true)}
-  className="fixed bottom-6 right-4 z-20 w-14 h-14 rounded-full bg-gradient-to-r from-emerald-500 to-teal-600 text-white shadow-xl hover:shadow-2xl transition-all active:scale-95 flex items-center justify-center md:hidden"
-  title="Adicionar cômodo"
->
-  <Plus className="w-7 h-7" />
-</button>
+          {/* ── BOTÃO FLUTUANTE "+" (INSERIR) - APENAS MOBILE ── */}
+          <button
+            onClick={() => setShowAddRoom(true)}
+            className="fixed bottom-6 right-4 z-20 w-14 h-14 rounded-full bg-gradient-to-r from-emerald-500 to-teal-600 text-white shadow-xl hover:shadow-2xl transition-all active:scale-95 flex items-center justify-center md:hidden"
+            title="Adicionar cômodo"
+          >
+            <Plus className="w-7 h-7" />
+          </button>
+        </div>
 
         {/* Properties Panel */}
         <AnimatePresence initial={false}>
