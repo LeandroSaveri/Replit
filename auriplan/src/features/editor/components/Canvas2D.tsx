@@ -38,6 +38,7 @@ export function Canvas2D() {
   // Use refs for transform to avoid stale closures in event handlers
   const scaleRef = useRef(60);
   const panRef = useRef<Vec2>([0, 0]);
+  const rotationRef = useRef(0); // nova: rotação da câmera em radianos
   const isPanningRef = useRef(false);
   const panStartRef = useRef({ x: 0, y: 0 });
   const isSpacePressedRef = useRef(false);
@@ -48,9 +49,11 @@ export function Canvas2D() {
   const pinchStartScaleRef = useRef(60);
   const pinchStartPanRef = useRef<Vec2>([0, 0]);
   const pinchStartMidRef = useRef({ x: 0, y: 0 });
+  const pinchStartRotationRef = useRef(0);
 
   const [scale, setScaleState] = useState(60);
   const [pan, setPanState] = useState<Vec2>([0, 0]);
+  const [cameraRotation, setCameraRotation] = useState(0);
   const [previewState, setPreviewState] = useState<any>(null);
   const [snapPoint, setSnapPoint] = useState<Vec2 | null>(null);
   const [cursorStyle, setCursorStyle] = useState('crosshair');
@@ -86,6 +89,14 @@ export function Canvas2D() {
     setPanState(prev => {
       const next = typeof v === 'function' ? v(prev) : v;
       panRef.current = next;
+      return next;
+    });
+  };
+
+  const setRotation = (v: number | ((prev: number) => number)) => {
+    setCameraRotation(prev => {
+      const next = typeof v === 'function' ? v(prev) : v;
+      rotationRef.current = next;
       return next;
     });
   };
@@ -128,8 +139,14 @@ export function Canvas2D() {
     const yPx = (screenY - rect.top) * dpr;
     const s = scaleRef.current * dpr;
     const p = panRef.current;
-    const x = (xPx - canvas.width / 2 - p[0] * dpr) / s;
-    const y = -(yPx - canvas.height / 2 - p[1] * dpr) / s;
+    const rot = rotationRef.current;
+    const cos = Math.cos(rot);
+    const sin = Math.sin(rot);
+    // Transform screen to world (inverse of worldToScreen)
+    const xCenter = (xPx - canvas.width / 2 - p[0] * dpr);
+    const yCenter = -(yPx - canvas.height / 2 - p[1] * dpr);
+    const x = (xCenter * cos - yCenter * sin) / s;
+    const y = (xCenter * sin + yCenter * cos) / s;
     return [x, y];
   }, []);
 
@@ -139,9 +156,15 @@ export function Canvas2D() {
     const dpr = window.devicePixelRatio || 1;
     const s = scaleRef.current * dpr;
     const p = panRef.current;
+    const rot = rotationRef.current;
+    const cos = Math.cos(rot);
+    const sin = Math.sin(rot);
+    // Rotate world point
+    const xRot = worldX * cos - worldY * sin;
+    const yRot = worldX * sin + worldY * cos;
     return {
-      x: worldX * s + p[0] * dpr + canvas.width / 2,
-      y: -worldY * s + p[1] * dpr + canvas.height / 2,
+      x: xRot * s + p[0] * dpr + canvas.width / 2,
+      y: -yRot * s + p[1] * dpr + canvas.height / 2,
     };
   }, []);
 
@@ -169,7 +192,6 @@ export function Canvas2D() {
       toolManagerRef.current = new ToolManager(
         store as any,
         (state) => {
-          // Handle special preview states from SelectToolHandler
           if (state && (state as any).type === 'rename-room') {
             const roomId = (state as any).roomId as string;
             const room = store.getState().scenes
@@ -185,12 +207,10 @@ export function Canvas2D() {
             setSnapPoint(null);
           }
         },
-        // Hover callback
         (id) => {
           hoveredIdRef.current = id;
           setHoveredId(id);
         },
-        // Cursor callback (only in select tool)
         (cursor) => {
           if (store.getState().tool === 'select') setCursorStyle(cursor);
         },
@@ -208,16 +228,16 @@ export function Canvas2D() {
     setCursorStyle(TOOL_CURSORS[tool] ?? 'default');
   }, [tool]);
 
-  // Sync engine transform
+  // Sync engine transform (scale, pan, rotation)
   useEffect(() => {
     const dpr = window.devicePixelRatio || 1;
     renderEngineRef.current?.setTransform({
       scale: scale * dpr,
       offset: [pan[0] * dpr, pan[1] * dpr],
-      rotation: 0,
+      rotation: cameraRotation,
     });
     requestRenderFrame();
-  }, [scale, pan]);
+  }, [scale, pan, cameraRotation]);
 
   // Re-render on data change (including hover)
   useEffect(() => {
@@ -225,8 +245,6 @@ export function Canvas2D() {
   }, [walls, rooms, previewState, selectedIds, gridSettings, hoveredId]);
 
   // ── Render ────────────────────────────────────────────────────
-  // Use a ref so requestRenderFrame always calls the LATEST doRender
-  // (avoids stale closure bug with walls/rooms/previewState)
   const doRenderRef = useRef<() => void>(() => {});
 
   const requestRenderFrame = useCallback(() => {
@@ -241,7 +259,6 @@ export function Canvas2D() {
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    // Sync grid visibility
     engine['config'].showGrid = gridSettings.visible;
 
     ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -263,13 +280,11 @@ export function Canvas2D() {
       drawPolygonPreview(ctx, previewState.vertices, previewState.previewPoint);
     }
 
-    // Snap indicator
     if (snapPoint) {
       drawSnapIndicator(ctx, snapPoint);
     }
   };
 
-  // Keep ref updated so requestRenderFrame always calls the latest version
   doRenderRef.current = doRender;
 
   // Ghost wall preview (blue dashed polygon)
@@ -300,7 +315,6 @@ export function Canvas2D() {
     ctx.stroke();
     ctx.setLineDash([]);
 
-    // Length label
     const dist = Math.hypot(end[0] - start[0], end[1] - start[1]);
     const midX = (p1.x + p2.x) / 2;
     const midY = (p1.y + p2.y) / 2;
@@ -316,7 +330,6 @@ export function Canvas2D() {
     ctx.restore();
   };
 
-  // Polygon (room) preview
   const drawPolygonPreview = (ctx: CanvasRenderingContext2D, vertices: Vec2[], previewPoint: Vec2 | null) => {
     if (vertices.length === 0) return;
     const pts = vertices.map(v => worldToScreenPx(v[0], v[1]));
@@ -336,7 +349,6 @@ export function Canvas2D() {
     ctx.fill();
     ctx.stroke();
 
-    // Vertex dots
     pts.forEach((p, i) => {
       ctx.beginPath();
       ctx.arc(p.x, p.y, 5 * dpr, 0, 2 * Math.PI);
@@ -347,7 +359,6 @@ export function Canvas2D() {
       ctx.stroke();
     });
 
-    // Close hint near first vertex
     if (vertices.length >= 3 && previewPoint) {
       const first = pts[0];
       const cur = worldToScreenPx(previewPoint[0], previewPoint[1]);
@@ -362,7 +373,6 @@ export function Canvas2D() {
     ctx.restore();
   };
 
-  // Snap indicator
   const drawSnapIndicator = (ctx: CanvasRenderingContext2D, point: Vec2) => {
     const p = worldToScreenPx(point[0], point[1]);
     const dpr = window.devicePixelRatio || 1;
@@ -389,14 +399,11 @@ export function Canvas2D() {
 
   // ── Pointer events (with pinch-to-zoom support) ────────────────
   const handlePointerDown = (e: React.PointerEvent) => {
-    // Right-click (button=2) must NOT preventDefault to allow contextmenu event
     if (e.button !== 2) e.preventDefault();
     (e.target as HTMLElement).setPointerCapture(e.pointerId);
 
-    // Register pointer
     activePointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
 
-    // Two-finger pinch started
     if (activePointersRef.current.size === 2) {
       const pts = Array.from(activePointersRef.current.values());
       const dx = pts[1].x - pts[0].x;
@@ -404,6 +411,7 @@ export function Canvas2D() {
       pinchStartDistRef.current = Math.hypot(dx, dy);
       pinchStartScaleRef.current = scaleRef.current;
       pinchStartPanRef.current = [...panRef.current] as Vec2;
+      pinchStartRotationRef.current = rotationRef.current;
       pinchStartMidRef.current = {
         x: (pts[0].x + pts[1].x) / 2,
         y: (pts[0].y + pts[1].y) / 2,
@@ -412,7 +420,6 @@ export function Canvas2D() {
       return;
     }
 
-    // Space-pan or middle-button pan
     if (isSpacePressedRef.current || e.button === 1 || tool === 'pan') {
       isPanningRef.current = true;
       panStartRef.current = { x: e.clientX, y: e.clientY };
@@ -432,10 +439,8 @@ export function Canvas2D() {
   };
 
   const handlePointerMove = (e: React.PointerEvent) => {
-    // Update pointer position
     activePointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
 
-    // Pinch-to-zoom (two fingers)
     if (activePointersRef.current.size === 2) {
       const pts = Array.from(activePointersRef.current.values());
       const dx = pts[1].x - pts[0].x;
@@ -459,7 +464,6 @@ export function Canvas2D() {
       ));
       const ratio = newScale / pinchStartScaleRef.current;
 
-      // Zoom toward pinch midpoint
       const pivotX = startMidX - cx;
       const pivotY = startMidY - cy;
       const panDeltaX = midX - startMidX;
@@ -496,7 +500,6 @@ export function Canvas2D() {
     const wasMultiTouch = activePointersRef.current.size >= 2;
     activePointersRef.current.delete(e.pointerId);
 
-    // If we were pinching, reset pinch state
     if (wasMultiTouch) {
       pinchStartDistRef.current = 0;
       return;
@@ -527,7 +530,6 @@ export function Canvas2D() {
     requestRenderFrame();
   };
 
-  // ── Right-click context menu ────────────────────────────────
   const handleContextMenu = useCallback((e: MouseEvent | React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
@@ -538,7 +540,6 @@ export function Canvas2D() {
     setContextMenu({ x: e.clientX - rect.left, y: e.clientY - rect.top, worldPos });
   }, [screenToWorld]);
 
-  // Register native contextmenu listener (React's onContextMenu can be blocked by pointerdown preventDefault)
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -547,12 +548,10 @@ export function Canvas2D() {
     return () => canvas.removeEventListener('contextmenu', listener);
   }, [handleContextMenu]);
 
-  // Dismiss context menu on click outside or Escape key
   useEffect(() => {
     if (!contextMenu) return;
     const onClickOutside = (e: MouseEvent) => {
       const target = e.target as HTMLElement;
-      // Only dismiss if not clicking inside the context menu itself
       if (!target.closest('[role="menu"]')) setContextMenu(null);
     };
     const onKeyDown = (e: KeyboardEvent) => {
@@ -566,7 +565,6 @@ export function Canvas2D() {
     };
   }, [contextMenu]);
 
-  // ── Rename room confirm ─────────────────────────────────────
   const commitRename = () => {
     if (!renameRoom) return;
     store.getState().updateRoom(renameRoom.id, { name: renameRoom.name });
@@ -574,7 +572,6 @@ export function Canvas2D() {
     requestRenderFrame();
   };
 
-  // Auto-focus rename input
   useEffect(() => {
     if (renameRoom && renameInputRef.current) {
       renameInputRef.current.focus();
@@ -582,7 +579,6 @@ export function Canvas2D() {
     }
   }, [renameRoom]);
 
-  // Context menu actions
   const contextMenuActions = () => {
     const state = store.getState();
     const scene = state.scenes.find(s => s.id === state.currentSceneId);
@@ -595,7 +591,6 @@ export function Canvas2D() {
       const hasRoom = ids.some(id => scene.rooms.some(r => r.id === id));
       const hasFurn = ids.some(id => scene.furniture.some(f => f.id === id));
 
-      // Wall: split at click point
       if (hasWall && ids.length === 1) {
         const wallId = ids[0];
         const wall = scene.walls.find(w => w.id === wallId);
@@ -650,7 +645,6 @@ export function Canvas2D() {
     return actions;
   };
 
-  // ── Wheel zoom (zoom toward cursor) ───────────────────────────
   const handleWheel = useCallback((e: WheelEvent) => {
     e.preventDefault();
     const canvas = canvasRef.current;
@@ -671,7 +665,6 @@ export function Canvas2D() {
     setScale(newScale);
   }, []);
 
-  // Attach wheel with { passive: false } so we can preventDefault
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -703,10 +696,8 @@ export function Canvas2D() {
         e.preventDefault();
         store.getState().redo();
       }
-      // Fit to view
       if (e.key === 'f' && !e.ctrlKey) {
-        setScale(60);
-        setPan([0, 0]);
+        resetView();
       }
     };
     const onKeyUp = (e: KeyboardEvent) => {
@@ -725,6 +716,45 @@ export function Canvas2D() {
     };
   }, [store]);
 
+  // ── Controles de zoom / rotação (expostos via eventos) ─────────
+  const zoomIn = useCallback(() => {
+    setScale(s => Math.min(400, s * 1.25));
+  }, []);
+
+  const zoomOut = useCallback(() => {
+    setScale(s => Math.max(8, s / 1.25));
+  }, []);
+
+  const resetView = useCallback(() => {
+    setScale(60);
+    setPan([0, 0]);
+    setRotation(0);
+  }, []);
+
+  const rotateCamera = useCallback(() => {
+    setRotation(r => (r + Math.PI / 2) % (2 * Math.PI));
+  }, []);
+
+  // Escutar eventos globais disparados pelo Editor
+  useEffect(() => {
+    const handleZoom = (e: CustomEvent<number>) => {
+      if (e.detail > 0) zoomIn();
+      else zoomOut();
+    };
+    const handleCenter = () => resetView();
+    const handleRotate = () => rotateCamera();
+
+    window.addEventListener('editor:zoom', handleZoom as EventListener);
+    window.addEventListener('editor:center', handleCenter);
+    window.addEventListener('editor:rotate', handleRotate);
+
+    return () => {
+      window.removeEventListener('editor:zoom', handleZoom as EventListener);
+      window.removeEventListener('editor:center', handleCenter);
+      window.removeEventListener('editor:rotate', handleRotate);
+    };
+  }, [zoomIn, zoomOut, resetView, rotateCamera]);
+
   // Insert room shape (preset)
   const insertShape = (shapeName: string) => {
     const handler = (toolManagerRef.current as any)?.currentHandler;
@@ -732,18 +762,6 @@ export function Canvas2D() {
       handler.insertShape(shapeName, [0, 0] as Vec2);
       requestRenderFrame();
     }
-  };
-
-  // Zoom controls
-  const zoomIn = () => {
-    setScale(s => Math.min(400, s * 1.25));
-  };
-  const zoomOut = () => {
-    setScale(s => Math.max(8, s / 1.25));
-  };
-  const resetView = () => {
-    setScale(60);
-    setPan([0, 0]);
   };
 
   // Tool hint messages
@@ -823,37 +841,12 @@ export function Canvas2D() {
           </div>
         )}
 
-        {/* Zoom controls */}
-        <div className="absolute bottom-4 right-4 flex flex-col gap-1.5 z-10">
-          <button
-            onClick={zoomIn}
-            className="w-9 h-9 bg-white/90 hover:bg-white border border-slate-200 rounded-lg shadow-sm text-slate-700 flex items-center justify-center font-bold text-lg transition-colors"
-            title="Ampliar (+)"
-          >
-            +
-          </button>
-          <button
-            onClick={zoomOut}
-            className="w-9 h-9 bg-white/90 hover:bg-white border border-slate-200 rounded-lg shadow-sm text-slate-700 flex items-center justify-center font-bold text-lg transition-colors"
-            title="Reduzir (-)"
-          >
-            −
-          </button>
-          <button
-            onClick={resetView}
-            className="w-9 h-9 bg-white/90 hover:bg-white border border-slate-200 rounded-lg shadow-sm text-slate-600 flex items-center justify-center text-xs font-semibold transition-colors"
-            title="Ajustar tela (F)"
-          >
-            ⌖
-          </button>
-        </div>
-
-        {/* Scale info */}
+        {/* Scale info (mantido, útil) */}
         <div className="absolute bottom-4 left-4 bg-white/80 backdrop-blur-sm px-3 py-1.5 rounded-lg text-xs text-slate-600 border border-slate-200 shadow-sm z-10">
           1 : {(100 / scale * 10).toFixed(0)} &nbsp;|&nbsp; {scale.toFixed(0)} px/m
         </div>
 
-        {/* Context menu (dismissed by document click or Escape) */}
+        {/* Context menu */}
         {contextMenu && (
           <div
             role="menu"
