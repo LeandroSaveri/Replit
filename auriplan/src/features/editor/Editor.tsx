@@ -468,15 +468,14 @@ export function Editor({ onBack, openScanOnMount }: EditorProps) {
             </button>
           </div>
 
-          {/* ── BOTÃO FLUTUANTE "+" (INSERIR) ── */}
-          <button
-            onClick={() => setShowAddRoom(true)}
-            className="fixed bottom-6 right-4 z-20 w-14 h-14 rounded-full bg-gradient-to-r from-emerald-500 to-teal-600 text-white shadow-xl hover:shadow-2xl transition-all active:scale-95 flex items-center justify-center"
-            title="Adicionar cômodo"
-          >
-            <Plus className="w-7 h-7" />
-          </button>
-        </div>
+         {/* ── BOTÃO FLUTUANTE "+" (INSERIR) - APENAS MOBILE ── */}
+<button
+  onClick={() => setShowAddRoom(true)}
+  className="fixed bottom-6 right-4 z-20 w-14 h-14 rounded-full bg-gradient-to-r from-emerald-500 to-teal-600 text-white shadow-xl hover:shadow-2xl transition-all active:scale-95 flex items-center justify-center md:hidden"
+  title="Adicionar cômodo"
+>
+  <Plus className="w-7 h-7" />
+</button>
 
         {/* Properties Panel */}
         <AnimatePresence initial={false}>
