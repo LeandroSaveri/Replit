@@ -1,8 +1,8 @@
 // ============================================
 // TOOLBAR - Barra de Ferramentas Premium (TEMA CLARO)
-// Desktop/Tablet (≥md): Barra clara completa com ferramentas
+// Desktop/Tablet (≥md): Barra clara com ferramentas (SEM 2D/3D/Split)
 // Mobile (<md): Oculta (ferramentas ficam no menu lateral)
-// Design: Botões modernos com sombras suaves e transições premium
+// NOTA: 2D/3D/Split estão apenas na primeira barra superior (Editor.tsx)
 // ============================================
 
 import { 
@@ -14,20 +14,15 @@ import {
   AppWindow,
   Ruler,
   Type,
-  Layers,
-  Package,
-  Split,
   Grid3X3,
   Magnet,
   Maximize2,
   Menu,
 } from 'lucide-react';
 import { useEditorStore } from '@store/editorStore';
-import type { ViewMode, Tool } from '@auriplan-types';
+import type { Tool } from '@auriplan-types';
 
 interface ToolbarProps {
-  viewMode: ViewMode;
-  onViewModeChange: (mode: ViewMode) => void;
   onToggleSidebar: () => void;
   isSidebarOpen: boolean;
 }
@@ -99,8 +94,6 @@ function ToolButton({
 }
 
 export function Toolbar({ 
-  viewMode, 
-  onViewModeChange,
   onToggleSidebar,
   isSidebarOpen,
 }: ToolbarProps) {
@@ -110,7 +103,7 @@ export function Toolbar({
 
   return (
     <div className="hidden md:flex h-16 bg-white/95 backdrop-blur-md border-b border-gray-200 items-center px-4 gap-3 shadow-sm">
-      {/* Sidebar Toggle - Botão moderno */}
+      {/* Sidebar Toggle */}
       <button
         onClick={onToggleSidebar}
         className={`p-2.5 rounded-xl transition-all duration-200 flex-shrink-0 shadow-sm ${
@@ -125,49 +118,7 @@ export function Toolbar({
 
       <div className="w-px h-7 bg-gray-200 flex-shrink-0" />
 
-      {/* VIEW GROUP - Botões segmentados modernos */}
-      <div className="flex items-center bg-gray-100 rounded-xl p-1 shadow-inner flex-shrink-0">
-        <button
-          onClick={() => onViewModeChange('2d')}
-          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold transition-all duration-200 ${
-            viewMode === '2d'
-              ? 'bg-white text-blue-600 shadow-md shadow-gray-200/50 ring-1 ring-gray-200'
-              : 'text-gray-500 hover:text-gray-700 hover:bg-gray-200/50'
-          }`}
-          title="Vista 2D"
-        >
-          <Layers className="w-4 h-4" />
-          2D
-        </button>
-        <button
-          onClick={() => onViewModeChange('3d')}
-          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold transition-all duration-200 ${
-            viewMode === '3d'
-              ? 'bg-white text-blue-600 shadow-md shadow-gray-200/50 ring-1 ring-gray-200'
-              : 'text-gray-500 hover:text-gray-700 hover:bg-gray-200/50'
-          }`}
-          title="Vista 3D"
-        >
-          <Package className="w-4 h-4" />
-          3D
-        </button>
-        <button
-          onClick={() => onViewModeChange('split')}
-          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold transition-all duration-200 ${
-            viewMode === 'split'
-              ? 'bg-white text-blue-600 shadow-md shadow-gray-200/50 ring-1 ring-gray-200'
-              : 'text-gray-500 hover:text-gray-700 hover:bg-gray-200/50'
-          }`}
-          title="Vista Dividida"
-        >
-          <Split className="w-4 h-4" />
-          Split
-        </button>
-      </div>
-
-      <div className="w-px h-7 bg-gray-200 flex-shrink-0" />
-
-      {/* TOOL GROUPS - Botões modernos com sombras */}
+      {/* TOOL GROUPS - Ferramentas de desenho */}
       {toolGroups.map((group, groupIndex) => (
         <div key={group.label} className="flex items-center gap-2 flex-shrink-0">
           {group.tools.map(t => (
@@ -187,7 +138,7 @@ export function Toolbar({
       {/* Spacer */}
       <div className="flex-1 min-w-4" />
 
-      {/* Canvas Controls - Botões modernos */}
+      {/* Canvas Controls */}
       <div className="flex items-center gap-2 flex-shrink-0 bg-gray-100 rounded-xl p-1.5">
         <button
           onClick={toggleGrid}
