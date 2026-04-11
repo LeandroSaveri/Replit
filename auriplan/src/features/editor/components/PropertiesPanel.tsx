@@ -1,8 +1,8 @@
 // ============================================
-// PROPERTIES PANEL - Painel de Propriedades
+// PROPERTIES PANEL - Responsivo (mobile drawer)
 // ============================================
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useEditorStore, selectCurrentScene, selectSelectedItems } from '@store/editorStore';
 import { 
@@ -12,19 +12,19 @@ import {
   Ruler, 
   Palette, 
   Box, 
-  RotateCw,
   Move,
   Type,
   Layers,
-  Eye,
-  EyeOff,
-  Lock,
-  Unlock,
   Trash2,
   Copy,
-  Maximize2
+  Maximize2,
+  Settings
 } from 'lucide-react';
 import type { Wall, Room, Door, Window, Furniture } from '@auriplan-types';
+
+// ─────────────────────────────────────────────────────────────
+// Componentes auxiliares (sem alterações)
+// ─────────────────────────────────────────────────────────────
 
 interface SectionProps {
   title: string;
@@ -35,7 +35,6 @@ interface SectionProps {
 
 function Section({ title, icon: Icon, children, defaultOpen = true }: SectionProps) {
   const [isOpen, setIsOpen] = useState(defaultOpen);
-  
   return (
     <div className="border-b border-slate-800">
       <button
@@ -56,9 +55,7 @@ function Section({ title, icon: Icon, children, defaultOpen = true }: SectionPro
             exit={{ height: 0, opacity: 0 }}
             className="overflow-hidden"
           >
-            <div className="p-3 pt-0">
-              {children}
-            </div>
+            <div className="p-3 pt-0">{children}</div>
           </motion.div>
         )}
       </AnimatePresence>
@@ -91,9 +88,7 @@ function InputField({ label, value, onChange, type = 'number', min, max, step = 
           step={step}
           className="w-full h-8 px-2 bg-slate-800 border border-slate-700 rounded text-sm text-white focus:outline-none focus:border-blue-500"
         />
-        {unit && (
-          <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-slate-500">{unit}</span>
-        )}
+        {unit && <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-slate-500">{unit}</span>}
       </div>
     </div>
   );
@@ -125,8 +120,13 @@ function Vector3Input({ label, values, onChange }: { label: string; values: [num
   );
 }
 
+// ─────────────────────────────────────────────────────────────
+// Componente principal responsivo
+// ─────────────────────────────────────────────────────────────
+
 export function PropertiesPanel() {
   const [isOpen, setIsOpen] = useState(true);
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
   
   const { 
     selectedIds, 
@@ -144,37 +144,38 @@ export function PropertiesPanel() {
     duplicateFurniture,
   } = useEditorStore();
   
-  const currentScene = useEditorStore(selectCurrentScene);
   const selectedItems = useEditorStore(selectSelectedItems);
 
-  if (!isOpen) {
-    return (
-      <button
-        onClick={() => setIsOpen(true)}
-        className="fixed right-0 top-1/2 -translate-y-1/2 w-8 h-16 bg-slate-800 border-l border-y border-slate-700 rounded-l-lg flex items-center justify-center text-slate-400 hover:text-white"
-      >
-        <ChevronDown className="w-4 h-4 -rotate-90" />
-      </button>
-    );
-  }
+  useEffect(() => {
+    const handleResize = () => setIsMobile(window.innerWidth < 768);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  useEffect(() => {
+    if (isMobile && selectedIds.length === 0 && isOpen) setIsOpen(false);
+  }, [selectedIds, isMobile, isOpen]);
 
   if (selectedIds.length === 0) {
-    return (
-      <aside className="w-72 bg-slate-900 border-l border-slate-800 flex flex-col">
-        <div className="h-12 border-b border-slate-800 flex items-center justify-between px-4">
-          <span className="text-sm font-medium text-slate-300">Propriedades</span>
-          <button onClick={() => setIsOpen(false)} className="text-slate-500 hover:text-white">
-            <X className="w-4 h-4" />
-          </button>
-        </div>
-        <div className="flex-1 flex items-center justify-center p-8">
-          <div className="text-center">
-            <Box className="w-12 h-12 text-slate-600 mx-auto mb-3" />
-            <p className="text-sm text-slate-500">Selecione um objeto para editar suas propriedades</p>
+    if (!isMobile) {
+      return (
+        <aside className="w-80 bg-slate-900 border-l border-slate-800 flex flex-col">
+          <div className="h-12 border-b border-slate-800 flex items-center justify-between px-4">
+            <span className="text-sm font-medium text-slate-300">Propriedades</span>
+            <button onClick={() => setIsOpen(false)} className="text-slate-500 hover:text-white">
+              <X className="w-4 h-4" />
+            </button>
           </div>
-        </div>
-      </aside>
-    );
+          <div className="flex-1 flex items-center justify-center p-8">
+            <div className="text-center">
+              <Box className="w-12 h-12 text-slate-600 mx-auto mb-3" />
+              <p className="text-sm text-slate-500">Selecione um objeto para editar suas propriedades</p>
+            </div>
+          </div>
+        </aside>
+      );
+    }
+    return null;
   }
 
   const selectedItem = selectedItems[0];
@@ -191,304 +192,194 @@ export function PropertiesPanel() {
     else if (isWindow) deleteWindow(selectedItem.id);
     else if (isFurniture) deleteFurniture(selectedItem.id);
     deselectAll();
+    if (isMobile) setIsOpen(false);
   };
 
-  return (
-    <aside className="w-80 bg-slate-900 border-l border-slate-800 flex flex-col max-h-full overflow-hidden">
-      {/* Header */}
-      <div className="h-12 border-b border-slate-800 flex items-center justify-between px-4 flex-shrink-0">
-        <span className="text-sm font-medium text-slate-300">
-          {selectedIds.length > 1 ? `${selectedIds.length} objetos selecionados` : 'Propriedades'}
-        </span>
-        <div className="flex items-center gap-2">
-          <button onClick={handleDelete} className="p-1.5 text-red-500 hover:bg-red-500/10 rounded">
-            <Trash2 className="w-4 h-4" />
-          </button>
-          <button onClick={() => setIsOpen(false)} className="text-slate-500 hover:text-white">
-            <X className="w-4 h-4" />
-          </button>
+  // Componente interno que contém o conteúdo do painel (sem o header do drawer)
+  const PanelContent = () => (
+    <div className="flex-1 overflow-y-auto">
+      {isWall && (
+        <>
+          <Section title="Dimensões" icon={Ruler}>
+            <InputField label="Altura" value={(selectedItem as Wall).height} onChange={(v) => updateWall(selectedItem.id, { height: parseFloat(v) })} min={1} max={10} unit="m" />
+            <InputField label="Espessura" value={(selectedItem as Wall).thickness} onChange={(v) => updateWall(selectedItem.id, { thickness: parseFloat(v) })} min={0.05} max={1} step={0.01} unit="m" />
+          </Section>
+          <Section title="Aparência" icon={Palette}>
+            <InputField label="Cor" value={(selectedItem as Wall).color} onChange={(v) => updateWall(selectedItem.id, { color: v })} type="color" />
+          </Section>
+        </>
+      )}
+
+      {isRoom && (
+        <>
+          <Section title="Informações" icon={Type}>
+            <div className="mb-3">
+              <label className="block text-xs text-slate-500 mb-1">Nome</label>
+              <input type="text" value={(selectedItem as Room).name} onChange={(e) => updateRoom(selectedItem.id, { name: e.target.value })} className="w-full h-8 px-2 bg-slate-800 border border-slate-700 rounded text-sm text-white focus:outline-none focus:border-blue-500" />
+            </div>
+            <div className="mb-3">
+              <label className="block text-xs text-slate-500 mb-1">Tipo</label>
+              <select value={(selectedItem as Room).type} onChange={(e) => updateRoom(selectedItem.id, { type: e.target.value as any })} className="w-full h-8 px-2 bg-slate-800 border border-slate-700 rounded text-sm text-white focus:outline-none focus:border-blue-500">
+                <option value="living">Sala</option><option value="bedroom">Quarto</option><option value="kitchen">Cozinha</option>
+                <option value="bathroom">Banheiro</option><option value="dining">Sala de Jantar</option><option value="office">Escritório</option>
+                <option value="custom">Personalizado</option>
+              </select>
+            </div>
+            <div className="grid grid-cols-2 gap-2 mb-3">
+              <div><span className="text-xs text-slate-500">Área</span><p className="text-sm text-white">{((selectedItem as Room).area ?? 0).toFixed(2)} m²</p></div>
+              <div><span className="text-xs text-slate-500">Perímetro</span><p className="text-sm text-white">{((selectedItem as Room).perimeter ?? 0).toFixed(2)} m</p></div>
+            </div>
+          </Section>
+          <Section title="Cores" icon={Palette}>
+            <InputField label="Cor das Paredes" value={(selectedItem as Room).wallColor ?? '#e2e8f0'} onChange={(v) => updateRoom(selectedItem.id, { wallColor: v })} type="color" />
+            <InputField label="Cor do Piso" value={(selectedItem as Room).floorColor ?? '#e5e7eb'} onChange={(v) => updateRoom(selectedItem.id, { floorColor: v })} type="color" />
+            <InputField label="Cor do Teto" value={(selectedItem as Room).ceilingColor ?? '#f9fafb'} onChange={(v) => updateRoom(selectedItem.id, { ceilingColor: v })} type="color" />
+          </Section>
+        </>
+      )}
+
+      {isDoor && (
+        <>
+          <Section title="Dimensões" icon={Ruler}>
+            <InputField label="Largura" value={(selectedItem as Door).width} onChange={(v) => updateDoor(selectedItem.id, { width: parseFloat(v) })} min={0.5} max={3} unit="m" />
+            <InputField label="Altura" value={(selectedItem as Door).height} onChange={(v) => updateDoor(selectedItem.id, { height: parseFloat(v) })} min={1.5} max={3} unit="m" />
+          </Section>
+          <Section title="Configuração" icon={Maximize2}>
+            <div className="mb-3">
+              <label className="block text-xs text-slate-500 mb-1">Abertura</label>
+              <select value={(selectedItem as Door).swing} onChange={(e) => updateDoor(selectedItem.id, { swing: e.target.value as any })} className="w-full h-8 px-2 bg-slate-800 border border-slate-700 rounded text-sm text-white focus:outline-none focus:border-blue-500">
+                <option value="left">Esquerda</option><option value="right">Direita</option><option value="double">Dupla</option><option value="sliding">Correr</option>
+              </select>
+            </div>
+            <div className="mb-3">
+              <label className="block text-xs text-slate-500 mb-1">Estilo</label>
+              <select value={(selectedItem as Door).style} onChange={(e) => updateDoor(selectedItem.id, { style: e.target.value as any })} className="w-full h-8 px-2 bg-slate-800 border border-slate-700 rounded text-sm text-white focus:outline-none focus:border-blue-500">
+                <option value="panel">Painel</option><option value="flush">Lisa</option><option value="french">Francesa</option><option value="sliding">Correr</option>
+              </select>
+            </div>
+          </Section>
+          <Section title="Aparência" icon={Palette}>
+            <InputField label="Cor da Porta" value={(selectedItem as Door).panelColor ?? '#92400e'} onChange={(v) => updateDoor(selectedItem.id, { panelColor: v })} type="color" />
+            <InputField label="Cor da Moldura" value={(selectedItem as Door).frameColor ?? '#78350f'} onChange={(v) => updateDoor(selectedItem.id, { frameColor: v })} type="color" />
+          </Section>
+        </>
+      )}
+
+      {isWindow && (
+        <>
+          <Section title="Dimensões" icon={Ruler}>
+            <InputField label="Largura" value={(selectedItem as Window).width} onChange={(v) => updateWindow(selectedItem.id, { width: parseFloat(v) })} min={0.3} max={5} unit="m" />
+            <InputField label="Altura" value={(selectedItem as Window).height} onChange={(v) => updateWindow(selectedItem.id, { height: parseFloat(v) })} min={0.3} max={3} unit="m" />
+            <InputField label="Altura do Peitoril" value={(selectedItem as Window).sillHeight ?? 0.9} onChange={(v) => updateWindow(selectedItem.id, { sillHeight: parseFloat(v) })} min={0} max={2} unit="m" />
+          </Section>
+          <Section title="Configuração" icon={Maximize2}>
+            <div className="mb-3">
+              <label className="block text-xs text-slate-500 mb-1">Estilo</label>
+              <select value={(selectedItem as Window).style} onChange={(e) => updateWindow(selectedItem.id, { style: e.target.value as any })} className="w-full h-8 px-2 bg-slate-800 border border-slate-700 rounded text-sm text-white focus:outline-none focus:border-blue-500">
+                <option value="single-hung">Simples</option><option value="double-hung">Dupla</option><option value="sliding">Correr</option>
+                <option value="casement">Balança</option><option value="picture">Fixa</option>
+              </select>
+            </div>
+          </Section>
+          <Section title="Aparência" icon={Palette}>
+            <InputField label="Cor da Moldura" value={(selectedItem as Window).frameColor ?? '#475569'} onChange={(v) => updateWindow(selectedItem.id, { frameColor: v })} type="color" />
+          </Section>
+        </>
+      )}
+
+      {isFurniture && (
+        <>
+          <Section title="Transformação" icon={Move}>
+            <Vector3Input label="Posição" values={(() => { const pos = (selectedItem as Furniture).position; return Array.isArray(pos) ? pos : [pos.x, pos.y, pos.z]; })() as [number, number, number]} onChange={(v) => updateFurniture(selectedItem.id, { position: v })} />
+            <Vector3Input label="Rotação" values={(() => { const rot = (selectedItem as Furniture).rotation; const arr = Array.isArray(rot) ? rot : typeof rot === 'number' ? [0, rot, 0] : [rot.x, rot.y, rot.z]; return arr.map(r => r * (180 / Math.PI)) as [number, number, number]; })()} onChange={(v) => updateFurniture(selectedItem.id, { rotation: v.map(r => r * (Math.PI / 180)) as [number, number, number] })} />
+            <Vector3Input label="Escala" values={((selectedItem as Furniture).scale ?? [1, 1, 1]) as [number, number, number]} onChange={(v) => updateFurniture(selectedItem.id, { scale: v })} />
+          </Section>
+          <Section title="Dimensões" icon={Ruler}>
+            <div className="grid grid-cols-3 gap-2">
+              <div><span className="text-xs text-slate-500">Largura</span><p className="text-sm text-white">{((selectedItem as Furniture).dimensions?.width ?? 1).toFixed(2)} m</p></div>
+              <div><span className="text-xs text-slate-500">Altura</span><p className="text-sm text-white">{((selectedItem as Furniture).dimensions?.height ?? 1).toFixed(2)} m</p></div>
+              <div><span className="text-xs text-slate-500">Profundidade</span><p className="text-sm text-white">{((selectedItem as Furniture).dimensions?.depth ?? 1).toFixed(2)} m</p></div>
+            </div>
+          </Section>
+          <Section title="Aparência" icon={Palette}>
+            <InputField label="Cor" value={(selectedItem as Furniture).color} onChange={(v) => updateFurniture(selectedItem.id, { color: v })} type="color" />
+          </Section>
+          <Section title="Ações" icon={Layers}>
+            <div className="flex gap-2">
+              <button onClick={() => duplicateFurniture(selectedItem.id)} className="flex-1 flex items-center justify-center gap-2 py-2 bg-slate-800 hover:bg-slate-700 rounded text-sm text-white transition-colors">
+                <Copy className="w-4 h-4" /> Duplicar
+              </button>
+            </div>
+          </Section>
+        </>
+      )}
+    </div>
+  );
+
+  // ─────────────── RENDER RESPONSIVO ───────────────
+  if (!isMobile) {
+    return (
+      <motion.div
+        initial={{ width: 0, opacity: 0 }}
+        animate={{ width: 320, opacity: 1 }}
+        exit={{ width: 0, opacity: 0 }}
+        transition={{ duration: 0.18, ease: 'easeInOut' }}
+        className="border-l border-slate-800 overflow-hidden flex-shrink-0"
+      >
+        <div className="flex flex-col h-full bg-slate-900">
+          <div className="h-12 border-b border-slate-800 flex items-center justify-between px-4 flex-shrink-0">
+            <span className="text-sm font-medium text-slate-300">Propriedades</span>
+            <button onClick={() => setIsOpen(false)} className="text-slate-500 hover:text-white">
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+          <PanelContent />
         </div>
-      </div>
+      </motion.div>
+    );
+  }
 
-      {/* Content */}
-      <div className="flex-1 overflow-auto">
-        {isWall && (
-          <>
-            <Section title="Dimensões" icon={Ruler}>
-              <InputField
-                label="Altura"
-                value={(selectedItem as Wall).height}
-                onChange={(v) => updateWall(selectedItem.id, { height: parseFloat(v) })}
-                min={1}
-                max={10}
-                unit="m"
-              />
-              <InputField
-                label="Espessura"
-                value={(selectedItem as Wall).thickness}
-                onChange={(v) => updateWall(selectedItem.id, { thickness: parseFloat(v) })}
-                min={0.05}
-                max={1}
-                step={0.01}
-                unit="m"
-              />
-            </Section>
-            <Section title="Aparência" icon={Palette}>
-              <InputField
-                label="Cor"
-                value={(selectedItem as Wall).color}
-                onChange={(v) => updateWall(selectedItem.id, { color: v })}
-                type="color"
-              />
-            </Section>
-          </>
-        )}
+  // Mobile: drawer inferior + botão flutuante
+  return (
+    <>
+      {!isOpen && selectedIds.length > 0 && (
+        <button
+          onClick={() => setIsOpen(true)}
+          className="fixed bottom-36 right-4 z-30 w-12 h-12 rounded-full bg-slate-800 border border-slate-700 text-white shadow-xl flex items-center justify-center hover:bg-slate-700 transition-all active:scale-95 md:hidden"
+          title="Editar propriedades"
+        >
+          <Settings className="w-5 h-5" />
+        </button>
+      )}
 
-        {isRoom && (
+      <AnimatePresence>
+        {isOpen && (
           <>
-            <Section title="Informações" icon={Type}>
-              <div className="mb-3">
-                <label className="block text-xs text-slate-500 mb-1">Nome</label>
-                <input
-                  type="text"
-                  value={(selectedItem as Room).name}
-                  onChange={(e) => updateRoom(selectedItem.id, { name: e.target.value })}
-                  className="w-full h-8 px-2 bg-slate-800 border border-slate-700 rounded text-sm text-white focus:outline-none focus:border-blue-500"
-                />
-              </div>
-              <div className="mb-3">
-                <label className="block text-xs text-slate-500 mb-1">Tipo</label>
-                <select
-                  value={(selectedItem as Room).type}
-                  onChange={(e) => updateRoom(selectedItem.id, { type: e.target.value as any })}
-                  className="w-full h-8 px-2 bg-slate-800 border border-slate-700 rounded text-sm text-white focus:outline-none focus:border-blue-500"
-                >
-                  <option value="living">Sala</option>
-                  <option value="bedroom">Quarto</option>
-                  <option value="kitchen">Cozinha</option>
-                  <option value="bathroom">Banheiro</option>
-                  <option value="dining">Sala de Jantar</option>
-                  <option value="office">Escritório</option>
-                  <option value="custom">Personalizado</option>
-                </select>
-              </div>
-              <div className="grid grid-cols-2 gap-2 mb-3">
-                <div>
-                  <span className="text-xs text-slate-500">Área</span>
-                  <p className="text-sm text-white">{((selectedItem as Room).area ?? 0).toFixed(2)} m²</p>
-                </div>
-                <div>
-                  <span className="text-xs text-slate-500">Perímetro</span>
-                  <p className="text-sm text-white">{((selectedItem as Room).perimeter ?? 0).toFixed(2)} m</p>
-                </div>
-              </div>
-            </Section>
-            <Section title="Cores" icon={Palette}>
-              <InputField
-                label="Cor das Paredes"
-                value={(selectedItem as Room).wallColor ?? '#e2e8f0'}
-                onChange={(v) => updateRoom(selectedItem.id, { wallColor: v })}
-                type="color"
-              />
-              <InputField
-                label="Cor do Piso"
-                value={(selectedItem as Room).floorColor ?? '#e5e7eb'}
-                onChange={(v) => updateRoom(selectedItem.id, { floorColor: v })}
-                type="color"
-              />
-              <InputField
-                label="Cor do Teto"
-                value={(selectedItem as Room).ceilingColor ?? '#f9fafb'}
-                onChange={(v) => updateRoom(selectedItem.id, { ceilingColor: v })}
-                type="color"
-              />
-            </Section>
-          </>
-        )}
-
-        {isDoor && (
-          <>
-            <Section title="Dimensões" icon={Ruler}>
-              <InputField
-                label="Largura"
-                value={(selectedItem as Door).width}
-                onChange={(v) => updateDoor(selectedItem.id, { width: parseFloat(v) })}
-                min={0.5}
-                max={3}
-                unit="m"
-              />
-              <InputField
-                label="Altura"
-                value={(selectedItem as Door).height}
-                onChange={(v) => updateDoor(selectedItem.id, { height: parseFloat(v) })}
-                min={1.5}
-                max={3}
-                unit="m"
-              />
-            </Section>
-            <Section title="Configuração" icon={Maximize2}>
-              <div className="mb-3">
-                <label className="block text-xs text-slate-500 mb-1">Abertura</label>
-                <select
-                  value={(selectedItem as Door).swing}
-                  onChange={(e) => updateDoor(selectedItem.id, { swing: e.target.value as any })}
-                  className="w-full h-8 px-2 bg-slate-800 border border-slate-700 rounded text-sm text-white focus:outline-none focus:border-blue-500"
-                >
-                  <option value="left">Esquerda</option>
-                  <option value="right">Direita</option>
-                  <option value="double">Dupla</option>
-                  <option value="sliding">Correr</option>
-                </select>
-              </div>
-              <div className="mb-3">
-                <label className="block text-xs text-slate-500 mb-1">Estilo</label>
-                <select
-                  value={(selectedItem as Door).style}
-                  onChange={(e) => updateDoor(selectedItem.id, { style: e.target.value as any })}
-                  className="w-full h-8 px-2 bg-slate-800 border border-slate-700 rounded text-sm text-white focus:outline-none focus:border-blue-500"
-                >
-                  <option value="panel">Painel</option>
-                  <option value="flush">Lisa</option>
-                  <option value="french">Francesa</option>
-                  <option value="sliding">Correr</option>
-                </select>
-              </div>
-            </Section>
-            <Section title="Aparência" icon={Palette}>
-              <InputField
-                label="Cor da Porta"
-                value={(selectedItem as Door).panelColor ?? '#92400e'}
-                onChange={(v) => updateDoor(selectedItem.id, { panelColor: v })}
-                type="color"
-              />
-              <InputField
-                label="Cor da Moldura"
-                value={(selectedItem as Door).frameColor ?? '#78350f'}
-                onChange={(v) => updateDoor(selectedItem.id, { frameColor: v })}
-                type="color"
-              />
-            </Section>
-          </>
-        )}
-
-        {isWindow && (
-          <>
-            <Section title="Dimensões" icon={Ruler}>
-              <InputField
-                label="Largura"
-                value={(selectedItem as Window).width}
-                onChange={(v) => updateWindow(selectedItem.id, { width: parseFloat(v) })}
-                min={0.3}
-                max={5}
-                unit="m"
-              />
-              <InputField
-                label="Altura"
-                value={(selectedItem as Window).height}
-                onChange={(v) => updateWindow(selectedItem.id, { height: parseFloat(v) })}
-                min={0.3}
-                max={3}
-                unit="m"
-              />
-              <InputField
-                label="Altura do Peitoril"
-                value={(selectedItem as Window).sillHeight ?? 0.9}
-                onChange={(v) => updateWindow(selectedItem.id, { sillHeight: parseFloat(v) })}
-                min={0}
-                max={2}
-                unit="m"
-              />
-            </Section>
-            <Section title="Configuração" icon={Maximize2}>
-              <div className="mb-3">
-                <label className="block text-xs text-slate-500 mb-1">Estilo</label>
-                <select
-                  value={(selectedItem as Window).style}
-                  onChange={(e) => updateWindow(selectedItem.id, { style: e.target.value as any })}
-                  className="w-full h-8 px-2 bg-slate-800 border border-slate-700 rounded text-sm text-white focus:outline-none focus:border-blue-500"
-                >
-                  <option value="single-hung">Simples</option>
-                  <option value="double-hung">Dupla</option>
-                  <option value="sliding">Correr</option>
-                  <option value="casement">Balança</option>
-                  <option value="picture">Fixa</option>
-                </select>
-              </div>
-            </Section>
-            <Section title="Aparência" icon={Palette}>
-              <InputField
-                label="Cor da Moldura"
-                value={(selectedItem as Window).frameColor ?? '#475569'}
-                onChange={(v) => updateWindow(selectedItem.id, { frameColor: v })}
-                type="color"
-              />
-            </Section>
-          </>
-        )}
-
-        {isFurniture && (
-          <>
-            <Section title="Transformação" icon={Move}>
-              <Vector3Input
-                label="Posição"
-                values={(Array.isArray((selectedItem as Furniture).position) ? (selectedItem as Furniture).position : [(selectedItem as any).position.x, (selectedItem as any).position.y, (selectedItem as any).position.z]) as [number, number, number]}
-                onChange={(v) => updateFurniture(selectedItem.id, { position: v })}
-              />
-              <Vector3Input
-                label="Rotação"
-                values={(() => {
-                  const rot = (selectedItem as Furniture).rotation;
-                  const arr = Array.isArray(rot) ? rot : typeof rot === 'number' ? [0, rot, 0] : [(rot as any).x, (rot as any).y, (rot as any).z];
-                  return (arr as number[]).map(r => r * (180 / Math.PI)) as [number, number, number];
-                })()}
-                onChange={(v) => updateFurniture(selectedItem.id, { 
-                  rotation: (v.map(r => r * (Math.PI / 180)) as [number, number, number]) 
-                })}
-              />
-              <Vector3Input
-                label="Escala"
-                values={((selectedItem as Furniture).scale ?? [1, 1, 1]) as [number, number, number]}
-                onChange={(v) => updateFurniture(selectedItem.id, { scale: v })}
-              />
-            </Section>
-            <Section title="Dimensões" icon={Ruler}>
-              <div className="grid grid-cols-3 gap-2">
-                <div>
-                  <span className="text-xs text-slate-500">Largura</span>
-                  <p className="text-sm text-white">{((selectedItem as Furniture).dimensions?.width ?? 1).toFixed(2)} m</p>
-                </div>
-                <div>
-                  <span className="text-xs text-slate-500">Altura</span>
-                  <p className="text-sm text-white">{((selectedItem as Furniture).dimensions?.height ?? 1).toFixed(2)} m</p>
-                </div>
-                <div>
-                  <span className="text-xs text-slate-500">Profundidade</span>
-                  <p className="text-sm text-white">{((selectedItem as Furniture).dimensions?.depth ?? 1).toFixed(2)} m</p>
-                </div>
-              </div>
-            </Section>
-            <Section title="Aparência" icon={Palette}>
-              <InputField
-                label="Cor"
-                value={(selectedItem as Furniture).color}
-                onChange={(v) => updateFurniture(selectedItem.id, { color: v })}
-                type="color"
-              />
-            </Section>
-            <Section title="Ações" icon={Layers}>
-              <div className="flex gap-2">
-                <button
-                  onClick={() => duplicateFurniture(selectedItem.id)}
-                  className="flex-1 flex items-center justify-center gap-2 py-2 bg-slate-800 hover:bg-slate-700 rounded text-sm text-white transition-colors"
-                >
-                  <Copy className="w-4 h-4" />
-                  Duplicar
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 bg-black/60 z-40 md:hidden"
+              onClick={() => setIsOpen(false)}
+            />
+            <motion.div
+              initial={{ y: '100%' }}
+              animate={{ y: 0 }}
+              exit={{ y: '100%' }}
+              transition={{ type: 'spring', damping: 25, stiffness: 300 }}
+              className="fixed bottom-0 left-0 right-0 z-50 max-h-[70vh] bg-slate-900 border-t border-slate-800 rounded-t-2xl overflow-hidden flex flex-col md:hidden"
+            >
+              <div className="flex items-center justify-between px-4 py-3 border-b border-slate-800">
+                <span className="text-sm font-medium text-slate-300">Propriedades</span>
+                <button onClick={() => setIsOpen(false)} className="p-1 text-slate-500 hover:text-white">
+                  <X className="w-5 h-5" />
                 </button>
               </div>
-            </Section>
+              <PanelContent />
+            </motion.div>
           </>
         )}
-      </div>
-    </aside>
+      </AnimatePresence>
+    </>
   );
 }
