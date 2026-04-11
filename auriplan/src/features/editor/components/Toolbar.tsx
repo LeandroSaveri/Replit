@@ -1,7 +1,8 @@
 // ============================================
-// TOOLBAR - Barra de Ferramentas Premium
-// Desktop/Tablet (≥md): Barra escura completa com ferramentas
+// TOOLBAR - Barra de Ferramentas Premium (TEMA CLARO)
+// Desktop/Tablet (≥md): Barra clara completa com ferramentas
 // Mobile (<md): Oculta (ferramentas ficam no menu lateral)
+// Design: Botões modernos com sombras suaves e transições premium
 // ============================================
 
 import { 
@@ -41,11 +42,11 @@ const toolGroups: ToolGroup[] = [
     label: 'Navegar',
     tools: [
       { id: 'select', icon: MousePointer2, label: 'Selecionar', shortcut: 'V' },
-      { id: 'pan', icon: Hand, label: 'Mover Vista', shortcut: 'H' },
+      { id: 'pan', icon: Hand, label: 'Mover', shortcut: 'H' },
     ],
   },
   {
-    label: 'Estrutura',
+    label: 'Desenhar',
     tools: [
       { id: 'wall', icon: BrickWall, label: 'Parede', shortcut: 'W' },
       { id: 'room', icon: Square, label: 'Cômodo', shortcut: 'R' },
@@ -59,7 +60,7 @@ const toolGroups: ToolGroup[] = [
     ],
   },
   {
-    label: 'Anotação',
+    label: 'Anotar',
     tools: [
       { id: 'text', icon: Type, label: 'Texto', shortcut: 'T' },
       { id: 'measure', icon: Ruler, label: 'Medir', shortcut: 'M' },
@@ -80,17 +81,18 @@ function ToolButton({
   return (
     <button
       onClick={onClick}
-      className={`relative group flex flex-col items-center justify-center w-10 h-10 rounded-xl transition-all duration-200 ${
+      className={`relative group flex flex-col items-center justify-center w-11 h-11 rounded-xl transition-all duration-200 ${
         isActive
-          ? 'bg-gradient-to-br from-blue-500 to-blue-600 text-white shadow-lg shadow-blue-500/30 scale-105'
-          : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/80 hover:scale-105'
+          ? 'bg-gradient-to-br from-blue-500 to-blue-600 text-white shadow-lg shadow-blue-500/25 scale-105 ring-2 ring-blue-500/20'
+          : 'bg-white text-gray-600 shadow-sm shadow-gray-200/50 hover:text-blue-600 hover:shadow-md hover:shadow-blue-500/10 hover:scale-105 border border-gray-200'
       }`}
       title={`${toolDef.label} (${toolDef.shortcut})`}
     >
-      <Icon className="w-4 h-4" />
-      <span className="absolute top-full left-1/2 -translate-x-1/2 mt-2 px-2 py-1 bg-slate-900 text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-all duration-200 whitespace-nowrap z-50 pointer-events-none border border-slate-700 shadow-xl">
+      <Icon className="w-[18px] h-[18px]" />
+      {/* Tooltip */}
+      <span className="absolute top-full left-1/2 -translate-x-1/2 mt-2 px-2.5 py-1.5 bg-gray-900 text-white text-[11px] font-medium rounded-lg opacity-0 group-hover:opacity-100 transition-all duration-200 whitespace-nowrap z-50 pointer-events-none shadow-xl">
         {toolDef.label}
-        <span className="ml-1 text-slate-400">({toolDef.shortcut})</span>
+        <span className="ml-1 text-gray-400">({toolDef.shortcut})</span>
       </span>
     </button>
   );
@@ -107,67 +109,67 @@ export function Toolbar({
   const { grid, toggleGrid, snap, toggleSnap, fitToView } = useEditorStore();
 
   return (
-    <div className="hidden md:flex h-14 bg-slate-900/95 backdrop-blur-sm border-b border-slate-800 items-center px-3 gap-2">
-      {/* Sidebar Toggle */}
+    <div className="hidden md:flex h-16 bg-white/95 backdrop-blur-md border-b border-gray-200 items-center px-4 gap-3 shadow-sm">
+      {/* Sidebar Toggle - Botão moderno */}
       <button
         onClick={onToggleSidebar}
-        className={`p-2 rounded-xl transition-all duration-200 flex-shrink-0 ${
+        className={`p-2.5 rounded-xl transition-all duration-200 flex-shrink-0 shadow-sm ${
           isSidebarOpen 
-            ? 'bg-blue-500/20 text-blue-400 shadow-sm shadow-blue-500/20' 
-            : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/80'
+            ? 'bg-blue-50 text-blue-600 shadow-blue-500/10 ring-2 ring-blue-500/20' 
+            : 'bg-gray-100 text-gray-600 hover:bg-gray-200 hover:text-gray-900'
         }`}
         title="Alternar painel lateral"
       >
-        <Menu className="w-4 h-4" />
+        <Menu className="w-5 h-5" />
       </button>
 
-      <div className="w-px h-6 bg-slate-700/50 flex-shrink-0" />
+      <div className="w-px h-7 bg-gray-200 flex-shrink-0" />
 
-      {/* VIEW GROUP */}
-      <div className="flex items-center bg-slate-800 rounded-xl p-0.5 shadow-inner flex-shrink-0">
+      {/* VIEW GROUP - Botões segmentados modernos */}
+      <div className="flex items-center bg-gray-100 rounded-xl p-1 shadow-inner flex-shrink-0">
         <button
           onClick={() => onViewModeChange('2d')}
-          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold transition-all duration-200 ${
             viewMode === '2d'
-              ? 'bg-gradient-to-br from-blue-500 to-blue-600 text-white shadow-md'
-              : 'text-slate-400 hover:text-slate-200 hover:bg-slate-700/50'
+              ? 'bg-white text-blue-600 shadow-md shadow-gray-200/50 ring-1 ring-gray-200'
+              : 'text-gray-500 hover:text-gray-700 hover:bg-gray-200/50'
           }`}
           title="Vista 2D"
         >
-          <Layers className="w-3.5 h-3.5" />
+          <Layers className="w-4 h-4" />
           2D
         </button>
         <button
           onClick={() => onViewModeChange('3d')}
-          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold transition-all duration-200 ${
             viewMode === '3d'
-              ? 'bg-gradient-to-br from-blue-500 to-blue-600 text-white shadow-md'
-              : 'text-slate-400 hover:text-slate-200 hover:bg-slate-700/50'
+              ? 'bg-white text-blue-600 shadow-md shadow-gray-200/50 ring-1 ring-gray-200'
+              : 'text-gray-500 hover:text-gray-700 hover:bg-gray-200/50'
           }`}
           title="Vista 3D"
         >
-          <Package className="w-3.5 h-3.5" />
+          <Package className="w-4 h-4" />
           3D
         </button>
         <button
           onClick={() => onViewModeChange('split')}
-          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold transition-all duration-200 ${
             viewMode === 'split'
-              ? 'bg-gradient-to-br from-blue-500 to-blue-600 text-white shadow-md'
-              : 'text-slate-400 hover:text-slate-200 hover:bg-slate-700/50'
+              ? 'bg-white text-blue-600 shadow-md shadow-gray-200/50 ring-1 ring-gray-200'
+              : 'text-gray-500 hover:text-gray-700 hover:bg-gray-200/50'
           }`}
           title="Vista Dividida"
         >
-          <Split className="w-3.5 h-3.5" />
+          <Split className="w-4 h-4" />
           Split
         </button>
       </div>
 
-      <div className="w-px h-6 bg-slate-700/50 flex-shrink-0" />
+      <div className="w-px h-7 bg-gray-200 flex-shrink-0" />
 
-      {/* TOOL GROUPS - Desktop/Tablet apenas */}
+      {/* TOOL GROUPS - Botões modernos com sombras */}
       {toolGroups.map((group, groupIndex) => (
-        <div key={group.label} className="flex items-center gap-0.5 flex-shrink-0">
+        <div key={group.label} className="flex items-center gap-2 flex-shrink-0">
           {group.tools.map(t => (
             <ToolButton
               key={t.id}
@@ -177,7 +179,7 @@ export function Toolbar({
             />
           ))}
           {groupIndex < toolGroups.length - 1 && (
-            <div className="w-px h-6 bg-slate-700/50 mx-1 flex-shrink-0" />
+            <div className="w-px h-7 bg-gray-200 mx-1 flex-shrink-0" />
           )}
         </div>
       ))}
@@ -185,32 +187,37 @@ export function Toolbar({
       {/* Spacer */}
       <div className="flex-1 min-w-4" />
 
-      {/* Canvas Controls */}
-      <div className="flex items-center gap-1 flex-shrink-0">
+      {/* Canvas Controls - Botões modernos */}
+      <div className="flex items-center gap-2 flex-shrink-0 bg-gray-100 rounded-xl p-1.5">
         <button
           onClick={toggleGrid}
-          className={`p-2 rounded-lg text-xs transition-colors flex items-center gap-1.5 ${
-            grid.visible ? 'text-blue-400 bg-blue-500/10' : 'text-slate-500 hover:text-slate-300 hover:bg-slate-800'
+          className={`p-2.5 rounded-lg text-xs transition-all duration-200 flex items-center gap-1.5 ${
+            grid.visible 
+              ? 'bg-white text-blue-600 shadow-sm shadow-gray-200/50 ring-1 ring-gray-200' 
+              : 'text-gray-500 hover:text-gray-700 hover:bg-gray-200/50'
           }`}
           title={`Grade ${grid.visible ? 'ligada' : 'desligada'}`}
         >
-          <Grid3X3 className="w-4 h-4" />
+          <Grid3X3 className="w-[18px] h-[18px]" />
         </button>
         <button
           onClick={toggleSnap}
-          className={`p-2 rounded-lg text-xs transition-colors flex items-center gap-1.5 ${
-            snap.enabled ? 'text-purple-400 bg-purple-500/10' : 'text-slate-500 hover:text-slate-300 hover:bg-slate-800'
+          className={`p-2.5 rounded-lg text-xs transition-all duration-200 flex items-center gap-1.5 ${
+            snap.enabled 
+              ? 'bg-white text-purple-600 shadow-sm shadow-gray-200/50 ring-1 ring-gray-200' 
+              : 'text-gray-500 hover:text-gray-700 hover:bg-gray-200/50'
           }`}
           title={`Snap ${snap.enabled ? 'ligado' : 'desligado'}`}
         >
-          <Magnet className="w-4 h-4" />
+          <Magnet className="w-[18px] h-[18px]" />
         </button>
+        <div className="w-px h-5 bg-gray-300 mx-0.5" />
         <button
           onClick={fitToView}
-          className="p-2 rounded-lg text-slate-500 hover:text-slate-300 hover:bg-slate-800 transition-colors"
+          className="p-2.5 rounded-lg text-gray-500 hover:text-gray-700 hover:bg-gray-200/50 transition-all duration-200"
           title="Ajustar à tela"
         >
-          <Maximize2 className="w-4 h-4" />
+          <Maximize2 className="w-[18px] h-[18px]" />
         </button>
       </div>
     </div>
