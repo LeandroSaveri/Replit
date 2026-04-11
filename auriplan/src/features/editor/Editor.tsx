@@ -1,8 +1,10 @@
 // ============================================================
 // CAMINHO ORIGINAL: src/features/editor/Editor.tsx
-// VERSÃO: Com sidebar responsiva, top bar com 2D/3D/Split,
-//         barra inferior apenas com botão "+" no mobile,
-//         FABs de zoom e eventos editor:zoom/center/rotate
+// CORREÇÕES:
+// - Botão "+" flutuante (FAB) no canto inferior direito
+// - Undo/Redo sempre visíveis (mobile e desktop)
+// - Layout responsivo para landscape
+// - Estilo premium (sombras, gradientes, transições)
 // ============================================================
 
 import { useState, useCallback, useEffect, useRef } from 'react';
@@ -104,16 +106,13 @@ export function Editor({ onBack, openScanOnMount }: EditorProps) {
   const overflowRef = useRef<HTMLDivElement>(null);
   const toast = useToastSimple();
 
-  // Auto-open Scan modal if requested from home page
   useEffect(() => {
     if (openScanOnMount) {
       const timer = setTimeout(() => setShowScan(true), 400);
       return () => clearTimeout(timer);
     }
-    return;
   }, [openScanOnMount]);
 
-  // Close overflow menu on outside click
   useEffect(() => {
     if (!showOverflow) return;
     const handler = (e: MouseEvent) => {
@@ -133,7 +132,6 @@ export function Editor({ onBack, openScanOnMount }: EditorProps) {
 
   const stats = useEditorStore(selectProjectStats);
 
-  // Initialize project if none exists
   useEffect(() => {
     if (!project) {
       try {
@@ -144,7 +142,6 @@ export function Editor({ onBack, openScanOnMount }: EditorProps) {
     }
   }, [project, createProject]);
 
-  // Ensure active scene
   useEffect(() => {
     if (scenes.length === 0) { addScene('Planta 1'); return; }
     if (!currentSceneId && scenes.length > 0) setCurrentScene(scenes[0].id);
@@ -154,7 +151,6 @@ export function Editor({ onBack, openScanOnMount }: EditorProps) {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (['INPUT', 'TEXTAREA'].includes((e.target as HTMLElement)?.tagName)) return;
-
       if (e.ctrlKey || e.metaKey) {
         switch (e.key.toLowerCase()) {
           case 'z': e.preventDefault(); e.shiftKey ? (canRedo() && redo()) : (canUndo() && undo()); break;
@@ -181,7 +177,7 @@ export function Editor({ onBack, openScanOnMount }: EditorProps) {
 
   const currentScene = scenes.find(s => s.id === currentSceneId);
 
-  // ── Handlers para zoom / centralizar / girar (eventos customizados) ──
+  // Handlers para zoom / centralizar / girar (eventos customizados)
   const handleZoom = (delta: number) => {
     window.dispatchEvent(new CustomEvent('editor:zoom', { detail: delta }));
     toast.info('Zoom', `Zoom ${delta > 0 ? '+' : '-'} disparado.`);
@@ -195,7 +191,6 @@ export function Editor({ onBack, openScanOnMount }: EditorProps) {
     toast.info('Girar', 'Evento de rotação enviado.');
   };
 
-  // ── RENDER ─────────────────────────────────────────────────
   return (
     <div className="h-screen flex flex-col bg-white dark:bg-slate-950 overflow-hidden">
 
@@ -213,7 +208,6 @@ export function Editor({ onBack, openScanOnMount }: EditorProps) {
               <ChevronLeft className="w-[18px] h-[18px]" />
             </button>
           )}
-          {/* Botão Menu (hamburger) apenas no mobile para abrir sidebar drawer */}
           <button
             onClick={() => setIsSidebarOpen(v => !v)}
             className="p-2 text-gray-500 dark:text-slate-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-slate-800 rounded-lg transition-colors flex-shrink-0 md:hidden"
@@ -222,7 +216,7 @@ export function Editor({ onBack, openScanOnMount }: EditorProps) {
             <Menu className="w-[18px] h-[18px]" />
           </button>
           <div className="flex items-center gap-2.5 min-w-0">
-            <div className="w-7 h-7 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-lg flex items-center justify-center flex-shrink-0">
+            <div className="w-7 h-7 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-lg flex items-center justify-center flex-shrink-0 shadow-sm">
               <Box className="w-3.5 h-3.5 text-white" />
             </div>
             <div className="min-w-0 hidden sm:block">
@@ -238,36 +232,30 @@ export function Editor({ onBack, openScanOnMount }: EditorProps) {
 
         <div className="flex-1" />
 
-        {/* Center/Right: Actions */}
+        {/* Right side actions */}
         <div className="flex items-center gap-1.5">
 
-          {/* Undo / Redo (desktop) */}
-          <div className="hidden sm:flex items-center bg-gray-100 dark:bg-slate-800 rounded-lg p-0.5">
-            <button onClick={undo} disabled={!canUndo()}
+          {/* Undo / Redo (sempre visíveis, sem texto em mobile) */}
+          <div className="flex items-center bg-gray-100 dark:bg-slate-800 rounded-lg p-0.5">
+            <button
+              onClick={undo}
+              disabled={!canUndo()}
               className="p-1.5 text-gray-600 dark:text-slate-400 hover:text-gray-900 dark:hover:text-white disabled:opacity-30 disabled:cursor-not-allowed rounded-md transition-colors"
-              title="Desfazer (Ctrl+Z)">
+              title="Desfazer (Ctrl+Z)"
+            >
               <Undo className="w-4 h-4" />
             </button>
-            <button onClick={redo} disabled={!canRedo()}
+            <button
+              onClick={redo}
+              disabled={!canRedo()}
               className="p-1.5 text-gray-600 dark:text-slate-400 hover:text-gray-900 dark:hover:text-white disabled:opacity-30 disabled:cursor-not-allowed rounded-md transition-colors"
-              title="Refazer (Ctrl+Y)">
+              title="Refazer (Ctrl+Y)"
+            >
               <Redo className="w-4 h-4" />
             </button>
           </div>
 
-          {/* Save (desktop) */}
-          <button
-            onClick={() => { saveProject(); toast.success('Projeto salvo', 'Todas as alterações foram salvas.'); }}
-            className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-600 dark:text-slate-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-slate-800 rounded-lg transition-colors"
-            title="Salvar (Ctrl+S)"
-          >
-            <Save className="w-3.5 h-3.5" />
-            <span className="hidden md:inline text-xs">Salvar</span>
-          </button>
-
-          <div className="hidden sm:block w-px h-5 bg-gray-300 dark:bg-slate-700 mx-0.5" />
-
-          {/* View mode switcher (2D/3D/Split) */}
+          {/* View mode switcher (2D/3D/Split) - visível em telas médias+ */}
           <div className="hidden sm:flex items-center bg-gray-100 dark:bg-slate-800 rounded-lg p-0.5">
             <button
               onClick={() => setViewMode('2d')}
@@ -301,39 +289,40 @@ export function Editor({ onBack, openScanOnMount }: EditorProps) {
             </button>
           </div>
 
+          {/* Separador (apenas desktop) */}
           <div className="hidden sm:block w-px h-5 bg-gray-300 dark:bg-slate-700 mx-0.5" />
 
-          {/* Scan button (sempre visível) */}
+          {/* Scan button */}
           <button
             onClick={() => setShowScan(true)}
-            className="flex items-center gap-1.5 px-2.5 py-1.5 text-sm bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-white rounded-lg transition-all shadow-sm"
+            className="flex items-center gap-1.5 px-2.5 py-1.5 text-sm bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-white rounded-lg transition-all shadow-md hover:shadow-lg"
             title="Escanear Cômodo"
           >
             <Camera className="w-4 h-4" />
             <span className="hidden sm:inline text-xs font-medium">Scan</span>
           </button>
 
-          {/* AI button (sempre visível) */}
+          {/* AI button */}
           <button
             onClick={() => setShowAIAssistant(true)}
-            className="flex items-center gap-1.5 px-2.5 py-1.5 text-sm bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-400 hover:to-pink-400 text-white rounded-lg transition-all shadow-sm"
+            className="flex items-center gap-1.5 px-2.5 py-1.5 text-sm bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-400 hover:to-pink-400 text-white rounded-lg transition-all shadow-md hover:shadow-lg"
             title="Assistente IA"
           >
             <Sparkles className="w-4 h-4" />
             <span className="hidden sm:inline text-xs font-medium">IA</span>
           </button>
 
-          {/* Catalog (apenas desktop) */}
+          {/* Catalog (desktop) */}
           <button
             onClick={() => setIsCatalogOpen(true)}
-            className="hidden md:flex items-center gap-1.5 px-2.5 py-1.5 text-sm bg-blue-500 hover:bg-blue-400 text-white rounded-lg transition-colors shadow-sm"
+            className="hidden md:flex items-center gap-1.5 px-2.5 py-1.5 text-sm bg-blue-500 hover:bg-blue-400 text-white rounded-lg transition-all shadow-md hover:shadow-lg"
             title="Catálogo de Móveis"
           >
             <Box className="w-4 h-4" />
             <span className="text-xs font-medium">Catálogo</span>
           </button>
 
-          {/* Overflow menu (sempre visível) */}
+          {/* Overflow menu */}
           <div ref={overflowRef} className="relative">
             <button
               onClick={() => setShowOverflow(v => !v)}
@@ -363,7 +352,7 @@ export function Editor({ onBack, openScanOnMount }: EditorProps) {
         </div>
       </header>
 
-      {/* ── TOOLBAR (escondida em mobile) ── */}
+      {/* ── TOOLBAR (apenas desktop) ── */}
       <div className="hidden md:block flex-shrink-0">
         <Toolbar
           viewMode={viewMode}
@@ -376,7 +365,6 @@ export function Editor({ onBack, openScanOnMount }: EditorProps) {
       {/* ── MAIN CONTENT ────────────────────────────────────── */}
       <div className="flex-1 flex overflow-hidden min-h-0 relative">
 
-        {/* Sidebar: desktop (ao lado com animação) / mobile (drawer sobreposto) */}
         {/* Desktop sidebar */}
         <div className="hidden md:block">
           <AnimatePresence initial={false}>
@@ -449,9 +437,9 @@ export function Editor({ onBack, openScanOnMount }: EditorProps) {
           {viewMode === '2d' && <Canvas2D />}
           {viewMode === '3d' && <Canvas3D />}
           {viewMode === 'split' && (
-            <div className="flex h-full">
-              <div className="w-1/2 border-r border-gray-200 dark:border-slate-800"><Canvas2D /></div>
-              <div className="w-1/2"><Canvas3D /></div>
+            <div className="flex h-full flex-col sm:flex-row">
+              <div className="flex-1 border-b sm:border-b-0 sm:border-r border-gray-200 dark:border-slate-800"><Canvas2D /></div>
+              <div className="flex-1"><Canvas3D /></div>
             </div>
           )}
 
@@ -480,25 +468,19 @@ export function Editor({ onBack, openScanOnMount }: EditorProps) {
             </button>
           </div>
 
-          {/* ── MOBILE BOTTOM ACTION BAR (apenas botão "+") ── */}
-          <div className="absolute bottom-0 left-0 right-0 md:hidden bg-white/95 dark:bg-slate-900/95 backdrop-blur-sm border-t border-gray-200 dark:border-slate-800 z-10">
-            <div className="flex items-center justify-center py-3">
-              <button
-                onClick={() => setShowAddRoom(true)}
-                className="flex flex-col items-center justify-center gap-1 px-6 py-2 rounded-full bg-gradient-to-r from-emerald-500 to-teal-600 shadow-lg shadow-emerald-500/30 active:scale-95 transition-transform"
-              >
-                <Plus className="w-6 h-6 text-white" />
-                <span className="text-[10px] font-medium text-white">Inserir</span>
-              </button>
-            </div>
-          </div>
+          {/* ── BOTÃO FLUTUANTE "+" (INSERIR) ── */}
+          <button
+            onClick={() => setShowAddRoom(true)}
+            className="fixed bottom-6 right-4 z-20 w-14 h-14 rounded-full bg-gradient-to-r from-emerald-500 to-teal-600 text-white shadow-xl hover:shadow-2xl transition-all active:scale-95 flex items-center justify-center"
+            title="Adicionar cômodo"
+          >
+            <Plus className="w-7 h-7" />
+          </button>
         </div>
 
-        {/* Properties Panel (sem alterações) */}
+        {/* Properties Panel */}
         <AnimatePresence initial={false}>
-          {selectedIds.length > 0 && (
-            <PropertiesPanel />
-          )}
+          {selectedIds.length > 0 && <PropertiesPanel />}
         </AnimatePresence>
       </div>
 
@@ -507,11 +489,7 @@ export function Editor({ onBack, openScanOnMount }: EditorProps) {
         <StatusBar viewMode={viewMode} tool={tool} stats={stats} selectedCount={selectedIds.length} />
       </div>
 
-      {/* ═══════════════════════════════════════════════════════
-          MODAIS (mantidos inalterados)
-          ═══════════════════════════════════════════════════════ */}
-
-      {/* Furniture Catalog */}
+      {/* MODAIS (mantidos) */}
       <AnimatePresence>
         {isCatalogOpen && (
           <motion.div
@@ -543,17 +521,12 @@ export function Editor({ onBack, openScanOnMount }: EditorProps) {
         )}
       </AnimatePresence>
 
-      {/* AI Assistant */}
       <AnimatePresence>
         {showAIAssistant && <AIAssistant onClose={() => setShowAIAssistant(false)} />}
       </AnimatePresence>
-
-      {/* Scan Modal */}
       <AnimatePresence>
         {showScan && <ScanModal onClose={() => setShowScan(false)} />}
       </AnimatePresence>
-
-      {/* Add Room Modal */}
       <AnimatePresence>
         {showAddRoom && (
           <AddRoomModal
@@ -562,13 +535,9 @@ export function Editor({ onBack, openScanOnMount }: EditorProps) {
           />
         )}
       </AnimatePresence>
-
-      {/* Project Manager */}
       <AnimatePresence>
         {showProjectManager && <ProjectManager onClose={() => setShowProjectManager(false)} />}
       </AnimatePresence>
-
-      {/* Template Gallery */}
       <AnimatePresence>
         {showTemplates && (
           <TemplateGallery
@@ -577,28 +546,18 @@ export function Editor({ onBack, openScanOnMount }: EditorProps) {
           />
         )}
       </AnimatePresence>
-
-      {/* Quotation */}
       <AnimatePresence>
         {showQuotation && <QuotationSystem onClose={() => setShowQuotation(false)} />}
       </AnimatePresence>
-
-      {/* Virtual Tour */}
       <AnimatePresence>
         {showTour && <VirtualTour onClose={() => setShowTour(false)} />}
       </AnimatePresence>
-
-      {/* Share */}
       <AnimatePresence>
         {showShare && <ShareSystem onClose={() => setShowShare(false)} />}
       </AnimatePresence>
-
-      {/* Settings */}
       <AnimatePresence>
         {showSettings && <SettingsPanel onClose={() => setShowSettings(false)} />}
       </AnimatePresence>
-
-      {/* Command Palette */}
       <AnimatePresence>
         {showCommandPalette && (
           <CommandPalette
