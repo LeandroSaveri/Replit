@@ -1,11 +1,9 @@
 // ============================================================
 // CAMINHO ORIGINAL: src/features/editor/Editor.tsx
-// VERSÃO FINAL COM TODAS AS CORREÇÕES SOLICITADAS:
-// - Botão "+" flutuante APENAS mobile (md:hidden)
-// - Undo/Redo sempre visíveis
-// - Layout responsivo (landscape)
-// - Estilo premium (gradientes, sombras, transições)
-// - Sidebar agora recebe viewMode e onViewModeChange
+// VERSÃO ATUALIZADA:
+// - Toolbar sem props viewMode/onViewModeChange
+// - Botões flutuantes reposicionados para não sobrepor
+// - Estrutura preparada para correção de zoom/pan
 // ============================================================
 
 import { useState, useCallback, useEffect, useRef } from 'react';
@@ -32,7 +30,7 @@ import type { ViewMode } from '@auriplan-types';
 import {
   ChevronLeft, Sparkles, Camera, Box, Save, Settings,
   LayoutTemplate, Calculator, View, Share2, FolderOpen,
-  Undo, Redo, MoreHorizontal, X, Plus, RotateCw,
+  Undo, Redo, MoreHorizontal, X, Plus,
   Menu, ZoomIn, ZoomOut, Maximize,
 } from 'lucide-react';
 import { AddRoomModal } from './components/AddRoomModal';
@@ -187,15 +185,11 @@ export function Editor({ onBack, openScanOnMount }: EditorProps) {
     window.dispatchEvent(new CustomEvent('editor:center'));
     toast.info('Centralizar', 'Evento de centralização enviado.');
   };
-  const handleRotate = () => {
-    window.dispatchEvent(new CustomEvent('editor:rotate'));
-    toast.info('Girar', 'Evento de rotação enviado.');
-  };
 
   return (
     <div className="h-screen flex flex-col bg-white dark:bg-slate-950 overflow-hidden">
 
-      {/* ── TOP BAR ─────────────────────────────────────────── */}
+      {/* ── TOP BAR (PRIMEIRA BARRA) ─────────────────────────── */}
       <header className="h-14 bg-white/95 dark:bg-slate-900/95 backdrop-blur-sm border-b border-gray-200 dark:border-slate-800 flex items-center px-2 sm:px-3 gap-1.5 sm:gap-2 flex-shrink-0 z-30">
 
         {/* Left: Back + Logo + Menu button (mobile) */}
@@ -236,7 +230,7 @@ export function Editor({ onBack, openScanOnMount }: EditorProps) {
         {/* Right side actions */}
         <div className="flex items-center gap-0.5 sm:gap-1.5">
 
-          {/* Undo / Redo (sempre visíveis, sem texto em mobile) */}
+          {/* Undo / Redo */}
           <div className="flex items-center bg-gray-100 dark:bg-slate-800 rounded-lg p-0.5 flex-shrink-0">
             <button
               onClick={undo}
@@ -256,7 +250,7 @@ export function Editor({ onBack, openScanOnMount }: EditorProps) {
             </button>
           </div>
 
-          {/* View mode switcher (2D/3D/Split) - VISÍVEL EM TODOS OS DISPOSITIVOS */}
+          {/* View mode switcher (2D/3D/Split) - APENAS NA PRIMEIRA BARRA */}
           <div className="flex items-center bg-gray-100 dark:bg-slate-800 rounded-lg p-0.5 flex-shrink-0">
             <button
               onClick={() => setViewMode('2d')}
@@ -353,11 +347,9 @@ export function Editor({ onBack, openScanOnMount }: EditorProps) {
         </div>
       </header>
 
-      {/* ── TOOLBAR (apenas desktop) ── */}
+      {/* ── TOOLBAR (SEGUNDA BARRA) - SEM viewMode/onViewModeChange ── */}
       <div className="hidden md:block flex-shrink-0">
         <Toolbar
-          viewMode={viewMode}
-          onViewModeChange={setViewMode}
           onToggleSidebar={() => setIsSidebarOpen(v => !v)}
           isSidebarOpen={isSidebarOpen}
         />
@@ -448,32 +440,33 @@ export function Editor({ onBack, openScanOnMount }: EditorProps) {
             </div>
           )}
 
-          {/* ── BOTÕES FLUTUANTES (Zoom, Centralizar) ── */}
-          <div className="fixed bottom-6 left-4 z-20 flex flex-col gap-2">
+          {/* ── BOTÕES FLUTUANTES REPOSICIONADOS ── */}
+          {/* Zoom controls - canto inferior esquerdo (acima do botão + em mobile) */}
+          <div className="fixed bottom-20 left-4 z-20 flex flex-col gap-2 md:bottom-6">
             <button
               onClick={() => handleZoom(1)}
-              className="w-10 h-10 rounded-full bg-white/90 dark:bg-slate-800/90 backdrop-blur-sm border border-gray-200 dark:border-slate-700 text-gray-700 dark:text-white flex items-center justify-center shadow-lg hover:bg-gray-100 dark:hover:bg-slate-700 transition-all active:scale-95"
+              className="w-11 h-11 rounded-full bg-white/95 dark:bg-slate-800/95 backdrop-blur-md border border-gray-200 dark:border-slate-700 text-gray-700 dark:text-white flex items-center justify-center shadow-lg hover:bg-gray-50 dark:hover:bg-slate-700 transition-all active:scale-95"
               title="Aproximar (+)"
             >
               <ZoomIn className="w-5 h-5" />
             </button>
             <button
               onClick={() => handleZoom(-1)}
-              className="w-10 h-10 rounded-full bg-white/90 dark:bg-slate-800/90 backdrop-blur-sm border border-gray-200 dark:border-slate-700 text-gray-700 dark:text-white flex items-center justify-center shadow-lg hover:bg-gray-100 dark:hover:bg-slate-700 transition-all active:scale-95"
+              className="w-11 h-11 rounded-full bg-white/95 dark:bg-slate-800/95 backdrop-blur-md border border-gray-200 dark:border-slate-700 text-gray-700 dark:text-white flex items-center justify-center shadow-lg hover:bg-gray-50 dark:hover:bg-slate-700 transition-all active:scale-95"
               title="Afastar (-)"
             >
               <ZoomOut className="w-5 h-5" />
             </button>
             <button
               onClick={handleCenter}
-              className="w-10 h-10 rounded-full bg-white/90 dark:bg-slate-800/90 backdrop-blur-sm border border-gray-200 dark:border-slate-700 text-gray-700 dark:text-white flex items-center justify-center shadow-lg hover:bg-gray-100 dark:hover:bg-slate-700 transition-all active:scale-95"
+              className="w-11 h-11 rounded-full bg-white/95 dark:bg-slate-800/95 backdrop-blur-md border border-gray-200 dark:border-slate-700 text-gray-700 dark:text-white flex items-center justify-center shadow-lg hover:bg-gray-50 dark:hover:bg-slate-700 transition-all active:scale-95"
               title="Centralizar visualização"
             >
               <Maximize className="w-5 h-5" />
             </button>
           </div>
 
-          {/* ── BOTÃO FLUTUANTE "+" (INSERIR) - APENAS MOBILE ── */}
+          {/* ── BOTÃO FLUTUANTE "+" - APENAS MOBILE ── */}
           <button
             onClick={() => setShowAddRoom(true)}
             className="fixed bottom-6 right-4 z-20 w-14 h-14 rounded-full bg-gradient-to-r from-emerald-500 to-teal-600 text-white shadow-xl hover:shadow-2xl transition-all active:scale-95 flex items-center justify-center md:hidden"
