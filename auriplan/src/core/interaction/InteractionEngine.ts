@@ -28,8 +28,10 @@ export interface InteractionEvent {
   button?: MouseButton;
   key?: string;
   modifiers: KeyboardModifier[];
-  preventDefault: () => void;
-  stopPropagation: () => void;
+  // CORREÇÃO: Tornados opcionais para compatibilidade com Canvas2D e outros orquestradores
+  // que criam eventos sintéticos sem acesso ao evento DOM original
+  preventDefault?: () => void;
+  stopPropagation?: () => void;
 }
 
 export type InteractionHandler = (event: InteractionEvent) => void | boolean;
