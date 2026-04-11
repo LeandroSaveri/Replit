@@ -1,7 +1,7 @@
 // ============================================
 // FILE: src/core/wall/WallGraph.ts
 // ============================================
-// CORRIGIDO: remove duplicações geométricas, usa vec2 do math/vector
+// Implementa WallTopology para consulta de conexões entre paredes
 // ============================================
 
 import type { Vec2, Wall } from '@auriplan-types';
@@ -75,7 +75,6 @@ export function buildGraph(walls: Wall[]): WallGraph {
   const n = walls.length;
   if (n === 0) return createEmptyWallGraph();
 
-  // Cluster endpoints usando GEOM_TOL (O(n²) aceitável pois número de nós pequeno)
   const nodes: Vec2[] = [];
   const endpointToNodeIdx = new Map<string, number>();
 
@@ -293,4 +292,62 @@ export function computeCornerAdjustments(
     }
   }
   return adjustments;
+}
+
+// ==================== CLASSE WALL TOPOLOGY (para injeção) ====================
+export class WallGraphTopology {
+  private walls: Wall[] = [];
+
+  constructor(walls: Wall[]) {
+    this.walls = walls;
+  }
+
+  updateWalls(walls: Wall[]) {
+    this.walls = walls;
+  }
+
+  /**
+   * Retorna todas as paredes que possuem um vértice exatamente igual a `vertex`
+   * (com tolerância GEOM_TOL), excluindo opcionalmente uma parede.
+   */
+  getWallsConnectedToVertex(vertex: Vec2, excludeWallId?: string): Array<{ id: string; start: Vec2; end: Vec2 }> {
+    const result: Array<{ id: string; start: Vec2; end: Vec2 }> = [];
+    const tol = GEOM_TOL;
+    for (const w of this.walls) {
+      if (excludeWallId && w.id === excludeWallId) continue;
+      const startDist = Math.hypot(w.start[0] - vertex[0], w.start[1] - vertex[1]);
+      const endDist = Math.hypot(w.end[0] - vertex[0], w.end[1] - vertex[1]);
+      if (startDist < tol || endDist < tol) {
+        result.push({ id: w.id, start: [...w.start] as Vec2, end: [...w.end] as Vec2 });
+      }
+    }
+    return result;
+  }
+
+  /**
+   * Retorna todas as paredes conectadas a uma parede (compartilham algum vértice).
+   */
+  getWallsConnectedToWall(wallId: string): Array<{ id: string; start: Vec2; end: Vec2 }> {
+    const wall = this.walls.find(w => w.id === wallId);
+    if (!wall) return [];
+    const connectedIds = new Set<string>();
+    const vertices = [wall.start, wall.end];
+    for (const v of vertices) {
+      const conns = this.getWallsConnectedToVertex(v, wallId);
+      for (const c of conns) connectedIds.add(c.id);
+    }
+    return this.walls.filter(w => connectedIds.has(w.id)).map(w => ({ id: w.id, start: [...w.start], end: [...w.end] }));
+  }
+
+  /**
+   * Atualiza a geometria de uma parede. Nota: esta classe apenas mantém uma referência,
+   * a atualização real deve ser feita via store. Este método é usado para sincronizar o cache.
+   */
+  updateWallGeometry(wallId: string, newStart: Vec2, newEnd: Vec2): void {
+    const wall = this.walls.find(w => w.id === wallId);
+    if (wall) {
+      wall.start = [...newStart] as Vec2;
+      wall.end = [...newEnd] as Vec2;
+    }
+  }
 }
