@@ -10,6 +10,7 @@ import type { EditorStore } from '@store/editorStore';
 import { WallToolHandler } from './tools/WallToolHandler';
 import { SelectToolHandler } from './tools/SelectToolHandler';
 import { RoomToolHandler } from './tools/RoomToolHandler';
+import { WallGraphTopology } from '@core/wall/WallGraph';
 
 export class ToolManager {
   private currentHandler: ToolHandler | null = null;
@@ -19,6 +20,7 @@ export class ToolManager {
   private onCursorChange: (cursor: string) => void;
   private store: EditorStore;
   private unsubscribe?: () => void;
+  private wallTopology: WallGraphTopology | null = null;
 
   constructor(
     store: EditorStore,
@@ -30,11 +32,23 @@ export class ToolManager {
     this.onPreviewChange = onPreviewChange;
     this.onHoverChange = onHoverChange;
     this.onCursorChange = onCursorChange;
+
+    // Inicializa a topologia de paredes com as paredes atuais
+    const scene = store.getState().scenes.find(s => s.id === store.getState().currentSceneId);
+    if (scene) {
+      this.wallTopology = new WallGraphTopology(scene.walls);
+    }
+
     this.setTool(store.getState().tool);
     this.unsubscribe = store.subscribe(() => {
       const newTool = store.getState().tool;
       if (newTool !== this.currentTool) {
         this.setTool(newTool);
+      }
+      // Atualiza a topologia sempre que a cena mudar (ex: paredes adicionadas/removidas)
+      const currentScene = store.getState().scenes.find(s => s.id === store.getState().currentSceneId);
+      if (currentScene && this.wallTopology) {
+        this.wallTopology.updateWalls(currentScene.walls);
       }
     });
   }
@@ -53,6 +67,7 @@ export class ToolManager {
           this.onPreviewChange,
           this.onHoverChange,
           this.onCursorChange,
+          this.wallTopology || undefined,
         );
         break;
       case 'room':
@@ -63,7 +78,6 @@ export class ToolManager {
     }
     this.currentHandler?.reset();
     this.onPreviewChange(null);
-    // Clear hover when tool changes
     this.onHoverChange(null);
   }
 
