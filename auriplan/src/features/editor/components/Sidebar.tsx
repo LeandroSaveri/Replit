@@ -1,5 +1,5 @@
 // ============================================
-// SIDEBAR - Painel Lateral
+// SIDEBAR - Painel Lateral (com suporte mobile)
 // ============================================
 
 import { useState } from 'react';
@@ -58,7 +58,8 @@ function LayerItem({ icon: Icon, name, count, visible, locked, onToggleVisibilit
         <span className="text-sm text-slate-300">{name}</span>
         <span className="text-xs text-slate-500">({count})</span>
       </div>
-      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+      {/* Botões sempre visíveis no mobile, apenas hover no desktop */}
+      <div className="flex items-center gap-1 transition-opacity md:opacity-0 md:group-hover:opacity-100">
         <button
           onClick={onToggleVisibility}
           className={`p-1 rounded ${visible ? 'text-blue-400' : 'text-slate-600'}`}
@@ -99,7 +100,7 @@ export function Sidebar({ scenes, currentSceneId, onSceneChange, onAddScene, sta
   };
 
   return (
-    <div className="h-full flex flex-col bg-slate-900">
+    <div className="h-full flex flex-col bg-slate-900 overflow-x-hidden">
       {/* Tabs */}
       <div className="flex border-b border-slate-800">
         {tabs.map(tab => (
@@ -113,7 +114,8 @@ export function Sidebar({ scenes, currentSceneId, onSceneChange, onAddScene, sta
             }`}
           >
             <tab.icon className="w-4 h-4" />
-            {tab.label}
+            <span className="hidden xs:inline">{tab.label}</span>
+            <span className="xs:hidden">{tab.label.charAt(0)}</span>
           </button>
         ))}
       </div>
@@ -132,14 +134,14 @@ export function Sidebar({ scenes, currentSceneId, onSceneChange, onAddScene, sta
                     : 'bg-slate-800 hover:bg-slate-700 border border-transparent'
                 }`}
               >
-                <div className="flex items-center gap-3">
-                  <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${
                     scene.id === currentSceneId ? 'bg-blue-500' : 'bg-slate-700'
                   }`}>
                     <Home className="w-4 h-4 text-white" />
                   </div>
-                  <div>
-                    <p className={`text-sm font-medium ${
+                  <div className="min-w-0">
+                    <p className={`text-sm font-medium truncate ${
                       scene.id === currentSceneId ? 'text-white' : 'text-slate-300'
                     }`}>
                       {scene.name}
@@ -149,7 +151,7 @@ export function Sidebar({ scenes, currentSceneId, onSceneChange, onAddScene, sta
                     </p>
                   </div>
                 </div>
-                <button className="p-1.5 text-slate-500 hover:text-white hover:bg-slate-700 rounded">
+                <button className="p-1.5 text-slate-500 hover:text-white hover:bg-slate-700 rounded flex-shrink-0">
                   <MoreVertical className="w-4 h-4" />
                 </button>
               </div>
