@@ -1,10 +1,14 @@
 // ============================================
 // Room Engine - Room detection and management
 // ============================================
+// NOTA: A detecção de cômodos foi delegada para RoomDetectionEngine (pipeline canônico).
+// Esta classe mantém apenas gerenciamento de estado (compatibilidade).
 
 import type { Room, Wall, Vec2 } from '@auriplan-types';
 import { vec2, geometry } from '@core/math/vector';
 import { v4 as uuidv4 } from 'uuid';
+import { RoomDetection } from '@core/room/RoomDetectionEngine';
+import { buildGraph } from '@core/wall/WallGraph';
 
 export interface RoomCreateOptions {
   points: Vec2[];
@@ -28,7 +32,7 @@ export class RoomEngine {
 
   /**
    * Constrói um grafo de adjacência entre vértices únicos a partir das paredes.
-   * Versão melhorada com normalização de coordenadas por tolerância.
+   * Mantido para compatibilidade, mas não é mais usado internamente.
    */
   static buildGraphFromWalls(walls: Wall[]): Map<string, Vec2[]> {
     const tolerance = 1e-6;
@@ -70,103 +74,13 @@ export class RoomEngine {
 
   /**
    * Encontra todos os loops fechados (polígonos) no grafo de paredes.
-   * Usa extração de faces por caminhada planar (regra da esquerda).
+   * @deprecated Use RoomDetectionEngine diretamente.
    */
   static findClosedLoops(walls: Wall[]): Vec2[][] {
-    const tolerance = 1e-6;
-    // 1. Normalizar vértices e construir grafo
-    const { vertices, edges, componentMap } = RoomEngine.normalizeWallsToGraph(walls, tolerance);
-    if (vertices.length < 3) return [];
-
-    // 2. Construir lista de adjacência por vértice (índices)
-    const adj: number[][] = Array.from({ length: vertices.length }, () => []);
-    for (const [u, v] of edges) {
-      adj[u].push(v);
-      adj[v].push(u);
-    }
-
-    // 3. Ordenar vizinhos por ângulo polar (anti‑horário)
-    const sortedNeighbors = RoomEngine.sortNeighborsByAngle(adj, vertices);
-
-    // 4. Caminhada de faces (marcando arestas direcionadas)
-    const faces: number[][] = [];
-    const visitedDir = new Set<string>(); // "u->v"
-
-    for (let u = 0; u < vertices.length; u++) {
-      for (const v of sortedNeighbors[u]) {
-        const edgeKey = `${u}->${v}`;
-        if (visitedDir.has(edgeKey)) continue;
-
-        // Iniciar nova face
-        const path: number[] = [u, v];
-        let prev = u;
-        let curr = v;
-        visitedDir.add(edgeKey);
-
-        while (true) {
-          const neighbors = sortedNeighbors[curr];
-          const idx = neighbors.findIndex(n => n === prev);
-          const next = neighbors[(idx + 1) % neighbors.length];
-          const nextKey = `${curr}->${next}`;
-          visitedDir.add(nextKey);
-          path.push(next);
-          if (next === u && curr === v) {
-            path.pop(); // remove duplicata do ponto inicial
-            break;
-          }
-          prev = curr;
-          curr = next;
-        }
-        if (path.length >= 3) {
-          faces.push(path);
-        }
-      }
-    }
-
-    // 5. Converter faces para Vec2[], calcular área e normalizar orientação
-    const loops: Vec2[][] = [];
-    const areaCache: Map<number, number> = new Map();
-    const faceAreas: { idx: number; area: number; compId: number }[] = [];
-
-    for (let i = 0; i < faces.length; i++) {
-      const indices = faces[i];
-      const points = indices.map(idx => vertices[idx] as Vec2);
-      let area = RoomEngine.calculateArea(points);
-      if (Math.abs(area) < tolerance) continue; // degenerado
-      if (area < 0) {
-        // inverter para orientação anti‑horária
-        indices.reverse();
-        points.reverse();
-        area = -area;
-      }
-      const compId = componentMap.get(indices[0])!;
-      loops.push(points);
-      areaCache.set(i, area);
-      faceAreas.push({ idx: i, area, compId });
-    }
-
-    // 6. Para cada componente conexo, descartar a face externa (a de maior área)
-    const compFaces = new Map<number, number[]>();
-    for (const fa of faceAreas) {
-      if (!compFaces.has(fa.compId)) compFaces.set(fa.compId, []);
-      compFaces.get(fa.compId)!.push(fa.idx);
-    }
-    const toKeep = new Set<number>();
-    for (const [_, faceIndices] of compFaces) {
-      if (faceIndices.length === 0) continue;
-      // ordenar por área decrescente
-      faceIndices.sort((a, b) => areaCache.get(b)! - areaCache.get(a)!);
-      // descartar o primeiro (maior) – face externa
-      for (let i = 1; i < faceIndices.length; i++) {
-        toKeep.add(faceIndices[i]);
-      }
-    }
-
-    const result = Array.from(toKeep)
-      .sort((a, b) => a - b)
-      .map(idx => loops[idx]);
-
-    return result;
+    // Delega para a implementação canônica (via grafo)
+    const graph = buildGraph(walls);
+    const rooms = RoomDetection.detectRooms(graph, walls);
+    return rooms.map(r => r.points);
   }
 
   /**
@@ -175,10 +89,8 @@ export class RoomEngine {
   static normalizeLoop(points: Vec2[]): Vec2[] {
     if (points.length < 3) return points;
 
-    // Garantir orientação anti‑horária
     let normalized = RoomEngine.isClockwise(points) ? [...points].reverse() : [...points];
 
-    // Rotacionar para que o primeiro ponto seja o "menor" (menor y, depois menor x)
     let minIndex = 0;
     for (let i = 1; i < normalized.length; i++) {
       const current = normalized[i];
@@ -224,24 +136,11 @@ export class RoomEngine {
 
   /**
    * Função principal: constrói cômodos a partir das paredes.
+   * Agora delega para RoomDetectionEngine (fonte canônica).
    */
   static buildRoomsFromWalls(walls: Wall[]): Room[] {
-    const loops = RoomEngine.findClosedLoops(walls);
-    const rooms: Room[] = [];
-    for (const loop of loops) {
-      const area = RoomEngine.calculateArea(loop);
-      const perimeter = RoomEngine.calculatePerimeter(loop);
-      if (area < 0.01) continue; // área muito pequena
-      rooms.push({
-        id: uuidv4(),
-        points: loop,
-        area,
-        perimeter,
-        name: `Room ${rooms.length + 1}`,
-        metadata: {},
-      });
-    }
-    return rooms;
+    const graph = buildGraph(walls);
+    return RoomDetection.detectRooms(graph, walls);
   }
 
   /**
@@ -283,7 +182,7 @@ export class RoomEngine {
     walls: Wall[],
     tolerance: number
   ): { vertices: Vec2[]; edges: [number, number][]; componentMap: Map<number, number> } {
-    const pointMap = new Map<string, number>(); // chave normalizada -> índice
+    const pointMap = new Map<string, number>();
     const vertices: Vec2[] = [];
     const edges: [number, number][] = [];
 
@@ -319,7 +218,6 @@ export class RoomEngine {
       }
     }
 
-    // Componentes conexos (Union-Find)
     const parent = Array.from({ length: vertices.length }, (_, i) => i);
     const find = (x: number): number => {
       if (parent[x] !== x) parent[x] = find(parent[x]);
