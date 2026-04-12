@@ -31,9 +31,9 @@ type DragState =
   | { kind: 'room-vertex'; roomId: string; vtxIdx: number; origPts: Vec2[]; ds: Vec2 }
   | { kind: 'room-edge'; roomId: string; edgeIdx: number; origPts: Vec2[]; ds: Vec2 }
   | { kind: 'room'; id: string; origPts: Vec2[]; ds: Vec2 }
-  | { kind: 'wall-vertex'; wallId: string; vertex: 'start' | 'end'; origPos: Vec2; ds: Vec2 }
-  | { kind: 'wall-push'; wallId: string; origStart: Vec2; origEnd: Vec2; ds: Vec2 }
-  | { kind: 'wall-move'; wallId: string; origStart: Vec2; origEnd: Vec2; ds: Vec2 };
+  | { kind: 'wall-vertex'; wallId: string; vertex: 'start' | 'end'; origPos: Vec2; ds: Vec2; affectedWallIds: string[] }
+  | { kind: 'wall-push'; wallId: string; origStart: Vec2; origEnd: Vec2; ds: Vec2; affectedWallIds: string[] }
+  | { kind: 'wall-move'; wallId: string; origStart: Vec2; origEnd: Vec2; ds: Vec2; affectedWallIds: string[] };
 
 /**
  * Serviço de topologia de paredes – deve ser fornecido pelo core (WallGraph).
@@ -140,21 +140,22 @@ export class SelectToolHandler implements ToolHandler {
         if (!wall) return;
         state.select(hit.wallId, addToSel);
         const origPos: Vec2 = hit.vertex === 'start' ? [...wall.start] as Vec2 : [...wall.end] as Vec2;
-        this.drag = { kind: 'wall-vertex', wallId: hit.wallId, vertex: hit.vertex, origPos, ds: pos };
+        // Inicialmente apenas a própria parede é afetada; a lista será preenchida durante o drag
+        this.drag = { kind: 'wall-vertex', wallId: hit.wallId, vertex: hit.vertex, origPos, ds: pos, affectedWallIds: [hit.wallId] };
         break;
       }
       case 'wall-midpoint': {
         const wall = scene.walls.find(w => w.id === hit.wallId);
         if (!wall) return;
         state.select(hit.wallId, addToSel);
-        this.drag = { kind: 'wall-push', wallId: hit.wallId, origStart: [...wall.start] as Vec2, origEnd: [...wall.end] as Vec2, ds: pos };
+        this.drag = { kind: 'wall-push', wallId: hit.wallId, origStart: [...wall.start] as Vec2, origEnd: [...wall.end] as Vec2, ds: pos, affectedWallIds: [hit.wallId] };
         break;
       }
       case 'wall': {
         const wall = scene.walls.find(w => w.id === hit.id);
         if (!wall) return;
         state.select(hit.id, addToSel);
-        this.drag = { kind: 'wall-move', wallId: hit.id, origStart: [...wall.start] as Vec2, origEnd: [...wall.end] as Vec2, ds: pos };
+        this.drag = { kind: 'wall-move', wallId: hit.id, origStart: [...wall.start] as Vec2, origEnd: [...wall.end] as Vec2, ds: pos, affectedWallIds: [hit.id] };
         break;
       }
       default:
@@ -236,12 +237,15 @@ export class SelectToolHandler implements ToolHandler {
           const connectedWalls = this.wallTopology.getWallsConnectedToVertex(_wvDrag.origPos, _wvDrag.wallId);
           const updates: Array<{ id: string; start: Vec2; end: Vec2 }> = [];
           updates.push({ id: _wvDrag.wallId, start: newStart, end: newEnd });
+          const affectedIds: string[] = [_wvDrag.wallId];
           for (const conn of connectedWalls) {
             const isStart = this.arePointsEqual(conn.start, _wvDrag.origPos);
             const newConnStart = isStart ? newPos : conn.start;
             const newConnEnd = !isStart && this.arePointsEqual(conn.end, _wvDrag.origPos) ? newPos : conn.end;
             updates.push({ id: conn.id, start: newConnStart, end: newConnEnd });
+            affectedIds.push(conn.id);
           }
+          _wvDrag.affectedWallIds = affectedIds;
           if ((state as any)._liveUpdateWallsBatch) {
             (state as any)._liveUpdateWallsBatch(updates);
           } else {
@@ -249,6 +253,7 @@ export class SelectToolHandler implements ToolHandler {
           }
         } else {
           state._liveUpdateWall(_wvDrag.wallId, newStart, newEnd);
+          _wvDrag.affectedWallIds = [_wvDrag.wallId];
         }
         break;
       }
@@ -261,35 +266,41 @@ export class SelectToolHandler implements ToolHandler {
         const deltaPerp: Vec2 = [perp[0] * proj, perp[1] * proj];
         const newStart: Vec2 = [this.drag.origStart[0] + deltaPerp[0], this.drag.origStart[1] + deltaPerp[1]];
         const newEnd: Vec2 = [this.drag.origEnd[0] + deltaPerp[0], this.drag.origEnd[1] + deltaPerp[1]];
-        this.applyWallMoveWithPropagation(this.drag.wallId, newStart, newEnd);
+        const affected = this.applyWallMoveWithPropagation(this.drag.wallId, newStart, newEnd);
+        this.drag.affectedWallIds = affected;
         break;
       }
       case 'wall-move': {
         const delta: Vec2 = [dx, dy];
         const newStart: Vec2 = [this.drag.origStart[0] + delta[0], this.drag.origStart[1] + delta[1]];
         const newEnd: Vec2 = [this.drag.origEnd[0] + delta[0], this.drag.origEnd[1] + delta[1]];
-        this.applyWallMoveWithPropagation(this.drag.wallId, newStart, newEnd);
+        const affected = this.applyWallMoveWithPropagation(this.drag.wallId, newStart, newEnd);
+        this.drag.affectedWallIds = affected;
         break;
       }
     }
   }
 
-  private applyWallMoveWithPropagation(wallId: string, newStart: Vec2, newEnd: Vec2): void {
+  private applyWallMoveWithPropagation(wallId: string, newStart: Vec2, newEnd: Vec2): string[] {
     const state = this.store.getState();
     const scene = state.scenes.find(s => s.id === state.currentSceneId);
     const wall = scene?.walls.find(w => w.id === wallId);
-    if (!wall) return;
+    if (!wall) return [wallId];
+
+    const affectedIds: string[] = [wallId];
+    const updates: Array<{ id: string; start: Vec2; end: Vec2 }> = [];
 
     if (this.wallTopology) {
       const connectedAtStart = this.wallTopology.getWallsConnectedToVertex(wall.start, wallId);
       const connectedAtEnd = this.wallTopology.getWallsConnectedToVertex(wall.end, wallId);
-      const updates: Array<{ id: string; start: Vec2; end: Vec2 }> = [];
       updates.push({ id: wallId, start: newStart, end: newEnd });
+      
       for (const conn of connectedAtStart) {
         const isStart = this.arePointsEqual(conn.start, wall.start);
         const newConnStart = isStart ? newStart : conn.start;
         const newConnEnd = (!isStart && this.arePointsEqual(conn.end, wall.start)) ? newStart : conn.end;
         updates.push({ id: conn.id, start: newConnStart, end: newConnEnd });
+        affectedIds.push(conn.id);
       }
       for (const conn of connectedAtEnd) {
         if (updates.some(u => u.id === conn.id)) continue;
@@ -297,6 +308,7 @@ export class SelectToolHandler implements ToolHandler {
         const newConnStart = isStart ? newEnd : conn.start;
         const newConnEnd = (!isStart && this.arePointsEqual(conn.end, wall.end)) ? newEnd : conn.end;
         updates.push({ id: conn.id, start: newConnStart, end: newConnEnd });
+        affectedIds.push(conn.id);
       }
       if ((state as any)._liveUpdateWallsBatch) {
         (state as any)._liveUpdateWallsBatch(updates);
@@ -305,14 +317,71 @@ export class SelectToolHandler implements ToolHandler {
       }
     } else {
       state._liveUpdateWall(wallId, newStart, newEnd);
+      updates.push({ id: wallId, start: newStart, end: newEnd });
     }
+
+    return affectedIds;
   }
 
   // ── Pointer Up ────────────────────────────────────────────
   private onPointerUp(_event: InteractionEvent): void {
-    if (this.isDragging && this.drag) {
-      this.store.getState().saveToHistory();
+    if (!this.isDragging || !this.drag) {
+      this.drag = null;
+      this.isDragging = false;
+      this.downPos = null;
+      return;
     }
+
+    const state = this.store.getState();
+    const scene = state.scenes.find(s => s.id === state.currentSceneId);
+    if (!scene) {
+      this.resetDrag();
+      return;
+    }
+
+    // Para cada tipo de drag, chamamos a ação canônica correspondente
+    switch (this.drag.kind) {
+      case 'furniture': {
+        const furn = scene.furniture.find(f => f.id === this.drag!.id);
+        if (furn) {
+          state.updateFurniture(this.drag.id, { position: furn.position });
+        }
+        break;
+      }
+      case 'room-vertex':
+      case 'room-edge':
+      case 'room': {
+        const room = scene.rooms.find(r => r.id === (this.drag.kind === 'room' ? this.drag.id : this.drag.roomId));
+        if (room) {
+          state.updateRoom(room.id, { points: room.points });
+        }
+        break;
+      }
+      case 'wall-vertex':
+      case 'wall-push':
+      case 'wall-move': {
+        // Coletamos as posições atuais de todas as paredes afetadas
+        const affectedIds = this.drag.affectedWallIds || [this.drag.wallId];
+        const updates: Array<{ id: string; start: Vec2; end: Vec2 }> = [];
+        for (const wid of affectedIds) {
+          const w = scene.walls.find(w => w.id === wid);
+          if (w) {
+            updates.push({ id: wid, start: [...w.start] as Vec2, end: [...w.end] as Vec2 });
+          }
+        }
+        if (updates.length > 0) {
+          state.updateWallsBatch(updates);
+        }
+        break;
+      }
+      default:
+        break;
+    }
+
+    this.resetDrag();
+  }
+
+  private resetDrag(): void {
     this.drag = null;
     this.isDragging = false;
     this.downPos = null;
