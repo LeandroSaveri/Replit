@@ -4,14 +4,15 @@
  */
 
 import React, { useState, useRef, useCallback, useEffect } from 'react';
-import { Send, Sparkles, Loader2, Mic, History, X, Check, AlertCircle } from 'lucide-react';
+import { Send, Sparkles, Loader2, History, X, Check, AlertCircle } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { aiOrchestrator, AIProcessResult } from '@/ai';
+import { aiOrchestrator } from '@/ai';
+import type { CommandProcessingResult } from '@/ai/contracts/EditorActionContract';
 import { cn } from '@/utils/cn';
 
 interface AICommandInputProps {
-  onExecute?: (result: AIProcessResult) => void;
-  onPreview?: (result: AIProcessResult) => void;
+  onExecute?: (result: CommandProcessingResult) => void;
+  onPreview?: (result: CommandProcessingResult) => void;
   className?: string;
   position?: 'top' | 'sidebar';
   placeholder?: string;
@@ -46,17 +47,15 @@ export const AICommandInput: React.FC<AICommandInputProps> = ({
   const [history, setHistory] = useState<CommandHistory[]>([]);
   const [showHistory, setShowHistory] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [previewResult, setPreviewResult] = useState<AIProcessResult | null>(null);
+  const [previewResult, setPreviewResult] = useState<CommandProcessingResult | null>(null);
 
   const inputRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // Carregar sugestões iniciais
   useEffect(() => {
     loadSuggestions();
   }, []);
 
-  // Carregar histórico do localStorage
   useEffect(() => {
     const saved = localStorage.getItem('auriaplan-ai-history');
     if (saved) {
@@ -68,14 +67,12 @@ export const AICommandInput: React.FC<AICommandInputProps> = ({
     }
   }, []);
 
-  // Salvar histórico
   useEffect(() => {
     if (history.length > 0) {
       localStorage.setItem('auriaplan-ai-history', JSON.stringify(history.slice(0, 20)));
     }
   }, [history]);
 
-  // Fechar sugestões ao clicar fora
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
@@ -98,7 +95,6 @@ export const AICommandInput: React.FC<AICommandInputProps> = ({
       }));
       setSuggestions(suggestionItems);
     } catch {
-      // Usar sugestões padrão
       setSuggestions([
         { id: '1', text: 'criar uma casa com 2 quartos e sala', icon: <Sparkles className="w-4 h-4" /> },
         { id: '2', text: 'adicionar cozinha de 12 metros', icon: <Sparkles className="w-4 h-4" /> },
@@ -120,7 +116,6 @@ export const AICommandInput: React.FC<AICommandInputProps> = ({
     try {
       const result = await aiOrchestrator.processCommand(command.trim());
 
-      // Adicionar ao histórico
       const historyItem: CommandHistory = {
         id: Date.now().toString(),
         command: command.trim(),
@@ -196,7 +191,6 @@ export const AICommandInput: React.FC<AICommandInputProps> = ({
         className
       )}
     >
-      {/* Container principal */}
       <div
         className={cn(
           'relative bg-white dark:bg-gray-900 rounded-xl shadow-lg border transition-all duration-200',
@@ -206,7 +200,6 @@ export const AICommandInput: React.FC<AICommandInputProps> = ({
           error && 'border-red-500 ring-2 ring-red-500/20'
         )}
       >
-        {/* Header com ícone */}
         <div className="flex items-center gap-2 px-4 py-2 border-b border-gray-100 dark:border-gray-800">
           <Sparkles className="w-4 h-4 text-blue-500" />
           <span className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
@@ -219,7 +212,6 @@ export const AICommandInput: React.FC<AICommandInputProps> = ({
           )}
         </div>
 
-        {/* Input area */}
         <form onSubmit={handleSubmit} className="relative">
           <input
             ref={inputRef}
@@ -239,9 +231,7 @@ export const AICommandInput: React.FC<AICommandInputProps> = ({
             )}
           />
 
-          {/* Botões de ação */}
           <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
-            {/* Botão de histórico */}
             {history.length > 0 && (
               <button
                 type="button"
@@ -253,7 +243,6 @@ export const AICommandInput: React.FC<AICommandInputProps> = ({
               </button>
             )}
 
-            {/* Botão de preview */}
             <button
               type="button"
               onClick={handlePreview}
@@ -264,7 +253,6 @@ export const AICommandInput: React.FC<AICommandInputProps> = ({
               <Check className="w-4 h-4" />
             </button>
 
-            {/* Botão de enviar */}
             <button
               type="submit"
               disabled={!command.trim() || isProcessing}
@@ -285,7 +273,6 @@ export const AICommandInput: React.FC<AICommandInputProps> = ({
           </div>
         </form>
 
-        {/* Mensagem de erro */}
         <AnimatePresence>
           {error && (
             <motion.div
@@ -302,9 +289,8 @@ export const AICommandInput: React.FC<AICommandInputProps> = ({
           )}
         </AnimatePresence>
 
-        {/* Preview info */}
         <AnimatePresence>
-          {previewResult?.success && previewResult.floorPlan && (
+          {previewResult?.success && previewResult.preview && (
             <motion.div
               initial={{ opacity: 0, height: 0 }}
               animate={{ opacity: 1, height: 'auto' }}
@@ -317,10 +303,10 @@ export const AICommandInput: React.FC<AICommandInputProps> = ({
                   Preview pronto
                 </span>
                 <span className="text-blue-400">
-                  {previewResult.floorPlan.rooms?.length || 0} cômodos
+                  {previewResult.preview.roomsCount} cômodos
                 </span>
                 <span className="text-blue-400">
-                  {previewResult.floorPlan.furniture?.length || 0} móveis
+                  {previewResult.preview.furnitureCount} móveis
                 </span>
               </div>
             </motion.div>
@@ -328,7 +314,6 @@ export const AICommandInput: React.FC<AICommandInputProps> = ({
         </AnimatePresence>
       </div>
 
-      {/* Dropdown de sugestões */}
       <AnimatePresence>
         {isFocused && showSuggestions && suggestions.length > 0 && !command && (
           <motion.div
@@ -356,7 +341,6 @@ export const AICommandInput: React.FC<AICommandInputProps> = ({
         )}
       </AnimatePresence>
 
-      {/* Dropdown de histórico */}
       <AnimatePresence>
         {showHistory && history.length > 0 && (
           <motion.div
