@@ -29,6 +29,8 @@ import type {
   Vec2,
 } from '@auriplan-types';
 
+import { splitWallAtPoint } from '@core/wall/WallSplitEngine';
+
 
   // ==================== EDITOR STATE INTERFACE ====================
   export interface EditorState {
@@ -72,6 +74,7 @@ import type {
     moveWallVertex: (wallId: string, vertex: 'start' | 'end', newPosition: import('@auriplan-types').Vec2) => void;
     moveWall: (wallId: string, delta: import('@auriplan-types').Vec2) => void;
     createWallsFromPolygon: (points: import('@auriplan-types').Vec2[]) => void;
+    splitWall: (wallId: string, point: import('@auriplan-types').Vec2) => void; // NOVA ACTION CANÔNICA
     // Live updates (no history — for smooth dragging)
     _liveUpdateWall: (id: string, start: import('@auriplan-types').Vec2, end: import('@auriplan-types').Vec2) => void;
     _liveUpdateRoomPoints: (id: string, points: import('@auriplan-types').Vec2[]) => void;
@@ -510,6 +513,22 @@ export const useEditorStore = create<EditorState>()(
           if (Math.hypot(end[0] - start[0], end[1] - start[1]) < 1e-6) continue;
           get().addWall(start, end);
         }
+      },
+
+      // NOVA ACTION CANÔNICA: SPLIT DE PAREDE
+      splitWall: (wallId: string, point: Vec2) => {
+        set(state => {
+          const scene = getCurrentScene(state);
+          if (!scene) return;
+
+          const result = splitWallAtPoint(scene.walls, wallId, point);
+          if (result.removedWallIds.length === 0) return;
+
+          scene.walls = result.updatedWalls;
+          applyGeometryToScene(scene);
+          updateJunctionsForScene(state, scene.id);
+        });
+        get().saveToHistory();
       },
 
       // Live updates — no history, no geometry pipeline (for smooth drag)
