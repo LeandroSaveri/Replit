@@ -1,17 +1,36 @@
 /**
  * NaturalLanguageInterpreter - Interpretador de Linguagem Natural
- * Responsável por interpretar o texto do usuário e extrair intenções e parâmetros
+ * Responsável por interpretar o texto do usuário e extrair intenções estruturadas.
+ * NÃO gera ações do editor - apenas produz intenções.
  */
 
 import { EventEmitter } from '../utils/EventEmitter';
-import type { InterpretedCommand } from './AIService';
+
+// Intenção estruturada (não é ação do editor)
+export interface DesignIntent {
+  intent: 'create' | 'add' | 'modify' | 'delete' | 'move';
+  target: 'house' | 'room' | 'wall' | 'furniture' | 'door' | 'window';
+  targetType?: string;
+  specifications: {
+    roomType?: string;
+    area?: number;
+    dimensions?: { width: number; height: number; depth?: number };
+    position?: { x: number; y: number };
+    count?: number;
+    style?: string;
+    color?: string;
+    material?: string;
+  };
+  location?: string;
+  constraints?: string[];
+}
 
 export interface InterpretationResult {
   success: boolean;
-  command?: InterpretedCommand;
+  intent?: DesignIntent;
   error?: string;
   confidence: number;
-  alternativeInterpretations?: InterpretedCommand[];
+  alternativeIntents?: DesignIntent[];
 }
 
 export interface Entity {
@@ -126,52 +145,50 @@ export class NaturalLanguageInterpreter extends EventEmitter {
     ],
   };
 
+  private readonly numberWords: Record<string, number> = {
+    um: 1, dois: 2, três: 3, quatro: 4, cinco: 5,
+    seis: 6, sete: 7, oito: 8, nove: 9, dez: 10,
+    one: 1, two: 2, three: 3, four: 4, five: 5,
+    six: 6, seven: 7, eight: 8, nine: 9, ten: 10,
+  };
+
   /**
-   * Interpreta um comando em linguagem natural
+   * Interpreta um comando em linguagem natural e retorna uma intenção estruturada.
+   * NÃO gera ações do editor.
    */
   public interpret(text: string, language?: 'pt' | 'en'): InterpretationResult {
     try {
       const detectedLang = language || this.detectLanguage(text);
       const normalizedText = this.normalizeText(text, detectedLang);
 
-      // Extrair entidades
       const entities = this.extractEntities(normalizedText, detectedLang);
-
-      // Identificar intenção principal
-      const intent = this.identifyIntent(normalizedText, detectedLang);
-
-      // Identificar alvo
+      const intentAction = this.identifyIntent(normalizedText, detectedLang);
       const target = this.identifyTarget(entities, normalizedText, detectedLang);
-
-      // Extrair especificações
       const specifications = this.extractSpecifications(entities, normalizedText, detectedLang);
-
-      // Extrair localização
       const location = this.extractLocation(normalizedText, detectedLang);
+      const confidence = this.calculateConfidence(entities, intentAction, target);
 
-      // Calcular confiança
-      const confidence = this.calculateConfidence(entities, intent, target);
-
-      const command: InterpretedCommand = {
-        intent,
+      const designIntent: DesignIntent = {
+        intent: intentAction,
         target,
         targetType: this.identifyTargetType(entities, detectedLang),
         specifications,
         location,
       };
 
-      this.emit('interpreted', { text, command, confidence });
+      this.emit('interpreted', { text, intent: designIntent, confidence });
+
+      const alternatives = this.generateAlternatives(text, designIntent);
 
       return {
         success: true,
-        command,
+        intent: designIntent,
         confidence,
+        alternativeIntents: alternatives.length > 0 ? alternatives : undefined,
       };
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Interpretation failed';
-
       this.emit('error', { text, error: errorMessage });
-
       return {
         success: false,
         error: errorMessage,
@@ -180,51 +197,28 @@ export class NaturalLanguageInterpreter extends EventEmitter {
     }
   }
 
-  /**
-   * Normaliza o texto para processamento
-   */
   private normalizeText(text: string, language: string): string {
     let normalized = text.toLowerCase().trim();
-
-    // Remover acentos para português
     if (language === 'pt') {
-      normalized = normalized
-        .normalize('NFD')
-        .replace(/[\u0300-\u036f]/g, '');
+      normalized = normalized.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
     }
-
     return normalized;
   }
 
-  /**
-   * Detecta o idioma do texto
-   */
   private detectLanguage(text: string): 'pt' | 'en' {
     const ptWords = ['criar', 'adicionar', 'colocar', 'mudar', 'quarto', 'sala', 'cozinha', 'banheiro', 'casa', 'fazer'];
     const enWords = ['create', 'add', 'put', 'change', 'room', 'kitchen', 'bathroom', 'house', 'make'];
-
     const lowerText = text.toLowerCase();
     let ptCount = 0;
     let enCount = 0;
-
-    for (const word of ptWords) {
-      if (lowerText.includes(word)) ptCount++;
-    }
-
-    for (const word of enWords) {
-      if (lowerText.includes(word)) enCount++;
-    }
-
+    for (const word of ptWords) if (lowerText.includes(word)) ptCount++;
+    for (const word of enWords) if (lowerText.includes(word)) enCount++;
     return ptCount >= enCount ? 'pt' : 'en';
   }
 
-  /**
-   * Extrai entidades do texto
-   */
   private extractEntities(text: string, language: string): Entity[] {
     const entities: Entity[] = [];
 
-    // Extrair tipos de cômodos
     for (const [roomType, keywords] of Object.entries(this.roomTypes[language])) {
       for (const keyword of keywords) {
         const regex = new RegExp(`\\b${keyword}\\b`, 'gi');
@@ -240,7 +234,6 @@ export class NaturalLanguageInterpreter extends EventEmitter {
       }
     }
 
-    // Extrair móveis
     for (const [furnitureType, keywords] of Object.entries(this.furnitureTypes[language])) {
       for (const keyword of keywords) {
         const regex = new RegExp(`\\b${keyword}\\b`, 'gi');
@@ -256,9 +249,7 @@ export class NaturalLanguageInterpreter extends EventEmitter {
       }
     }
 
-    // Extrair dimensões
-    const dimPatterns = this.dimensionPatterns[language];
-    for (const pattern of dimPatterns) {
+    for (const pattern of this.dimensionPatterns[language]) {
       let match;
       while ((match = pattern.exec(text)) !== null) {
         entities.push({
@@ -270,14 +261,17 @@ export class NaturalLanguageInterpreter extends EventEmitter {
       }
     }
 
-    // Extrair quantidades
-    const qtyPatterns = this.quantityPatterns[language];
-    for (const pattern of qtyPatterns) {
+    for (const pattern of this.quantityPatterns[language]) {
       let match;
       while ((match = pattern.exec(text)) !== null) {
+        let numValue = match[1];
+        if (!numValue) {
+          const wordNum = Object.keys(this.numberWords).find(w => match[0].toLowerCase().includes(w));
+          numValue = wordNum ? this.numberWords[wordNum].toString() : '1';
+        }
         entities.push({
           type: 'quantity',
-          value: match[1] || match[0],
+          value: numValue,
           position: { start: match.index, end: match.index + match[0].length },
           confidence: 0.85,
         });
@@ -287,62 +281,34 @@ export class NaturalLanguageInterpreter extends EventEmitter {
     return entities.sort((a, b) => a.position.start - b.position.start);
   }
 
-  /**
-   * Identifica a intenção do comando
-   */
-  private identifyIntent(text: string, language: string): InterpretedCommand['intent'] {
+  private identifyIntent(text: string, language: string): DesignIntent['intent'] {
     const actions = this.actionKeywords[language];
-
     for (const [intent, keywords] of Object.entries(actions)) {
       for (const keyword of keywords) {
         if (text.includes(keyword)) {
-          return intent as InterpretedCommand['intent'];
+          return intent as DesignIntent['intent'];
         }
       }
     }
-
-    // Default intent
     return 'create';
   }
 
-  /**
-   * Identifica o alvo da ação
-   */
-  private identifyTarget(
-    entities: Entity[],
-    text: string,
-    language: string
-  ): InterpretedCommand['target'] {
-    // Verificar entidades primeiro
+  private identifyTarget(entities: Entity[], text: string, language: string): DesignIntent['target'] {
     for (const entity of entities) {
       if (entity.type === 'room') return 'room';
       if (entity.type === 'furniture') return 'furniture';
     }
-
-    // Verificar palavras-chave
-    const roomKeywords = [...Object.values(this.roomTypes[language]).flat()];
-    const furnitureKeywords = [...Object.values(this.furnitureTypes[language]).flat()];
-
-    for (const keyword of roomKeywords) {
-      if (text.includes(keyword)) return 'room';
-    }
-
-    for (const keyword of furnitureKeywords) {
-      if (text.includes(keyword)) return 'furniture';
-    }
-
-    // Verificar palavras genéricas
+    const roomKeywords = Object.values(this.roomTypes[language]).flat();
+    const furnitureKeywords = Object.values(this.furnitureTypes[language]).flat();
+    for (const keyword of roomKeywords) if (text.includes(keyword)) return 'room';
+    for (const keyword of furnitureKeywords) if (text.includes(keyword)) return 'furniture';
     if (text.includes('casa') || text.includes('house')) return 'house';
     if (text.includes('parede') || text.includes('wall')) return 'wall';
     if (text.includes('porta') || text.includes('door')) return 'door';
     if (text.includes('janela') || text.includes('window')) return 'window';
-
     return 'room';
   }
 
-  /**
-   * Identifica o tipo específico do alvo
-   */
   private identifyTargetType(entities: Entity[], language: string): string | undefined {
     for (const entity of entities) {
       if (entity.type === 'room' || entity.type === 'furniture') {
@@ -352,137 +318,64 @@ export class NaturalLanguageInterpreter extends EventEmitter {
     return undefined;
   }
 
-  /**
-   * Extrai especificações do comando
-   */
-  private extractSpecifications(
-    entities: Entity[],
-    text: string,
-    language: string
-  ): InterpretedCommand['specifications'] {
-    const specs: InterpretedCommand['specifications'] = {};
-
-    // Extrair tamanho/dimensões
+  private extractSpecifications(entities: Entity[], text: string, language: string): DesignIntent['specifications'] {
+    const specs: DesignIntent['specifications'] = {};
     for (const entity of entities) {
       if (entity.type === 'dimension') {
         const size = this.parseDimension(entity.value, language);
-        if (size) {
-          specs.size = size;
-        }
+        if (size) specs.area = size;
       }
       if (entity.type === 'quantity') {
         specs.count = parseInt(entity.value) || 1;
       }
-    }
-
-    // Extrair tipo de cômodo
-    for (const entity of entities) {
       if (entity.type === 'room') {
         specs.roomType = entity.value;
-        break;
       }
     }
-
     return specs;
   }
 
-  /**
-   * Extrai a localização mencionada
-   */
   private extractLocation(text: string, language: string): string | undefined {
     const locationPatterns: Record<string, RegExp[]> = {
-      pt: [
-        /(?:na|no)\s+([\w\s]+?)(?:\s|$)/i,
-        /(?:em\s+)?(?:a|o)\s+([\w\s]+?)(?:\s|$)/i,
-      ],
-      en: [
-        /(?:in\s+(?:the\s+)?)([\w\s]+?)(?:\s|$)/i,
-        /(?:at\s+(?:the\s+)?)([\w\s]+?)(?:\s|$)/i,
-      ],
+      pt: [/(?:na|no)\s+([\w\s]+?)(?:\s|$)/i, /(?:em\s+)?(?:a|o)\s+([\w\s]+?)(?:\s|$)/i],
+      en: [/(?:in\s+(?:the\s+)?)([\w\s]+?)(?:\s|$)/i, /(?:at\s+(?:the\s+)?)([\w\s]+?)(?:\s|$)/i],
     };
-
     const patterns = locationPatterns[language];
     for (const pattern of patterns) {
       const match = text.match(pattern);
       if (match) {
-        const location = match[1].trim();
-        // Verificar se é um cômodo válido
+        const loc = match[1].trim();
         const roomTypes = Object.values(this.roomTypes[language]).flat();
-        if (roomTypes.some(r => location.includes(r))) {
-          return location;
-        }
+        if (roomTypes.some(r => loc.includes(r))) return loc;
       }
     }
-
     return undefined;
   }
 
-  /**
-   * Parse de dimensões
-   */
   private parseDimension(value: string, language: string): number | undefined {
-    // Extrair número da string
     const match = value.match(/(\d+(?:[.,]\d+)?)/);
-    if (match) {
-      return parseFloat(match[1].replace(',', '.'));
-    }
+    if (match) return parseFloat(match[1].replace(',', '.'));
     return undefined;
   }
 
-  /**
-   * Calcula a confiança da interpretação
-   */
-  private calculateConfidence(
-    entities: Entity[],
-    intent: string,
-    target: string
-  ): number {
+  private calculateConfidence(entities: Entity[], intent: string, target: string): number {
     let confidence = 0.5;
-
-    // Mais entidades = mais confiança
     confidence += Math.min(entities.length * 0.1, 0.3);
-
-    // Intenção clara
-    if (intent !== 'create') {
-      confidence += 0.1;
-    }
-
-    // Alvo claro
-    if (target !== 'room') {
-      confidence += 0.1;
-    }
-
+    if (intent !== 'create') confidence += 0.1;
+    if (target !== 'room') confidence += 0.1;
     return Math.min(confidence, 1.0);
   }
 
-  /**
-   * Gera interpretações alternativas
-   */
-  public generateAlternatives(
-    text: string,
-    primaryResult: InterpretedCommand
-  ): InterpretedCommand[] {
-    const alternatives: InterpretedCommand[] = [];
-
-    // Alternativa: mudar intenção
-    if (primaryResult.intent === 'create') {
-      alternatives.push({
-        ...primaryResult,
-        intent: 'add',
-      });
+  public generateAlternatives(text: string, primaryIntent: DesignIntent): DesignIntent[] {
+    const alternatives: DesignIntent[] = [];
+    if (primaryIntent.intent === 'create') {
+      alternatives.push({ ...primaryIntent, intent: 'add' });
     }
-
-    // Alternativa: mudar alvo
-    if (primaryResult.target === 'room' && primaryResult.specifications.roomType) {
-      alternatives.push({
-        ...primaryResult,
-        target: 'furniture',
-      });
+    if (primaryIntent.target === 'room' && primaryIntent.specifications.roomType) {
+      alternatives.push({ ...primaryIntent, target: 'furniture' });
     }
-
     return alternatives;
   }
 }
 
-// Singleton instance
 export const naturalLanguageInterpreter = new NaturalLanguageInterpreter();
