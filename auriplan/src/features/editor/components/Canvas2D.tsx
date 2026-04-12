@@ -11,24 +11,6 @@ import { ToolManager, ToolContext, ROOM_SHAPES, RoomToolHandler } from '../handl
 import type { Vec2, Wall, ViewMode } from '@auriplan-types';
 import type { InteractionEvent, KeyboardModifier } from '@core/interaction/InteractionEngine';
 
-// Tipos de handle para interação com paredes
-type WallHandleType = 'start' | 'end' | 'body' | null;
-
-interface WallInteractionState {
-  wallId: string | null;
-  handleType: WallHandleType;
-  isDragging: boolean;
-  dragStartPos: Vec2;
-  wallStartAtDrag: Vec2;
-  wallEndAtDrag: Vec2;
-  connectedWalls: Array<{
-    wallId: string;
-    startAtDrag: Vec2;
-    endAtDrag: Vec2;
-    connectionPoint: 'start' | 'end';
-  }>;
-}
-
 // Cursor por ferramenta
 const TOOL_CURSORS: Record<string, string> = {
   select: 'default',
@@ -40,12 +22,6 @@ const TOOL_CURSORS: Record<string, string> = {
   measure: 'crosshair',
   text: 'text',
 };
-
-// Constantes de interação
-const WALL_HIT_TEST_DISTANCE = 0.15; // metros
-const HANDLE_SIZE = 8; // pixels
-const SNAP_DISTANCE = 0.1; // metros
-const DRAG_THRESHOLD = 3; // pixels para iniciar drag
 
 // ============================================================
 // COMPONENTE CANVAS2D
@@ -73,17 +49,6 @@ export function Canvas2D() {
   const pinchStartPanRef = useRef<Vec2>([0, 0]);
   const pinchStartMidRef = useRef({ x: 0, y: 0 });
 
-  // Estado de interação com paredes (Magicplan-style)
-  const wallInteractionRef = useRef<WallInteractionState>({
-    wallId: null,
-    handleType: null,
-    isDragging: false,
-    dragStartPos: [0, 0],
-    wallStartAtDrag: [0, 0],
-    wallEndAtDrag: [0, 0],
-    connectedWalls: [],
-  });
-
   // Estados React
   const [scale, setScaleState] = useState(60);
   const [pan, setPanState] = useState<Vec2>([0, 0]);
@@ -94,12 +59,9 @@ export function Canvas2D() {
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const hoveredIdRef = useRef<string | null>(null);
 
-  // UI States
-  const [selectedWallId, setSelectedWallId] = useState<string | null>(null);
-  const [hoveredHandle, setHoveredHandle] = useState<WallHandleType>(null);
+  // UI States (apenas exibição, sem lógica de domínio)
   const [renameRoom, setRenameRoom] = useState<{ id: string; name: string } | null>(null);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; worldPos: Vec2 } | null>(null);
-  
   const renameInputRef = useRef<HTMLInputElement>(null);
 
   // Store selectors
@@ -214,116 +176,6 @@ export function Canvas2D() {
   }, []);
 
   // ============================================================
-  // HIT-TEST DE PAREDES (Magicplan-style)
-  // ============================================================
-
-  const getDistanceToWall = useCallback((point: Vec2, wall: Wall): number => {
-    const [px, py] = point;
-    const [x1, y1] = wall.start;
-    const [x2, y2] = wall.end;
-    
-    const dx = x2 - x1;
-    const dy = y2 - y1;
-    const len2 = dx * dx + dy * dy;
-    
-    if (len2 === 0) return Math.hypot(px - x1, py - y1);
-    
-    let t = Math.max(0, Math.min(1, ((px - x1) * dx + (py - y1) * dy) / len2));
-    const projX = x1 + t * dx;
-    const projY = y1 + t * dy;
-    
-    return Math.hypot(px - projX, py - projY);
-  }, []);
-
-  const getClosestPointOnWall = useCallback((point: Vec2, wall: Wall): { point: Vec2; t: number } => {
-    const [px, py] = point;
-    const [x1, y1] = wall.start;
-    const [x2, y2] = wall.end;
-    
-    const dx = x2 - x1;
-    const dy = y2 - y1;
-    const len2 = dx * dx + dy * dy;
-    
-    if (len2 === 0) return { point: [x1, y1] as Vec2, t: 0 };
-    
-    let t = ((px - x1) * dx + (py - y1) * dy) / len2;
-    t = Math.max(0, Math.min(1, t));
-    
-    return {
-      point: [x1 + t * dx, y1 + t * dy] as Vec2,
-      t
-    };
-  }, []);
-
-  const hitTestWalls = useCallback((worldPos: Vec2): { wall: Wall | null; handleType: WallHandleType; distance: number } => {
-    if (!walls.length) return { wall: null, handleType: null, distance: Infinity };
-    
-    let closestWall: Wall | null = null;
-    let closestHandle: WallHandleType = null;
-    let minDistance = Infinity;
-    
-    // Verificar handles primeiro (prioridade maior)
-    for (const wall of walls) {
-      const startScreen = worldToScreenPx(wall.start[0], wall.start[1]);
-      const endScreen = worldToScreenPx(wall.end[0], wall.end[1]);
-      const posScreen = worldToScreenPx(worldPos[0], worldPos[1]);
-      
-      const dpr = window.devicePixelRatio || 1;
-      const handleRadius = HANDLE_SIZE * dpr;
-      
-      const distToStart = Math.hypot(startScreen.x - posScreen.x, startScreen.y - posScreen.y);
-      const distToEnd = Math.hypot(endScreen.x - posScreen.x, endScreen.y - posScreen.y);
-      
-      if (distToStart < handleRadius && distToStart < minDistance) {
-        minDistance = distToStart;
-        closestWall = wall;
-        closestHandle = 'start';
-      } else if (distToEnd < handleRadius && distToEnd < minDistance) {
-        minDistance = distToEnd;
-        closestWall = wall;
-        closestHandle = 'end';
-      }
-    }
-    
-    if (closestWall) {
-      return { wall: closestWall, handleType: closestHandle, distance: minDistance };
-    }
-    
-    // Verificar corpo da parede
-    for (const wall of walls) {
-      const distance = getDistanceToWall(worldPos, wall);
-      if (distance < WALL_HIT_TEST_DISTANCE && distance < minDistance) {
-        minDistance = distance;
-        closestWall = wall;
-        closestHandle = 'body';
-      }
-    }
-    
-    return { wall: closestWall, handleType: closestHandle, distance: minDistance };
-  }, [walls, worldToScreenPx, getDistanceToWall]);
-
-  // ============================================================
-  // ENCONTRAR PAREDES CONECTADAS
-  // ============================================================
-
-  const getConnectedWalls = useCallback((wallId: string, point: Vec2, endpoint: 'start' | 'end'): Wall[] => {
-    if (!junctions?.points) return [];
-    
-    const tolerance = 0.001;
-    const x = Math.round(point[0] / tolerance) * tolerance;
-    const y = Math.round(point[1] / tolerance) * tolerance;
-    const key = `${x},${y}`;
-    
-    const junction = junctions.points[key];
-    if (!junction) return [];
-    
-    return junction.walls
-      .filter(w => w.wallId !== wallId)
-      .map(w => walls.find(wall => wall.id === w.wallId))
-      .filter((w): w is Wall => w !== undefined);
-  }, [junctions, walls]);
-
-  // ============================================================
   // RENDER ENGINE INIT
   // ============================================================
 
@@ -351,7 +203,7 @@ export function Canvas2D() {
   useEffect(() => {
     if (!toolManagerRef.current) {
       toolManagerRef.current = new ToolManager(
-        store as EditorStore,
+        store,
         (state) => {
           // Type guard para rename-room
           if (state && typeof state === 'object' && 'type' in state && state.type === 'rename-room') {
@@ -374,7 +226,8 @@ export function Canvas2D() {
           setHoveredId(id);
         },
         (cursor) => {
-          if (store.getState().tool === 'select') setCursorStyle(cursor);
+          // O cursor será atualizado pelo handler conforme necessário
+          setCursorStyle(cursor);
         },
       );
     }
@@ -388,13 +241,6 @@ export function Canvas2D() {
   useEffect(() => {
     toolManagerRef.current?.setTool(tool);
     setCursorStyle(TOOL_CURSORS[tool] ?? 'default');
-    
-    // Resetar seleção de parede ao trocar de ferramenta
-    if (tool !== 'select') {
-      setSelectedWallId(null);
-      wallInteractionRef.current.wallId = null;
-      wallInteractionRef.current.handleType = null;
-    }
   }, [tool]);
 
   // Sync engine transform
@@ -411,7 +257,7 @@ export function Canvas2D() {
   // Re-render on data change
   useEffect(() => {
     requestRenderFrame();
-  }, [walls, rooms, previewState, selectedIds, gridSettings, hoveredId, selectedWallId, hoveredHandle]);
+  }, [walls, rooms, previewState, selectedIds, gridSettings, hoveredId]);
 
   // ============================================================
   // RENDER LOOP
@@ -445,7 +291,7 @@ export function Canvas2D() {
       hoveredId: hoveredIdRef.current,
     });
 
-    // Overlay: preview
+    // Overlay: preview (fornecido pelo ToolManager)
     if (previewState && typeof previewState === 'object') {
       const ps = previewState as { type: string; start?: Vec2; end?: Vec2; vertices?: Vec2[]; previewPoint?: Vec2 };
       if (ps.type === 'wall' && ps.start && ps.end) {
@@ -455,71 +301,16 @@ export function Canvas2D() {
       }
     }
 
-    // Overlay: handles de parede selecionada (Magicplan-style)
-    if (selectedWallId && tool === 'select') {
-      const wall = walls.find(w => w.id === selectedWallId);
-      if (wall) {
-        drawWallHandles(ctx, wall);
-      }
-    }
-
     if (snapPoint) {
       drawSnapIndicator(ctx, snapPoint);
     }
-  }, [walls, rooms, currentScene, selectedIds, gridSettings, previewState, selectedWallId, tool, snapPoint]);
+  }, [walls, rooms, currentScene, selectedIds, gridSettings, previewState, snapPoint]);
 
   doRenderRef.current = doRender;
 
   // ============================================================
-  // DRAWING HELPERS
+  // DRAWING HELPERS (apenas renderização, sem lógica de domínio)
   // ============================================================
-
-  const drawWallHandles = useCallback((ctx: CanvasRenderingContext2D, wall: Wall) => {
-    const start = worldToScreenPx(wall.start[0], wall.start[1]);
-    const end = worldToScreenPx(wall.end[0], wall.end[1]);
-    const dpr = window.devicePixelRatio || 1;
-    const size = HANDLE_SIZE * dpr;
-    
-    ctx.save();
-    
-    // Highlight da parede selecionada
-    ctx.strokeStyle = '#3b82f6';
-    ctx.lineWidth = 3 * dpr;
-    ctx.beginPath();
-    ctx.moveTo(start.x, start.y);
-    ctx.lineTo(end.x, end.y);
-    ctx.stroke();
-    
-    // Handle start
-    const isStartHovered = hoveredHandle === 'start';
-    ctx.fillStyle = isStartHovered ? '#2563eb' : '#3b82f6';
-    ctx.strokeStyle = '#ffffff';
-    ctx.lineWidth = 2 * dpr;
-    ctx.beginPath();
-    ctx.arc(start.x, start.y, size, 0, 2 * Math.PI);
-    ctx.fill();
-    ctx.stroke();
-    
-    // Handle end
-    const isEndHovered = hoveredHandle === 'end';
-    ctx.fillStyle = isEndHovered ? '#2563eb' : '#3b82f6';
-    ctx.beginPath();
-    ctx.arc(end.x, end.y, size, 0, 2 * Math.PI);
-    ctx.fill();
-    ctx.stroke();
-    
-    // Handle body (linha central clicável)
-    if (hoveredHandle === 'body') {
-      ctx.strokeStyle = 'rgba(59, 130, 246, 0.5)';
-      ctx.lineWidth = 12 * dpr;
-      ctx.beginPath();
-      ctx.moveTo(start.x, start.y);
-      ctx.lineTo(end.x, end.y);
-      ctx.stroke();
-    }
-    
-    ctx.restore();
-  }, [worldToScreenPx, hoveredHandle]);
 
   const drawGhostWall = useCallback((ctx: CanvasRenderingContext2D, start: Vec2, end: Vec2) => {
     const p1 = worldToScreenPx(start[0], start[1]);
@@ -645,15 +436,6 @@ export function Canvas2D() {
     ...extras,
   }), []);
 
-  const snapToGrid = useCallback((pos: Vec2): Vec2 => {
-    if (!snapSettings.enabled || !snapSettings.grid) return pos;
-    const gridSize = gridSettings.size;
-    return [
-      Math.round(pos[0] / gridSize) * gridSize,
-      Math.round(pos[1] / gridSize) * gridSize,
-    ];
-  }, [snapSettings, gridSettings]);
-
   // ============================================================
   // POINTER EVENTS (Mobile/Desktop/Tablet Unified)
   // ============================================================
@@ -680,70 +462,7 @@ export function Canvas2D() {
       return;
     }
 
-    const worldPos = screenToWorld(e.clientX, e.clientY);
-
-    // Modo select: verificar hit em paredes primeiro
-    if (tool === 'select') {
-      const hit = hitTestWalls(worldPos);
-      
-      if (hit.wall) {
-        // Selecionar parede
-        setSelectedWallId(hit.wall.id);
-        store.getState().select(hit.wall.id);
-        
-        // Iniciar drag se for body ou handle
-        if (hit.handleType) {
-          const interaction = wallInteractionRef.current;
-          interaction.wallId = hit.wall.id;
-          interaction.handleType = hit.handleType;
-          interaction.isDragging = true;
-          interaction.dragStartPos = worldPos;
-          interaction.wallStartAtDrag = [...hit.wall.start] as Vec2;
-          interaction.wallEndAtDrag = [...hit.wall.end] as Vec2;
-          
-          // Encontrar paredes conectadas para movimento conjunto
-          interaction.connectedWalls = [];
-          
-          if (hit.handleType === 'body') {
-            // Paredes conectadas ao start
-            const startConnected = getConnectedWalls(hit.wall.id, hit.wall.start, 'start');
-            for (const connected of startConnected) {
-              const isStart = Math.hypot(connected.start[0] - hit.wall.start[0], connected.start[1] - hit.wall.start[1]) < 0.001;
-              interaction.connectedWalls.push({
-                wallId: connected.id,
-                startAtDrag: [...connected.start] as Vec2,
-                endAtDrag: [...connected.end] as Vec2,
-                connectionPoint: isStart ? 'start' : 'end',
-              });
-            }
-            
-            // Paredes conectadas ao end
-            const endConnected = getConnectedWalls(hit.wall.id, hit.wall.end, 'end');
-            for (const connected of endConnected) {
-              const isStart = Math.hypot(connected.start[0] - hit.wall.end[0], connected.start[1] - hit.wall.end[1]) < 0.001;
-              interaction.connectedWalls.push({
-                wallId: connected.id,
-                startAtDrag: [...connected.start] as Vec2,
-                endAtDrag: [...connected.end] as Vec2,
-                connectionPoint: isStart ? 'start' : 'end',
-              });
-            }
-          }
-          
-          setCursorStyle(hit.handleType === 'body' ? 'move' : 'nwse-resize');
-          return;
-        }
-      } else {
-        // Click no vazio: deselecionar
-        setSelectedWallId(null);
-        setHoveredHandle(null);
-        wallInteractionRef.current.wallId = null;
-        wallInteractionRef.current.handleType = null;
-        store.getState().deselectAll();
-      }
-    }
-
-    // Pan mode
+    // Pan mode (espaço ou botão do meio)
     if (isSpacePressedRef.current || e.button === 1 || tool === 'pan') {
       isPanningRef.current = true;
       panStartRef.current = { x: e.clientX, y: e.clientY };
@@ -753,14 +472,13 @@ export function Canvas2D() {
 
     if (e.button !== 0) return;
 
-    // Delegar para ToolManager para outras ferramentas
-    if (tool !== 'select') {
-      const event: InteractionEvent = createInteractionEvent('mousedown', worldPos, getModifiers(e));
-      toolManagerRef.current?.handleEvent(event);
-    }
+    // Delegar para ToolManager (todas as ferramentas, incluindo select)
+    const worldPos = screenToWorld(e.clientX, e.clientY);
+    const event: InteractionEvent = createInteractionEvent('mousedown', worldPos, getModifiers(e));
+    toolManagerRef.current?.handleEvent(event);
     
     requestRenderFrame();
-  }, [tool, screenToWorld, hitTestWalls, getConnectedWalls, store, createInteractionEvent, getModifiers, requestRenderFrame]);
+  }, [tool, screenToWorld, createInteractionEvent, getModifiers, requestRenderFrame]);
 
   const handlePointerMove = useCallback((e: React.PointerEvent) => {
     activePointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
@@ -814,86 +532,12 @@ export function Canvas2D() {
 
     const worldPos = screenToWorld(e.clientX, e.clientY);
 
-    // Verificar hover em handles durante drag ou hover
-    if (tool === 'select' && !wallInteractionRef.current.isDragging) {
-      const hit = hitTestWalls(worldPos);
-      if (hit.wall && hit.handleType) {
-        setHoveredHandle(hit.handleType);
-        setCursorStyle(hit.handleType === 'body' ? 'move' : 'nwse-resize');
-      } else if (hit.wall) {
-        setHoveredHandle('body');
-        setCursorStyle('pointer');
-      } else {
-        setHoveredHandle(null);
-        setCursorStyle('default');
-      }
-    }
-
-    // Processar drag de parede
-    const interaction = wallInteractionRef.current;
-    if (interaction.isDragging && interaction.wallId && interaction.handleType) {
-      const delta: Vec2 = [
-        worldPos[0] - interaction.dragStartPos[0],
-        worldPos[1] - interaction.dragStartPos[1],
-      ];
-      
-      let newStart = interaction.wallStartAtDrag;
-      let newEnd = interaction.wallEndAtDrag;
-      
-      if (interaction.handleType === 'body') {
-        // Mover parede inteira
-        newStart = snapToGrid([
-          interaction.wallStartAtDrag[0] + delta[0],
-          interaction.wallStartAtDrag[1] + delta[1],
-        ]);
-        newEnd = snapToGrid([
-          interaction.wallEndAtDrag[0] + delta[0],
-          interaction.wallEndAtDrag[1] + delta[1],
-        ]);
-        
-        // Atualizar parede principal
-        store.getState()._liveUpdateWall(interaction.wallId, newStart, newEnd);
-        
-        // Mover paredes conectadas
-        for (const connected of interaction.connectedWalls) {
-          if (connected.connectionPoint === 'start') {
-            const newConnectedStart: Vec2 = [newStart[0], newStart[1]];
-            const newConnectedEnd = connected.endAtDrag;
-            store.getState()._liveUpdateWall(connected.wallId, newConnectedStart, newConnectedEnd);
-          } else {
-            const newConnectedStart = connected.startAtDrag;
-            const newConnectedEnd: Vec2 = [newEnd[0], newEnd[1]];
-            store.getState()._liveUpdateWall(connected.wallId, newConnectedStart, newConnectedEnd);
-          }
-        }
-      } else if (interaction.handleType === 'start') {
-        // Mover apenas start
-        newStart = snapToGrid([
-          interaction.wallStartAtDrag[0] + delta[0],
-          interaction.wallStartAtDrag[1] + delta[1],
-        ]);
-        store.getState()._liveUpdateWall(interaction.wallId, newStart, interaction.wallEndAtDrag);
-      } else if (interaction.handleType === 'end') {
-        // Mover apenas end
-        newEnd = snapToGrid([
-          interaction.wallEndAtDrag[0] + delta[0],
-          interaction.wallEndAtDrag[1] + delta[1],
-        ]);
-        store.getState()._liveUpdateWall(interaction.wallId, interaction.wallStartAtDrag, newEnd);
-      }
-      
-      requestRenderFrame();
-      return;
-    }
-
-    // Delegar para ToolManager para outras ferramentas
-    if (tool !== 'select') {
-      const event: InteractionEvent = createInteractionEvent('mousemove', worldPos, getModifiers(e));
-      toolManagerRef.current?.handleEvent(event);
-    }
+    // Delegar para ToolManager (todas as ferramentas)
+    const event: InteractionEvent = createInteractionEvent('mousemove', worldPos, getModifiers(e));
+    toolManagerRef.current?.handleEvent(event);
     
     requestRenderFrame();
-  }, [tool, screenToWorld, hitTestWalls, snapToGrid, store, createInteractionEvent, getModifiers, requestRenderFrame, setPan, setScale]);
+  }, [tool, screenToWorld, createInteractionEvent, getModifiers, requestRenderFrame, setPan, setScale]);
 
   const handlePointerUp = useCallback((e: React.PointerEvent) => {
     (e.target as HTMLElement).releasePointerCapture(e.pointerId);
@@ -912,74 +556,26 @@ export function Canvas2D() {
     }
 
     const worldPos = screenToWorld(e.clientX, e.clientY);
-    const interaction = wallInteractionRef.current;
-
-    // Finalizar drag de parede
-    if (interaction.isDragging && interaction.wallId) {
-      // Commit final usando updateWall (com pipeline geométrico)
-      const wall = walls.find(w => w.id === interaction.wallId);
-      if (wall) {
-        store.getState().updateWall(interaction.wallId, {
-          start: wall.start,
-          end: wall.end,
-        });
-        
-        // Commit paredes conectadas
-        for (const connected of interaction.connectedWalls) {
-          const connectedWall = walls.find(w => w.id === connected.wallId);
-          if (connectedWall) {
-            store.getState().updateWall(connected.wallId, {
-              start: connectedWall.start,
-              end: connectedWall.end,
-            });
-          }
-        }
-      }
-      
-      interaction.isDragging = false;
-      interaction.wallId = null;
-      interaction.handleType = null;
-      interaction.connectedWalls = [];
-      setCursorStyle('default');
-      return;
-    }
 
     // Delegar para ToolManager
-    if (tool !== 'select') {
-      const event: InteractionEvent = createInteractionEvent('mouseup', worldPos, getModifiers(e));
-      toolManagerRef.current?.handleEvent(event);
-    }
+    const event: InteractionEvent = createInteractionEvent('mouseup', worldPos, getModifiers(e));
+    toolManagerRef.current?.handleEvent(event);
     
     requestRenderFrame();
-  }, [tool, screenToWorld, walls, store, createInteractionEvent, getModifiers, requestRenderFrame]);
+  }, [tool, screenToWorld, createInteractionEvent, getModifiers, requestRenderFrame]);
 
   // ============================================================
-  // DOUBLE CLICK — AGORA CHAMA A ACTION CANÔNICA DO STORE
+  // DOUBLE CLICK — delegado ao ToolManager
   // ============================================================
   const handleDoubleClick = useCallback((e: React.MouseEvent) => {
     const worldPos = screenToWorld(e.clientX, e.clientY);
-    
-    if (tool === 'select') {
-      const hit = hitTestWalls(worldPos);
-      if (hit.wall) {
-        const closest = getClosestPointOnWall(worldPos, hit.wall);
-        // Só divide se o ponto não estiver muito próximo das extremidades
-        if (closest.t > 0.05 && closest.t < 0.95) {
-          store.getState().splitWall(hit.wall.id, closest.point);
-          setSelectedWallId(null);
-          requestRenderFrame();
-          return;
-        }
-      }
-    }
-    
     const event: InteractionEvent = createInteractionEvent('dblclick', worldPos, []);
     toolManagerRef.current?.handleEvent(event);
     requestRenderFrame();
-  }, [tool, screenToWorld, hitTestWalls, getClosestPointOnWall, store, createInteractionEvent, requestRenderFrame]);
+  }, [screenToWorld, createInteractionEvent, requestRenderFrame]);
 
   // ============================================================
-  // CONTEXT MENU
+  // CONTEXT MENU (apenas UI, ações delegadas à store)
   // ============================================================
 
   const handleContextMenu = useCallback((e: MouseEvent | React.MouseEvent) => {
@@ -1032,21 +628,24 @@ export function Canvas2D() {
       if (hasWall && ids.length === 1) {
         const wallId = ids[0];
         const wall = scene.walls.find(w => w.id === wallId);
-        if (wall && contextMenu) {
-          actions.push({ label: 'Dividir Parede', action: () => {
-            const clickPos = contextMenu.worldPos;
-            const ax = wall.end[0] - wall.start[0];
-            const ay = wall.end[1] - wall.start[1];
-            const len2 = ax * ax + ay * ay;
-            if (len2 < 0.01) return;
-            const t = Math.max(0.05, Math.min(0.95,
-              ((clickPos[0] - wall.start[0]) * ax + (clickPos[1] - wall.start[1]) * ay) / len2
-            ));
-            const mid: Vec2 = [wall.start[0] + ax * t, wall.start[1] + ay * t];
-            // Usa a action canônica do store
-            state.splitWall(wallId, mid);
-            state.deselectAll();
-          }});
+        if (wall) {
+          actions.push({ 
+            label: 'Dividir Parede', 
+            action: () => {
+              // Delegação ao store (splitWall é ação canônica)
+              const clickPos = contextMenu.worldPos;
+              const ax = wall.end[0] - wall.start[0];
+              const ay = wall.end[1] - wall.start[1];
+              const len2 = ax * ax + ay * ay;
+              if (len2 < 0.01) return;
+              const t = Math.max(0.05, Math.min(0.95,
+                ((clickPos[0] - wall.start[0]) * ax + (clickPos[1] - wall.start[1]) * ay) / len2
+              ));
+              const mid: Vec2 = [wall.start[0] + ax * t, wall.start[1] + ay * t];
+              state.splitWall(wallId, mid);
+              state.deselectAll();
+            }
+          });
         }
       }
 
@@ -1112,7 +711,7 @@ export function Canvas2D() {
   }, [handleWheel]);
 
   // ============================================================
-  // KEYBOARD
+  // KEYBOARD (delegação ao ToolManager)
   // ============================================================
 
   useEffect(() => {
@@ -1123,13 +722,6 @@ export function Canvas2D() {
         setCursorStyle('grab');
       }
       if (e.key === 'Escape') {
-        // Cancelar drag se estiver em andamento
-        if (wallInteractionRef.current.isDragging) {
-          wallInteractionRef.current.isDragging = false;
-          wallInteractionRef.current.wallId = null;
-          wallInteractionRef.current.handleType = null;
-          requestRenderFrame();
-        }
         const event: InteractionEvent = createInteractionEvent('keydown', [0, 0], [], { key: 'Escape' });
         toolManagerRef.current?.handleEvent(event);
         requestRenderFrame();
@@ -1151,9 +743,18 @@ export function Canvas2D() {
         resetView();
       }
       if (e.key === 'Delete' || e.key === 'Backspace') {
-        if (selectedWallId) {
-          store.getState().deleteWall(selectedWallId);
-          setSelectedWallId(null);
+        // Delegação ao store
+        const selected = store.getState().selectedIds;
+        if (selected.length > 0) {
+          selected.forEach(id => {
+            const scene = store.getState().scenes.find(s => s.id === store.getState().currentSceneId);
+            if (scene) {
+              if (scene.walls.some(w => w.id === id)) store.getState().deleteWall(id);
+              else if (scene.rooms.some(r => r.id === id)) store.getState().deleteRoom(id);
+              else if (scene.furniture.some(f => f.id === id)) store.getState().deleteFurniture(id);
+            }
+          });
+          store.getState().deselectAll();
         }
       }
     };
@@ -1171,7 +772,7 @@ export function Canvas2D() {
       window.removeEventListener('keydown', onKeyDown);
       window.removeEventListener('keyup', onKeyUp);
     };
-  }, [store, selectedWallId, createInteractionEvent, requestRenderFrame]);
+  }, [store, createInteractionEvent, requestRenderFrame]);
 
   // ============================================================
   // VIEW CONTROLS
@@ -1237,7 +838,6 @@ export function Canvas2D() {
   // ============================================================
 
   const insertShape = useCallback((shapeName: string) => {
-    // Type-safe access to currentHandler
     const handler = toolManagerRef.current && 'currentHandler' in toolManagerRef.current 
       ? (toolManagerRef.current as { currentHandler?: RoomToolHandler }).currentHandler 
       : null;
