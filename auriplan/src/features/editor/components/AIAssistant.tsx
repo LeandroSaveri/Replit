@@ -8,12 +8,14 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   Sparkles, X, Send, Loader2, Check, ChevronRight,
   AlertTriangle, Home, BedDouble, LayoutGrid, Briefcase,
-  RefreshCw, ArrowLeft, Info, Building2,
+  RefreshCw, Info, Building2,
 } from 'lucide-react';
 import {
   parseDescription, generateFloorPlan, applyFloorPlan,
   type GeneratedFloorPlan,
 } from '@/engine/floorplan/FloorPlanGenerator';
+import { aiService } from '@/ai/services/AIService';
+import type { EditorActionWithMetadata } from '@/ai/contracts/EditorActionContract';
 
 interface AIAssistantProps {
   onClose: () => void;
@@ -58,14 +60,83 @@ const QUICK_TEMPLATES = [
   },
 ];
 
+// ── Funções auxiliares para converter ações em preview ─────
+function calculateArea(points: Array<{x: number; y: number}>): number {
+  if (points.length < 3) return 0;
+  let area = 0;
+  for (let i = 0; i < points.length; i++) {
+    const j = (i + 1) % points.length;
+    area += points[i].x * points[j].y;
+    area -= points[j].x * points[i].y;
+  }
+  return Math.abs(area) / 2;
+}
+
+function convertActionsToPlan(actions: EditorActionWithMetadata[]): GeneratedFloorPlan | null {
+  const rooms: any[] = [];
+  const walls: any[] = [];
+  let totalArea = 0;
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+
+  actions.forEach(({ action }) => {
+    if (action.type === 'createRoom') {
+      const points = action.payload.points;
+      const area = calculateArea(points);
+      rooms.push({
+        id: `room-${Date.now()}-${rooms.length}`,
+        name: action.payload.name || 'Room',
+        type: action.payload.roomType || 'living_room',
+        points,
+        area,
+        floorColor: '#e5e7eb',
+        wallColor: '#9ca3af',
+        x: Math.min(...points.map(p => p.x)),
+        y: Math.min(...points.map(p => p.y)),
+        w: Math.max(...points.map(p => p.x)) - Math.min(...points.map(p => p.x)),
+        d: Math.max(...points.map(p => p.y)) - Math.min(...points.map(p => p.y)),
+      });
+      totalArea += area;
+      points.forEach(p => {
+        minX = Math.min(minX, p.x);
+        minY = Math.min(minY, p.y);
+        maxX = Math.max(maxX, p.x);
+        maxY = Math.max(maxY, p.y);
+      });
+    }
+    if (action.type === 'createWall') {
+      walls.push({
+        id: `wall-${Date.now()}-${walls.length}`,
+        start: action.payload.start,
+        end: action.payload.end,
+        thickness: action.payload.thickness || 0.15,
+      });
+    }
+  });
+
+  if (rooms.length === 0) return null;
+
+  return {
+    id: `plan-${Date.now()}`,
+    title: 'Planta Gerada por IA',
+    description: 'Layout gerado a partir do seu comando',
+    rooms,
+    walls,
+    furniture: [],
+    warnings: [],
+    totalArea,
+    footprintW: maxX - minX,
+    footprintD: maxY - minY,
+  };
+}
+
 // ── SVG Floor Plan Preview ───────────────────────────────────
 function FloorPlanPreview({ plan }: { plan: GeneratedFloorPlan }) {
   const W = 320;
   const H = 200;
   const PAD = 12;
 
-  const fw = plan.footprintW;
-  const fd = plan.footprintD;
+  const fw = plan.footprintW || 10;
+  const fd = plan.footprintD || 10;
   const scaleX = (W - PAD * 2) / fw;
   const scaleY = (H - PAD * 2) / fd;
   const scale = Math.min(scaleX, scaleY);
@@ -155,7 +226,7 @@ function FloorPlanPreview({ plan }: { plan: GeneratedFloorPlan }) {
       {/* Stats */}
       <div className="grid grid-cols-3 gap-2">
         {[
-          { label: 'Área total', value: `~${plan.totalArea}m²` },
+          { label: 'Área total', value: `~${plan.totalArea.toFixed(0)}m²` },
           { label: 'Cômodos', value: `${plan.rooms.filter(r => r.type !== 'hallway').length}` },
           { label: 'Dimensões', value: `${plan.footprintW.toFixed(0)}×${plan.footprintD.toFixed(0)}m` },
         ].map(({ label, value }) => (
@@ -218,24 +289,34 @@ export function AIAssistant({ onClose }: AIAssistantProps) {
   const [error, setError] = useState('');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  const generate = (prompt: string) => {
+  const generate = async (prompt: string) => {
     if (!prompt.trim()) return;
     setInputText(prompt);
     setPhase('thinking');
     setError('');
 
-    // Simulate async processing (architectural rules are synchronous but feel premium with delay)
-    setTimeout(() => {
-      try {
-        const parsed = parseDescription(prompt);
-        const generated = generateFloorPlan(parsed);
-        setPlan(generated);
-        setPhase('preview');
-      } catch (e) {
-        setError('Não foi possível gerar a planta. Tente descrever de forma mais detalhada.');
-        setPhase('input');
+    try {
+      // Tenta usar o pipeline novo primeiro
+      const result = await aiService.processCommand(prompt);
+      
+      if (result.success && result.actions && result.actions.length > 0) {
+        const convertedPlan = convertActionsToPlan(result.actions);
+        if (convertedPlan) {
+          setPlan(convertedPlan);
+          setPhase('preview');
+          return;
+        }
       }
-    }, 1800);
+      
+      // Fallback para o gerador legado
+      const parsed = parseDescription(prompt);
+      const generated = generateFloorPlan(parsed);
+      setPlan(generated);
+      setPhase('preview');
+    } catch (e) {
+      setError('Não foi possível gerar a planta. Tente descrever de forma mais detalhada.');
+      setPhase('input');
+    }
   };
 
   const applyPlan = () => {
