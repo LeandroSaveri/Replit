@@ -1,3 +1,6 @@
+/**
+ * @deprecated Use SnapSolver para snapping canônico. SnapSystem é mantido apenas para compatibilidade.
+ */
 // ============================================
 // SNAP SYSTEM - Sistema de encaixe preciso
 // ============================================
