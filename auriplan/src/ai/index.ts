@@ -3,10 +3,24 @@
  * Export all AI-related components and services
  */
 
-// Services
-export { aiService } from './services/AIService';
+// Contratos
+export type {
+  EditorAction,
+  EditorActionWithMetadata,
+  CommandProcessingResult,
+  Point2D,
+  Point3D,
+} from './contracts/EditorActionContract';
 
-// Floor Plan Generator
+// Serviços principais
+export { aiService } from './AIService';
+export { naturalLanguageInterpreter, type DesignIntent } from './NaturalLanguageInterpreter';
+export { editorActionMapper } from './EditorActionMapper';
+
+// Serviço legado (compatibilidade)
+export { aiService as aiOrchestrator } from './services/AIService';
+
+// Geradores
 export { default as FloorPlanGenerator } from './generators/floorplan/FloorPlanGenerator';
 export { roomRules, validateRoomDimensions } from './generators/floorplan/RoomRules';
 export type { RoomType, RoomRule } from './generators/floorplan/RoomRules';
@@ -28,17 +42,5 @@ export type {
   LightingRequest,
 } from './services/AIService';
 
-// AI Process Result type
-export interface AIProcessResult {
-  success: boolean;
-  command?: string;
-  interpretation?: string;
-  actions?: Array<{ type: string; payload: any }>;
-  message?: string;
-  error?: string;
-  floorPlan?: any;
-  preview?: any;
-}
-
-// AI Orchestrator (facade over aiService)
-export { aiService as aiOrchestrator } from './services/AIService';
+// Aliases para compatibilidade
+export { FloorPlanGenerator as default } from './generators/floorplan/FloorPlanGenerator';
