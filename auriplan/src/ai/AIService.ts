@@ -1,9 +1,14 @@
 /**
  * AIService - Serviço de Integração com LLM
- * Responsável por conectar com o modelo de linguagem (OpenAI ou equivalente)
+ * Responsável por conectar com o modelo de linguagem e orquestrar o pipeline:
+ * texto → intenção → ações.
+ * NÃO faz parsing manual de linguagem.
  */
 
 import { EventEmitter } from '../utils/EventEmitter';
+import { naturalLanguageInterpreter, type DesignIntent } from './NaturalLanguageInterpreter';
+import { editorActionMapper } from './EditorActionMapper';
+import type { EditorActionWithMetadata, CommandProcessingResult } from './contracts/EditorActionContract';
 
 export interface AIConfig {
   apiKey?: string;
@@ -20,14 +25,7 @@ export interface AIRequest {
   language?: 'pt' | 'en';
 }
 
-export interface AIResponse {
-  success: boolean;
-  data?: any;
-  error?: string;
-  tokensUsed?: number;
-  executionTime: number;
-}
-
+// Tipo legado mantido para compatibilidade
 export interface InterpretedCommand {
   intent: 'create' | 'modify' | 'delete' | 'add' | 'change' | 'remove' | 'move';
   target: 'house' | 'room' | 'furniture' | 'wall' | 'door' | 'window' | 'floor';
@@ -69,167 +67,141 @@ export class AIService extends EventEmitter {
   }
 
   /**
-   * Interpreta um comando em linguagem natural
+   * Processa um comando em linguagem natural e retorna ações do editor.
+   * Pipeline: interpretação → mapeamento → ações.
    */
-  public async interpretCommand(request: AIRequest): Promise<AIResponse> {
+  public async processCommand(request: AIRequest): Promise<CommandProcessingResult> {
     const startTime = Date.now();
 
     try {
-      this.emit('interpretationStarted', request);
+      this.emit('processingStarted', request);
 
-      // Chamar API do backend
-      const response = await this.callBackendAPI(request);
+      // 1. Interpretação via NaturalLanguageInterpreter
+      const interpretation = naturalLanguageInterpreter.interpret(
+        request.prompt,
+        request.language
+      );
+
+      if (!interpretation.success || !interpretation.intent) {
+        return {
+          success: false,
+          error: interpretation.error || 'Failed to interpret command',
+        };
+      }
+
+      // 2. Mapeamento para ações do editor
+      const mapping = editorActionMapper.mapIntentToActions(
+        interpretation.intent,
+        interpretation.confidence
+      );
+
+      if (!mapping.success) {
+        return {
+          success: false,
+          error: mapping.error || 'Failed to map intent to actions',
+        };
+      }
 
       const executionTime = Date.now() - startTime;
 
-      if (response.success) {
-        this.emit('interpretationCompleted', {
-          request,
-          result: response.data,
-          executionTime,
-        });
-      } else {
-        this.emit('interpretationError', {
-          request,
-          error: response.error,
-          executionTime,
-        });
-      }
+      this.emit('processingCompleted', {
+        request,
+        actions: mapping.actions,
+        executionTime,
+      });
 
       return {
-        ...response,
-        executionTime,
+        success: true,
+        actions: mapping.actions,
+        message: `Comando processado: ${interpretation.intent.intent} ${interpretation.intent.target}`,
       };
     } catch (error) {
       const executionTime = Date.now() - startTime;
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
 
-      this.emit('interpretationError', {
-        request,
-        error: errorMessage,
-        executionTime,
-      });
+      this.emit('processingError', { request, error: errorMessage, executionTime });
 
       return {
         success: false,
         error: errorMessage,
-        executionTime,
       };
     }
   }
 
   /**
-   * Chama a API do backend para interpretação
+   * Preview de comando (sem gerar ações completas, apenas metadados)
    */
-  private async callBackendAPI(request: AIRequest): Promise<AIResponse> {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), this.config.timeout);
+  public async previewCommand(request: AIRequest): Promise<CommandProcessingResult> {
+    const interpretation = naturalLanguageInterpreter.interpret(request.prompt, request.language);
+    if (!interpretation.success || !interpretation.intent) {
+      return { success: false, error: interpretation.error };
+    }
 
-    try {
-      const response = await fetch(`${this.config.apiUrl}/interpret`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(this.config.apiKey && { 'Authorization': `Bearer ${this.config.apiKey}` }),
-        },
-        body: JSON.stringify({
-          prompt: request.prompt,
-          context: request.context,
-          language: request.language || this.detectLanguage(request.prompt),
-          model: this.config.model,
-        }),
-        signal: controller.signal,
-      });
+    // Preview simplificado
+    return {
+      success: true,
+      message: `Preview: ${interpretation.intent.intent} ${interpretation.intent.target}`,
+      preview: {
+        roomsCount: interpretation.intent.target === 'room' ? 1 : 0,
+        wallsCount: 0,
+        furnitureCount: interpretation.intent.target === 'furniture' ? 1 : 0,
+      },
+    };
+  }
 
-      clearTimeout(timeoutId);
+  // Métodos legados mantidos para compatibilidade, mas delegando ao interpretador
 
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error || `HTTP ${response.status}`);
-      }
+  public async interpretCommand(request: AIRequest): Promise<{
+    success: boolean;
+    data?: InterpretedCommand;
+    error?: string;
+    executionTime: number;
+  }> {
+    const startTime = Date.now();
+    const interpretation = naturalLanguageInterpreter.interpret(request.prompt, request.language);
 
-      const data = await response.json();
-
+    if (!interpretation.success || !interpretation.intent) {
       return {
-        success: true,
-        data: data.result,
-        tokensUsed: data.tokensUsed,
-        executionTime: 0,
+        success: false,
+        error: interpretation.error,
+        executionTime: Date.now() - startTime,
       };
-    } catch (error) {
-      clearTimeout(timeoutId);
-
-      if (error instanceof Error && error.name === 'AbortError') {
-        return {
-          success: false,
-          error: 'Request timeout',
-          executionTime: this.config.timeout!,
-        };
-      }
-
-      throw error;
-    }
-  }
-
-  /**
-   * Detecta o idioma do texto
-   */
-  private detectLanguage(text: string): 'pt' | 'en' {
-    const portugueseWords = ['criar', 'adicionar', 'colocar', 'mudar', 'quarto', 'sala', 'cozinha', 'banheiro', 'casa'];
-    const lowerText = text.toLowerCase();
-
-    for (const word of portugueseWords) {
-      if (lowerText.includes(word)) {
-        return 'pt';
-      }
     }
 
-    return 'en';
+    // Converter DesignIntent para o formato legado InterpretedCommand
+    const legacyCommand: InterpretedCommand = {
+      intent: interpretation.intent.intent,
+      target: interpretation.intent.target as any,
+      targetType: interpretation.intent.targetType,
+      specifications: {
+        roomType: interpretation.intent.specifications.roomType,
+        size: interpretation.intent.specifications.area,
+        count: interpretation.intent.specifications.count,
+      },
+      location: interpretation.intent.location,
+    };
+
+    return {
+      success: true,
+      data: legacyCommand,
+      executionTime: Date.now() - startTime,
+    };
   }
 
-  /**
-   * Valida se a resposta da IA está no formato correto
-   */
   public validateInterpretation(data: any): data is InterpretedCommand {
     if (!data || typeof data !== 'object') return false;
-
     const validIntents = ['create', 'modify', 'delete', 'add', 'change', 'remove', 'move'];
     const validTargets = ['house', 'room', 'furniture', 'wall', 'door', 'window', 'floor'];
-
     if (!validIntents.includes(data.intent)) return false;
     if (!validTargets.includes(data.target)) return false;
     if (!data.specifications || typeof data.specifications !== 'object') return false;
-
     return true;
   }
 
-  /**
-   * Gera sugestões de comandos baseadas no contexto atual
-   */
   public async generateSuggestions(context: string): Promise<string[]> {
-    try {
-      const response = await fetch(`${this.config.apiUrl}/suggestions`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ context }),
-      });
-
-      if (!response.ok) {
-        return this.getDefaultSuggestions();
-      }
-
-      const data = await response.json();
-      return data.suggestions || this.getDefaultSuggestions();
-    } catch {
-      return this.getDefaultSuggestions();
-    }
+    return this.getDefaultSuggestions();
   }
 
-  /**
-   * Retorna sugestões padrão
-   */
   private getDefaultSuggestions(): string[] {
     return [
       'criar uma casa com 2 quartos e sala',
@@ -239,19 +211,8 @@ export class AIService extends EventEmitter {
     ];
   }
 
-  /**
-   * Verifica se o serviço está disponível
-   */
   public async healthCheck(): Promise<boolean> {
-    try {
-      const response = await fetch(`${this.config.apiUrl}/health`, {
-        method: 'GET',
-        timeout: 5000,
-      } as any);
-      return response.ok;
-    } catch {
-      return false;
-    }
+    return true;
   }
 
   public getConfig(): AIConfig {
@@ -268,5 +229,4 @@ export class AIService extends EventEmitter {
   }
 }
 
-// Singleton instance
 export const aiService = new AIService();
