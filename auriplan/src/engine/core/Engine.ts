@@ -3,7 +3,7 @@
  * Core engine that orchestrates 2D/3D rendering, materials, lighting and camera
  */
 
-import { Render2D } from '../render2d/Render2D';
+import { Render2DEngine } from '../render2d/Render2DEngine';
 import Render3DEngine from '../render3d/Render3DEngine';
 import { MaterialSystem } from '../materials/MaterialSystem';
 import { LightingSystem } from '../lighting/LightingSystem';
@@ -30,7 +30,7 @@ export interface EngineStats {
 
 export class AuriaEngine extends EventEmitter {
   private config: EngineConfig;
-  private render2D!: Render2D;
+  private render2D!: Render2DEngine;
   private render3D!: Render3DEngine;
   private materialSystem!: MaterialSystem;
   private lightingSystem!: LightingSystem;
@@ -79,12 +79,19 @@ export class AuriaEngine extends EventEmitter {
       height: this.config.height,
     });
     
-    // Initialize 2D renderer
-    this.render2D = new Render2D({
-      canvas: this.config.canvas2D,
-      width: this.config.width,
-      height: this.config.height,
+    // Inicializa renderer 2D usando a API pública Render2DEngine
+    this.render2D = new Render2DEngine({
+      antialias: this.config.antialias,
+      showGrid: true,
+      showAxes: true,
+      showDimensions: true,
+      selectionColor: '#3b82f6',
+      hoverColor: '#60a5fa',
+      wallColor: '#cbd5e1',
+      roomFillOpacity: 0.2,
+      defaultWallThickness: 0.15,
     });
+    this.render2D.initialize(this.config.canvas2D);
     
     // Initialize 3D renderer
     this.render3D = new Render3DEngine({
@@ -138,10 +145,12 @@ export class AuriaEngine extends EventEmitter {
     (this.cameraSystem as any).update(deltaTime);
     (this.lightingSystem as any).update(deltaTime);
 
-    (this.render3D as any).render(deltaTime);
-    this.render2D.render(deltaTime);
+    // Render 3D
+    this.render3D.render();
 
-    this.stats.drawCalls = this.render3D.getDrawCalls() + this.render2D.getDrawCalls();
+    // O render 2D é acionado externamente via requestRenderFrame (Canvas2D)
+
+    this.stats.drawCalls = this.render3D.getDrawCalls();
     this.stats.triangles = this.render3D.getTriangleCount();
 
     this.emit('render', this.stats);
@@ -160,7 +169,7 @@ export class AuriaEngine extends EventEmitter {
     this.emit('resize', { width, height });
   }
 
-  getRender2D(): Render2D { return this.render2D; }
+  getRender2D(): Render2DEngine { return this.render2D; }
   getRender3D(): Render3DEngine { return this.render3D; }
   getMaterialSystem(): MaterialSystem { return this.materialSystem; }
   getLightingSystem(): LightingSystem { return this.lightingSystem; }
