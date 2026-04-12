@@ -31,107 +31,108 @@ import type {
 
 import { splitWallAtPoint } from '@core/wall/WallSplitEngine';
 
+// ==================== EDITOR STATE INTERFACE ====================
+export interface EditorState {
+  // Data
+  project: import('@auriplan-types').Project | null;
+  scenes: import('@auriplan-types').Scene[];
+  currentSceneId: string | null;
 
-  // ==================== EDITOR STATE INTERFACE ====================
-  export interface EditorState {
-    // Data
-    project: import('@auriplan-types').Project | null;
-    scenes: import('@auriplan-types').Scene[];
-    currentSceneId: string | null;
+  // UI state
+  viewMode: import('@auriplan-types').ViewMode;
+  tool: import('@auriplan-types').Tool;
+  selectedIds: string[];
+  hoveredId: string | null;
 
-    // UI state
-    viewMode: import('@auriplan-types').ViewMode;
-    tool: import('@auriplan-types').Tool;
-    selectedIds: string[];
-    hoveredId: string | null;
+  // Settings
+  grid: import('@auriplan-types').GridSettings;
+  snap: import('@auriplan-types').SnapSettings;
+  camera: import('@auriplan-types').CameraState;
 
-    // Settings
-    grid: import('@auriplan-types').GridSettings;
-    snap: import('@auriplan-types').SnapSettings;
-    camera: import('@auriplan-types').CameraState;
+  // History
+  history: Array<{ scenes: import('@auriplan-types').Scene[]; currentSceneId: string | null }>;
+  historyIndex: number;
 
-    // History
-    history: Array<{ scenes: import('@auriplan-types').Scene[]; currentSceneId: string | null }>;
-    historyIndex: number;
+  // Internal cache
+  _junctionsCache: Record<string, any>;
 
-    // Internal cache
-    _junctionsCache: Record<string, any>;
+  // Actions - Project
+  createProject: (name: string, owner: import('@auriplan-types').User, description?: string) => void;
+  loadTemplate: (templateId: string, name: string) => void;
+  saveProject: () => void;
+  exportProject: () => string;
+  importProject: (data: string) => boolean;
+  addScene: (name: string) => void;
+  deleteScene: (id: string) => void;
+  setCurrentScene: (id: string) => void;
 
-    // Actions - Project
-    createProject: (name: string, owner: import('@auriplan-types').User, description?: string) => void;
-    loadTemplate: (templateId: string, name: string) => void;
-    saveProject: () => void;
-    exportProject: () => string;
-    importProject: (data: string) => boolean;
-    addScene: (name: string) => void;
-    deleteScene: (id: string) => void;
-    setCurrentScene: (id: string) => void;
+  // Actions - Walls
+  addWall: (start: import('@auriplan-types').Vec2, end: import('@auriplan-types').Vec2) => void;
+  updateWall: (id: string, updates: Partial<import('@auriplan-types').Wall>) => void;
+  deleteWall: (id: string) => void;
+  moveWallVertex: (wallId: string, vertex: 'start' | 'end', newPosition: import('@auriplan-types').Vec2) => void;
+  moveWall: (wallId: string, delta: import('@auriplan-types').Vec2) => void;
+  createWallsFromPolygon: (points: import('@auriplan-types').Vec2[]) => void;
+  splitWall: (wallId: string, point: import('@auriplan-types').Vec2) => void;
+  updateWallsBatch: (updates: Array<{ id: string; start: Vec2; end: Vec2 }>) => void; // NOVA AÇÃO CANÔNICA
 
-    // Actions - Walls
-    addWall: (start: import('@auriplan-types').Vec2, end: import('@auriplan-types').Vec2) => void;
-    updateWall: (id: string, updates: Partial<import('@auriplan-types').Wall>) => void;
-    deleteWall: (id: string) => void;
-    moveWallVertex: (wallId: string, vertex: 'start' | 'end', newPosition: import('@auriplan-types').Vec2) => void;
-    moveWall: (wallId: string, delta: import('@auriplan-types').Vec2) => void;
-    createWallsFromPolygon: (points: import('@auriplan-types').Vec2[]) => void;
-    splitWall: (wallId: string, point: import('@auriplan-types').Vec2) => void; // NOVA ACTION CANÔNICA
-    // Live updates (no history — for smooth dragging)
-    _liveUpdateWall: (id: string, start: import('@auriplan-types').Vec2, end: import('@auriplan-types').Vec2) => void;
-    _liveUpdateRoomPoints: (id: string, points: import('@auriplan-types').Vec2[]) => void;
-    _liveUpdateFurniturePos: (id: string, position: [number, number, number]) => void;
-    _liveUpdateWallsBatch: (updates: Array<{ id: string; start: Vec2; end: Vec2 }>) => void;
+  // Live updates (no history — for smooth dragging)
+  _liveUpdateWall: (id: string, start: import('@auriplan-types').Vec2, end: import('@auriplan-types').Vec2) => void;
+  _liveUpdateRoomPoints: (id: string, points: import('@auriplan-types').Vec2[]) => void;
+  _liveUpdateFurniturePos: (id: string, position: [number, number, number]) => void;
+  _liveUpdateWallsBatch: (updates: Array<{ id: string; start: Vec2; end: Vec2 }>) => void;
 
-    // Actions - Rooms
-    addRoom: (points: import('@auriplan-types').Vec2[]) => void;
-    updateRoom: (id: string, updates: Partial<import('@auriplan-types').Room>) => void;
-    deleteRoom: (id: string) => void;
+  // Actions - Rooms
+  addRoom: (points: import('@auriplan-types').Vec2[]) => void;
+  updateRoom: (id: string, updates: Partial<import('@auriplan-types').Room>) => void;
+  deleteRoom: (id: string) => void;
 
-    // Actions - Doors
-    addDoor: (wallId: string, position: number, width: number) => void;
-    updateDoor: (id: string, updates: Partial<import('@auriplan-types').Door>) => void;
-    deleteDoor: (id: string) => void;
+  // Actions - Doors
+  addDoor: (wallId: string, position: number, width: number) => void;
+  updateDoor: (id: string, updates: Partial<import('@auriplan-types').Door>) => void;
+  deleteDoor: (id: string) => void;
 
-    // Actions - Windows
-    addWindow: (wallId: string, position: number, width: number) => void;
-    updateWindow: (id: string, updates: Partial<import('@auriplan-types').Window>) => void;
-    deleteWindow: (id: string) => void;
+  // Actions - Windows
+  addWindow: (wallId: string, position: number, width: number) => void;
+  updateWindow: (id: string, updates: Partial<import('@auriplan-types').Window>) => void;
+  deleteWindow: (id: string) => void;
 
-    // Actions - Furniture
-    addFurniture: (furniture: Omit<import('@auriplan-types').Furniture, 'id'>) => void;
-    updateFurniture: (id: string, updates: Partial<import('@auriplan-types').Furniture>) => void;
-    deleteFurniture: (id: string) => void;
-    duplicateFurniture: (id: string) => void;
+  // Actions - Furniture
+  addFurniture: (furniture: Omit<import('@auriplan-types').Furniture, 'id'>) => void;
+  updateFurniture: (id: string, updates: Partial<import('@auriplan-types').Furniture>) => void;
+  deleteFurniture: (id: string) => void;
+  duplicateFurniture: (id: string) => void;
 
-    // Actions - Measurements
-    addMeasurement: (start: import('@auriplan-types').Vec2, end: import('@auriplan-types').Vec2) => void;
-    deleteMeasurement: (id: string) => void;
+  // Actions - Measurements
+  addMeasurement: (start: import('@auriplan-types').Vec2, end: import('@auriplan-types').Vec2) => void;
+  deleteMeasurement: (id: string) => void;
 
-    // Actions - Selection
-    select: (id: string | string[], addToSelection?: boolean) => void;
-    deselect: (id: string) => void;
-    deselectAll: () => void;
+  // Actions - Selection
+  select: (id: string | string[], addToSelection?: boolean) => void;
+  deselect: (id: string) => void;
+  deselectAll: () => void;
 
-    // Actions - UI
-    setViewMode: (mode: import('@auriplan-types').ViewMode) => void;
-    setTool: (tool: import('@auriplan-types').Tool) => void;
-    toggleGrid: () => void;
-    toggleSnap: () => void;
-    setGrid: (grid: Partial<import('@auriplan-types').GridSettings>) => void;
-    setSnap: (snap: Partial<import('@auriplan-types').SnapSettings>) => void;
-    setCamera: (camera: Partial<import('@auriplan-types').CameraState>) => void;
-    zoomIn: () => void;
-    zoomOut: () => void;
-    fitToView: () => void;
+  // Actions - UI
+  setViewMode: (mode: import('@auriplan-types').ViewMode) => void;
+  setTool: (tool: import('@auriplan-types').Tool) => void;
+  toggleGrid: () => void;
+  toggleSnap: () => void;
+  setGrid: (grid: Partial<import('@auriplan-types').GridSettings>) => void;
+  setSnap: (snap: Partial<import('@auriplan-types').SnapSettings>) => void;
+  setCamera: (camera: Partial<import('@auriplan-types').CameraState>) => void;
+  zoomIn: () => void;
+  zoomOut: () => void;
+  fitToView: () => void;
 
-    // Actions - History
-    saveToHistory: () => void;
-    undo: () => void;
-    redo: () => void;
-    canUndo: () => boolean;
-    canRedo: () => boolean;
-  }
+  // Actions - History
+  saveToHistory: () => void;
+  undo: () => void;
+  redo: () => void;
+  canUndo: () => boolean;
+  canRedo: () => boolean;
+}
 
-  const safeClone = <T>(obj: T): T => JSON.parse(JSON.stringify(obj));
+const safeClone = <T>(obj: T): T => JSON.parse(JSON.stringify(obj));
 
 interface JunctionPoint {
   x: number;
@@ -237,6 +238,7 @@ export type EditorStore = {
   subscribe: (listener: () => void) => () => void;
   destroy: () => void;
 } & EditorState;
+
 export const useEditorStore = create<EditorState>()(
   devtools(
     immer((set, get) => ({
@@ -515,7 +517,6 @@ export const useEditorStore = create<EditorState>()(
         }
       },
 
-      // NOVA ACTION CANÔNICA: SPLIT DE PAREDE
       splitWall: (wallId: string, point: Vec2) => {
         set(state => {
           const scene = getCurrentScene(state);
@@ -525,6 +526,24 @@ export const useEditorStore = create<EditorState>()(
           if (result.removedWallIds.length === 0) return;
 
           scene.walls = result.updatedWalls;
+          applyGeometryToScene(scene);
+          updateJunctionsForScene(state, scene.id);
+        });
+        get().saveToHistory();
+      },
+
+      // NOVA AÇÃO CANÔNICA: ATUALIZAÇÃO EM LOTE DE PAREDES
+      updateWallsBatch: (updates: Array<{ id: string; start: Vec2; end: Vec2 }>) => {
+        set(state => {
+          const scene = getCurrentScene(state);
+          if (!scene) return;
+          for (const upd of updates) {
+            const wall = scene.walls.find(w => w.id === upd.id);
+            if (wall) {
+              wall.start = [...upd.start] as Vec2;
+              wall.end = [...upd.end] as Vec2;
+            }
+          }
           applyGeometryToScene(scene);
           updateJunctionsForScene(state, scene.id);
         });
@@ -577,7 +596,6 @@ export const useEditorStore = create<EditorState>()(
         });
       },
 
-      // Batch update for multiple walls (used by SelectToolHandler for connected walls)
       _liveUpdateWallsBatch: (updates) => {
         set(state => {
           const scene = getCurrentScene(state);
