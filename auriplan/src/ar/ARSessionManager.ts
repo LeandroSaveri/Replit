@@ -6,7 +6,7 @@
 import { EventEmitter } from '../utils/EventEmitter';
 import { RoomScanner, RoomScanResult } from './RoomScanner';
 import { RoomScanConverter } from './RoomScanConverter';
-import { FloorPlanData } from './RoomScanConverter';
+import type { EditorAction } from '../ai/contracts/EditorActionContract';
 
 export interface ARSessionConfig {
   requiredFeatures: string[];
@@ -48,7 +48,7 @@ export class ARSessionManager extends EventEmitter {
   private xrSession: XRSession | null = null;
   private xrReferenceSpace: XRReferenceSpace | null = null;
   private scanResult: RoomScanResult | null = null;
-  private floorPlanResult: FloorPlanData | null = null;
+  private lastActions: EditorAction[] | null = null;
 
   // Configuration
   private readonly defaultConfig: ARSessionConfig = {
@@ -324,9 +324,10 @@ export class ARSessionManager extends EventEmitter {
   }
 
   /**
-   * Convert scan to floor plan
+   * Convert scan to EditorActions
+   * @returns Array of EditorAction to be applied via editorStore
    */
-  async convertToFloorPlan(scanResult?: RoomScanResult): Promise<FloorPlanData> {
+  async convertToEditorActions(scanResult?: RoomScanResult): Promise<EditorAction[]> {
     const scan = scanResult || this.scanResult;
     
     if (!scan) {
@@ -337,22 +338,22 @@ export class ARSessionManager extends EventEmitter {
     this.emit('progress', {
       phase: 'converting',
       progress: 0,
-      message: 'Converting scan to floor plan...',
+      message: 'Converting scan to editor actions...',
     } as ARProgressUpdate);
 
     try {
-      const floorPlan = await this.scanConverter.convertScanToFloorPlan(scan);
-      this.floorPlanResult = floorPlan;
+      const actions = await this.scanConverter.convertScanToEditorActions(scan);
+      this.lastActions = actions;
 
       this.setPhase('completed');
       this.emit('progress', {
         phase: 'converting',
         progress: 100,
-        message: 'Floor plan created successfully',
+        message: 'Editor actions created successfully',
       } as ARProgressUpdate);
 
-      this.emit('floorPlanReady', floorPlan);
-      return floorPlan;
+      this.emit('actionsReady', actions);
+      return actions;
 
     } catch (error) {
       this.setError(`Conversion failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
@@ -361,16 +362,28 @@ export class ARSessionManager extends EventEmitter {
   }
 
   /**
-   * Complete scan workflow: scan + convert
+   * Apply the generated actions using the provided apply function (typically editorStore.dispatch)
+   * @param applyFn Function that receives EditorAction[] and applies them
    */
-  async completeScanWorkflow(): Promise<FloorPlanData> {
+  async applyScanActions(applyFn: (actions: EditorAction[]) => void): Promise<void> {
+    if (!this.lastActions) {
+      throw new Error('No actions available. Run convertToEditorActions first.');
+    }
+    applyFn(this.lastActions);
+    this.emit('actionsApplied', this.lastActions);
+  }
+
+  /**
+   * Complete scan workflow: scan -> convert -> return actions
+   */
+  async completeScanWorkflow(): Promise<EditorAction[]> {
     // Stop scanning and get result
     const scanResult = await this.stopScanning();
     
-    // Convert to floor plan
-    const floorPlan = await this.convertToFloorPlan(scanResult);
+    // Convert to editor actions
+    const actions = await this.convertToEditorActions(scanResult);
     
-    return floorPlan;
+    return actions;
   }
 
   /**
@@ -433,10 +446,10 @@ export class ARSessionManager extends EventEmitter {
   }
 
   /**
-   * Get last floor plan result
+   * Get last generated actions
    */
-  getLastFloorPlan(): FloorPlanData | null {
-    return this.floorPlanResult;
+  getLastActions(): EditorAction[] | null {
+    return this.lastActions;
   }
 
   /**
@@ -451,7 +464,7 @@ export class ARSessionManager extends EventEmitter {
    */
   reset(): void {
     this.scanResult = null;
-    this.floorPlanResult = null;
+    this.lastActions = null;
     this.sessionState.error = null;
     this.setPhase('idle');
     this.emit('reset');
