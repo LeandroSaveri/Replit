@@ -4,7 +4,9 @@
  */
 
 import * as THREE from 'three';
-// OrbitControls - dynamic import
+import { ObjectPoolManager } from './ObjectPoolManager';
+import { ScenePartitionManager } from './ScenePartitionManager';
+
 type OrbitControls = any;
 
 export interface Render3DOptions {
@@ -37,20 +39,21 @@ class Render3DEngine {
   public camera: THREE.PerspectiveCamera;
   public controls: OrbitControls;
   
-  // Optimization features
   private lodManager = new Map<string, THREE.LOD>();
   private instancedMeshes = new Map<string, THREE.InstancedMesh>();
   private frustum = new THREE.Frustum();
   private frustumMatrix = new THREE.Matrix4();
   private occlusionCullingEnabled = true;
   
-  // Performance monitoring
   private frameCount = 0;
   private lastTime = performance.now();
   public fps = 0;
   
-  // Render settings
   private options: Render3DOptions;
+
+  // Gerenciadores de performance (uso interno)
+  private objectPoolManager: ObjectPoolManager;
+  private partitionManager: ScenePartitionManager;
 
   constructor(options: Render3DOptions) {
     this.options = {
@@ -69,6 +72,10 @@ class Render3DEngine {
     
     this.setupLighting();
     this.setupEventListeners();
+
+    // Inicializa sistemas de otimização
+    this.objectPoolManager = new ObjectPoolManager();
+    this.partitionManager = new ScenePartitionManager({ cellSize: 5 });
   }
 
   private createRenderer(): THREE.WebGLRenderer {
@@ -83,13 +90,11 @@ class Render3DEngine {
     renderer.setPixelRatio(this.options.pixelRatio ?? 1);
     renderer.setClearColor(0xf5f5f5, 1);
 
-    // Shadow settings
     if (this.options.shadows) {
       renderer.shadowMap.enabled = true;
       renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     }
 
-    // Output encoding
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1.0;
@@ -100,10 +105,7 @@ class Render3DEngine {
   private createScene(): THREE.Scene {
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(0xf5f5f5);
-    
-    // Add fog for depth
     scene.fog = new THREE.Fog(0xf5f5f5, 10, 50);
-    
     return scene;
   }
 
@@ -120,7 +122,6 @@ class Render3DEngine {
   }
 
   private createControls(): OrbitControls {
-    // OrbitControls stub (browser bundler will handle the real import via dynamic import)
     const ControlsClass: any = class {
       camera: any; domElement: any;
       enableDamping = true; dampingFactor = 0.05; enableZoom = true;
@@ -132,16 +133,14 @@ class Render3DEngine {
     controls.dampingFactor = 0.05;
     controls.minDistance = 1;
     controls.maxDistance = 50;
-    controls.maxPolarAngle = Math.PI / 2 - 0.1; // Prevent going below ground
+    controls.maxPolarAngle = Math.PI / 2 - 0.1;
     return controls;
   }
 
   private setupLighting(): void {
-    // Ambient light
     const ambientLight = new THREE.AmbientLight(0xffffff, 0.4);
     this.scene.add(ambientLight);
 
-    // Main directional light (sun)
     const sunLight = new THREE.DirectionalLight(0xffffff, 1.0);
     sunLight.position.set(10, 20, 10);
     sunLight.castShadow = this.options.shadows ?? false;
@@ -160,7 +159,6 @@ class Render3DEngine {
     
     this.scene.add(sunLight);
 
-    // Fill light
     const fillLight = new THREE.DirectionalLight(0xffffff, 0.3);
     fillLight.position.set(-10, 10, -10);
     this.scene.add(fillLight);
@@ -182,53 +180,39 @@ class Render3DEngine {
     }
   }
 
-  /**
-   * Create LOD (Level of Detail) for an object
-   */
   createLOD(lodId: string, levels: LODLevel[]): THREE.LOD {
     const lod = new THREE.LOD();
-
     levels.forEach((level, index) => {
       const mesh = new THREE.Mesh(level.geometry, level.material);
       mesh.castShadow = true;
       mesh.receiveShadow = true;
       lod.addLevel(mesh, level.distance);
     });
-
     this.lodManager.set(lodId, lod);
     return lod;
   }
 
-  /**
-   * Create instanced mesh for repeated objects
-   */
   createInstancedMesh(meshId: string, data: InstancedMeshData): THREE.InstancedMesh {
     const instancedMesh = new THREE.InstancedMesh(
       data.geometry,
       data.material,
       data.count
     );
-
     instancedMesh.castShadow = true;
     instancedMesh.receiveShadow = true;
 
-    // Set matrices for each instance
     const dummy = new THREE.Object3D();
     data.matrices.forEach((matrix, index) => {
       dummy.applyMatrix4(matrix);
       dummy.updateMatrix();
       instancedMesh.setMatrixAt(index, dummy.matrix);
     });
-
     instancedMesh.instanceMatrix.needsUpdate = true;
 
     this.instancedMeshes.set(meshId, instancedMesh);
     return instancedMesh;
   }
 
-  /**
-   * Update instanced mesh matrices
-   */
   updateInstancedMesh(meshId: string, matrices: THREE.Matrix4[]): void {
     const instancedMesh = this.instancedMeshes.get(meshId);
     if (!instancedMesh) return;
@@ -240,13 +224,9 @@ class Render3DEngine {
       dummy.updateMatrix();
       instancedMesh.setMatrixAt(index, dummy.matrix);
     });
-
     instancedMesh.instanceMatrix.needsUpdate = true;
   }
 
-  /**
-   * Perform frustum culling
-   */
   private updateFrustum(): void {
     this.frustumMatrix.multiplyMatrices(
       this.camera.projectionMatrix,
@@ -255,56 +235,196 @@ class Render3DEngine {
     this.frustum.setFromProjectionMatrix(this.frustumMatrix);
   }
 
-  /**
-   * Check if object is in frustum
-   */
   isInFrustum(object: THREE.Object3D): boolean {
     const boundingBox = new THREE.Box3().setFromObject(object);
     return this.frustum.intersectsBox(boundingBox);
   }
 
-  /**
-   * Enable/disable occlusion culling
-   */
   setOcclusionCulling(enabled: boolean): void {
     this.occlusionCullingEnabled = enabled;
   }
 
   /**
-   * Add object to scene
+   * Adiciona objeto à cena e ao particionamento
    */
   addObject(object: THREE.Object3D): void {
     this.scene.add(object);
+    this.partitionManager.addObject(object);
   }
 
   /**
-   * Remove object from scene
+   * Remove objeto da cena e do particionamento
    */
   removeObject(object: THREE.Object3D): void {
     this.scene.remove(object);
+    this.partitionManager.removeObject(object);
   }
 
   /**
-   * Render a single frame
+   * Sincroniza a cena com os dados atuais do editor
+   * (Chamado externamente via componente Render3D)
    */
+  syncScene(data: {
+    walls: any[];
+    rooms: any[];
+    doors: any[];
+    windows: any[];
+    furniture: any[];
+  }): void {
+    // Limpa objetos existentes (exceto luzes, câmera, etc.)
+    const toRemove: THREE.Object3D[] = [];
+    this.scene.traverse(obj => {
+      if (obj instanceof THREE.Mesh && !(obj instanceof THREE.InstancedMesh)) {
+        toRemove.push(obj);
+      }
+    });
+    toRemove.forEach(obj => this.removeObject(obj));
+
+    // Recria representações visuais a partir dos dados
+    // Nota: Esta é a única parte que "conhece" o domínio, mas apenas para conversão visual.
+    data.walls.forEach(wall => this.createWallMesh(wall));
+    data.rooms.forEach(room => this.createRoomMesh(room));
+    data.doors.forEach(door => this.createDoorMesh(door, data.walls));
+    data.windows.forEach(win => this.createWindowMesh(win, data.walls));
+    data.furniture.forEach(furn => this.createFurnitureMesh(furn));
+  }
+
+  private createWallMesh(wall: any): void {
+    const start = new THREE.Vector3(wall.start[0], 0, wall.start[1]);
+    const end = new THREE.Vector3(wall.end[0], 0, wall.end[1]);
+    const direction = new THREE.Vector3().subVectors(end, start);
+    const length = direction.length();
+    const angle = Math.atan2(direction.z, direction.x);
+    const position = new THREE.Vector3().addVectors(start, end).multiplyScalar(0.5);
+    position.y = (wall.height || 2.8) / 2;
+
+    const geometry = new THREE.BoxGeometry(length, wall.height || 2.8, wall.thickness || 0.15);
+    const material = new THREE.MeshStandardMaterial({ color: wall.color || '#cbd5e1' });
+    const mesh = new THREE.Mesh(geometry, material);
+    mesh.position.copy(position);
+    mesh.rotation.y = -angle;
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+    mesh.userData = { type: 'wall', id: wall.id };
+    this.addObject(mesh);
+  }
+
+  private createRoomMesh(room: any): void {
+    if (room.points.length < 3) return;
+    const shape = new THREE.Shape();
+    shape.moveTo(room.points[0][0], room.points[0][1]);
+    for (let i = 1; i < room.points.length; i++) {
+      shape.lineTo(room.points[i][0], room.points[i][1]);
+    }
+    shape.closePath();
+
+    const geometry = new THREE.ShapeGeometry(shape);
+    const material = new THREE.MeshStandardMaterial({ color: room.floorColor || '#e2e8f0', side: THREE.DoubleSide });
+    const mesh = new THREE.Mesh(geometry, material);
+    mesh.rotation.x = -Math.PI / 2;
+    mesh.position.y = 0.01;
+    mesh.receiveShadow = true;
+    mesh.userData = { type: 'room', id: room.id };
+    this.addObject(mesh);
+
+    // Teto simples
+    const ceilingMat = new THREE.MeshStandardMaterial({ color: room.ceilingColor || '#f8fafc', side: THREE.DoubleSide });
+    const ceiling = new THREE.Mesh(geometry, ceilingMat);
+    ceiling.rotation.x = Math.PI / 2;
+    ceiling.position.y = room.height || 2.8;
+    ceiling.receiveShadow = true;
+    ceiling.userData = { type: 'roomCeiling', id: room.id };
+    this.addObject(ceiling);
+  }
+
+  private createDoorMesh(door: any, walls: any[]): void {
+    const wall = walls.find((w: any) => w.id === door.wallId);
+    if (!wall) return;
+    const start = new THREE.Vector3(wall.start[0], 0, wall.start[1]);
+    const end = new THREE.Vector3(wall.end[0], 0, wall.end[1]);
+    const dir = new THREE.Vector3().subVectors(end, start);
+    const length = dir.length();
+    const angle = Math.atan2(dir.z, dir.x);
+    const pos = start.clone().add(dir.clone().multiplyScalar(door.position / length));
+    pos.y = (door.height || 2.1) / 2;
+
+    const doorWidth = door.width || 0.9;
+    const doorHeight = door.height || 2.1;
+    const doorDepth = door.depth || 0.05;
+
+    const geometry = new THREE.BoxGeometry(doorWidth, doorHeight, doorDepth);
+    const material = new THREE.MeshStandardMaterial({ color: door.panelColor || '#b45309' });
+    const mesh = new THREE.Mesh(geometry, material);
+    mesh.position.copy(pos);
+    mesh.rotation.y = -angle;
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+    mesh.userData = { type: 'door', id: door.id };
+    this.addObject(mesh);
+  }
+
+  private createWindowMesh(win: any, walls: any[]): void {
+    const wall = walls.find((w: any) => w.id === win.wallId);
+    if (!wall) return;
+    const start = new THREE.Vector3(wall.start[0], 0, wall.start[1]);
+    const end = new THREE.Vector3(wall.end[0], 0, wall.end[1]);
+    const dir = new THREE.Vector3().subVectors(end, start);
+    const length = dir.length();
+    const angle = Math.atan2(dir.z, dir.x);
+    const pos = start.clone().add(dir.clone().multiplyScalar(win.position / length));
+    pos.y = (win.sillHeight || 0.9) + (win.height || 1.2) / 2;
+
+    const width = win.width || 1.2;
+    const height = win.height || 1.2;
+    const depth = 0.1;
+
+    const glassGeo = new THREE.BoxGeometry(width, height, 0.02);
+    const glassMat = new THREE.MeshPhysicalMaterial({ color: '#87CEEB', transparent: true, opacity: 0.3, roughness: 0, metalness: 0 });
+    const glass = new THREE.Mesh(glassGeo, glassMat);
+    glass.position.copy(pos);
+    glass.rotation.y = -angle;
+    glass.castShadow = true;
+    glass.receiveShadow = true;
+    glass.userData = { type: 'window', id: win.id };
+    this.addObject(glass);
+
+    const frameGeo = new THREE.BoxGeometry(width + 0.08, height + 0.08, 0.06);
+    const frameMat = new THREE.MeshStandardMaterial({ color: win.frameColor || '#475569' });
+    const frame = new THREE.Mesh(frameGeo, frameMat);
+    frame.position.copy(pos);
+    frame.rotation.y = -angle;
+    frame.castShadow = true;
+    frame.receiveShadow = true;
+    frame.userData = { type: 'windowFrame', id: win.id };
+    this.addObject(frame);
+  }
+
+  private createFurnitureMesh(item: any): void {
+    const pos = Array.isArray(item.position) ? item.position : [item.position.x, item.position.y, item.position.z];
+    const rot = Array.isArray(item.rotation) ? item.rotation : [0, item.rotation, 0];
+    const scale = item.scale || [1, 1, 1];
+    const dims = item.dimensions || { width: 1, depth: 1, height: 1 };
+    const geometry = new THREE.BoxGeometry(dims.width * scale[0], dims.height * scale[1], dims.depth * scale[2]);
+    const material = new THREE.MeshStandardMaterial({ color: item.color || '#a0aec0' });
+    const mesh = new THREE.Mesh(geometry, material);
+    mesh.position.set(pos[0], pos[1], pos[2]);
+    mesh.rotation.set(rot[0], rot[1], rot[2]);
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+    mesh.userData = { type: 'furniture', id: item.id };
+    this.addObject(mesh);
+  }
+
   render(): void {
-    // Update controls
     this.controls.update();
-
-    // Update frustum for culling
     this.updateFrustum();
-
-    // Update FPS counter
     this.updateFPS();
-
-    // Render scene
     this.renderer.render(this.scene, this.camera);
   }
 
   private updateFPS(): void {
     this.frameCount++;
     const currentTime = performance.now();
-    
     if (currentTime - this.lastTime >= 1000) {
       this.fps = this.frameCount;
       this.frameCount = 0;
@@ -312,9 +432,6 @@ class Render3DEngine {
     }
   }
 
-  /**
-   * Start render loop
-   */
   startRenderLoop(callback?: () => void): void {
     const animate = () => {
       requestAnimationFrame(animate);
@@ -324,33 +441,20 @@ class Render3DEngine {
     animate();
   }
 
-  /**
-   * Set camera position
-   */
   setCameraPosition(x: number, y: number, z: number): void {
     this.camera.position.set(x, y, z);
   }
 
-  /**
-   * Look at target
-   */
   lookAt(x: number, y: number, z: number): void {
     this.camera.lookAt(x, y, z);
   }
 
-  /**
-   * Set background color
-   */
   setBackgroundColor(color: number | string): void {
     this.scene.background = new THREE.Color(color);
     if (this.scene.fog) {
       this.scene.fog.color = new THREE.Color(color);
     }
   }
-
-  /**
-   * Dispose of all resources
-   */
 
   resize(width: number, height: number): void {
     if (this.renderer) {
@@ -376,17 +480,12 @@ class Render3DEngine {
   }
 
   dispose(): void {
-    // Dispose renderer
     this.renderer.dispose();
-
-    // Dispose controls
     this.controls.dispose();
 
-    // Dispose scene objects
     this.scene.traverse((object) => {
       if (object instanceof THREE.Mesh) {
         object.geometry.dispose();
-        
         if (Array.isArray(object.material)) {
           object.material.forEach(m => m.dispose());
         } else {
@@ -395,19 +494,15 @@ class Render3DEngine {
       }
     });
 
-    // Clear maps
     this.lodManager.clear();
     this.instancedMeshes.clear();
+    this.objectPoolManager.clearAll();
+    this.partitionManager.clear();
 
-    // Remove event listeners
     window.removeEventListener('resize', this.handleResize.bind(this));
-
     console.log('[Render3DEngine] Resources disposed');
   }
 
-  /**
-   * Get performance stats
-   */
   getStats(): { fps: number; drawCalls: number; triangles: number } {
     const info = this.renderer.info;
     return {
