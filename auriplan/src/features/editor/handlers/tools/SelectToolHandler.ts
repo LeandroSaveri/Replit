@@ -350,7 +350,7 @@ export class SelectToolHandler implements ToolHandler {
     }
   }
 
-  // ── Double-click ──────────────────────────────────────────
+  // ── Double-click (agora usa action canônica do store) ─────
   private onDoubleClick(event: InteractionEvent): void {
     const hit = this.hitTest(event.position);
     if (hit.type === 'room') {
@@ -376,11 +376,8 @@ export class SelectToolHandler implements ToolHandler {
       ((splitPoint[0] - wall.start[0]) * ax + (splitPoint[1] - wall.start[1]) * ay) / len2
     ));
     const mid: Vec2 = [wall.start[0] + ax * t, wall.start[1] + ay * t];
-    const origStart: Vec2 = [...wall.start] as Vec2;
-    const origEnd: Vec2 = [...wall.end] as Vec2;
-    state.deleteWall(wallId);
-    state.addWall(origStart, mid);
-    state.addWall(mid, origEnd);
+    // CHAMA A ACTION CANÔNICA DO STORE
+    state.splitWall(wallId, mid);
     state.deselectAll();
   }
 
