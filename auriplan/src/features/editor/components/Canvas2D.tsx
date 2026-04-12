@@ -953,19 +953,19 @@ export function Canvas2D() {
     requestRenderFrame();
   }, [tool, screenToWorld, walls, store, createInteractionEvent, getModifiers, requestRenderFrame]);
 
+  // ============================================================
+  // DOUBLE CLICK — AGORA CHAMA A ACTION CANÔNICA DO STORE
+  // ============================================================
   const handleDoubleClick = useCallback((e: React.MouseEvent) => {
     const worldPos = screenToWorld(e.clientX, e.clientY);
     
-    // Verificar se clicou em uma parede para dividir
     if (tool === 'select') {
       const hit = hitTestWalls(worldPos);
       if (hit.wall) {
-        // Dividir parede no ponto clicado
         const closest = getClosestPointOnWall(worldPos, hit.wall);
-        if (closest.t > 0.1 && closest.t < 0.9) {
-          store.getState().deleteWall(hit.wall.id);
-          store.getState().addWall(hit.wall.start, closest.point);
-          store.getState().addWall(closest.point, hit.wall.end);
+        // Só divide se o ponto não estiver muito próximo das extremidades
+        if (closest.t > 0.05 && closest.t < 0.95) {
+          store.getState().splitWall(hit.wall.id, closest.point);
           setSelectedWallId(null);
           requestRenderFrame();
           return;
@@ -1043,11 +1043,8 @@ export function Canvas2D() {
               ((clickPos[0] - wall.start[0]) * ax + (clickPos[1] - wall.start[1]) * ay) / len2
             ));
             const mid: Vec2 = [wall.start[0] + ax * t, wall.start[1] + ay * t];
-            const s = [...wall.start] as Vec2;
-            const en = [...wall.end] as Vec2;
-            state.deleteWall(wallId);
-            state.addWall(s, mid);
-            state.addWall(mid, en);
+            // Usa a action canônica do store
+            state.splitWall(wallId, mid);
             state.deselectAll();
           }});
         }
