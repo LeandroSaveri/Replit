@@ -3,6 +3,7 @@
 // TEMA CLARO em todos os dispositivos
 // Ferramentas: Apenas MOBILE (≤md) no menu lateral
 // Desktop: Ferramentas ficam na Toolbar (barra superior escura)
+// Adicionado: botão Propriedades e controles de zoom no mobile
 // ============================================
 
 import { useState } from 'react';
@@ -32,6 +33,9 @@ import {
   Magnet,
   Maximize2,
   Calculator,
+  SlidersHorizontal,
+  ZoomIn,
+  ZoomOut,
 } from 'lucide-react';
 import { useEditorStore } from '@store/editorStore';
 import type { Scene, Tool } from '@auriplan-types';
@@ -54,6 +58,9 @@ interface SidebarProps {
   onSave?: () => void;
   isMobile?: boolean;
   onClose?: () => void;
+  onOpenProperties?: () => void;
+  viewMode?: any;
+  onViewModeChange?: (mode: any) => void;
 }
 
 interface LayerItemProps {
@@ -161,44 +168,97 @@ function MobileToolButton({
   );
 }
 
-// Canvas Controls - Mobile Light Theme
-function MobileCanvasControls() {
+// Canvas Controls - Mobile Light Theme (com zoom e propriedades)
+function MobileCanvasControls({ onOpenProperties }: { onOpenProperties?: () => void }) {
   const { grid, toggleGrid, snap, toggleSnap, fitToView } = useEditorStore();
 
+  // Funções para zoom (serão conectadas aos eventos globais)
+  const handleZoomIn = () => {
+    window.dispatchEvent(new CustomEvent('editor:zoom', { detail: 1 }));
+  };
+  const handleZoomOut = () => {
+    window.dispatchEvent(new CustomEvent('editor:zoom', { detail: -1 }));
+  };
+  const handleCenter = () => {
+    window.dispatchEvent(new CustomEvent('editor:center'));
+  };
+
   return (
-    <div className="flex gap-2">
-      <motion.button
-        whileTap={{ scale: 0.92 }}
-        onClick={toggleGrid}
-        className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl font-medium text-sm transition-all border ${
-          grid.visible 
-            ? 'bg-blue-50 text-blue-600 border-blue-200' 
-            : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'
-        }`}
-      >
-        <Grid3X3 className="w-4 h-4" />
-        Grade
-      </motion.button>
-      <motion.button
-        whileTap={{ scale: 0.92 }}
-        onClick={toggleSnap}
-        className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl font-medium text-sm transition-all border ${
-          snap.enabled 
-            ? 'bg-purple-50 text-purple-600 border-purple-200' 
-            : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'
-        }`}
-      >
-        <Magnet className="w-4 h-4" />
-        Snap
-      </motion.button>
-      <motion.button
-        whileTap={{ scale: 0.92 }}
-        onClick={fitToView}
-        className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl font-medium text-sm transition-all border bg-white text-gray-600 border-gray-200 hover:border-gray-300"
-      >
-        <Maximize2 className="w-4 h-4" />
-        Ajustar
-      </motion.button>
+    <div className="space-y-2">
+      <div className="flex gap-2">
+        <motion.button
+          whileTap={{ scale: 0.92 }}
+          onClick={toggleGrid}
+          className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl font-medium text-sm transition-all border ${
+            grid.visible 
+              ? 'bg-blue-50 text-blue-600 border-blue-200' 
+              : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'
+          }`}
+        >
+          <Grid3X3 className="w-4 h-4" />
+          Grade
+        </motion.button>
+        <motion.button
+          whileTap={{ scale: 0.92 }}
+          onClick={toggleSnap}
+          className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl font-medium text-sm transition-all border ${
+            snap.enabled 
+              ? 'bg-purple-50 text-purple-600 border-purple-200' 
+              : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'
+          }`}
+        >
+          <Magnet className="w-4 h-4" />
+          Snap
+        </motion.button>
+        <motion.button
+          whileTap={{ scale: 0.92 }}
+          onClick={fitToView}
+          className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl font-medium text-sm transition-all border bg-white text-gray-600 border-gray-200 hover:border-gray-300"
+        >
+          <Maximize2 className="w-4 h-4" />
+          Ajustar
+        </motion.button>
+      </div>
+
+      {/* Zoom controls */}
+      <div className="flex gap-2">
+        <motion.button
+          whileTap={{ scale: 0.92 }}
+          onClick={handleZoomIn}
+          className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl font-medium text-sm transition-all border bg-white text-gray-600 border-gray-200 hover:border-gray-300"
+        >
+          <ZoomIn className="w-4 h-4" />
+          Zoom +
+        </motion.button>
+        <motion.button
+          whileTap={{ scale: 0.92 }}
+          onClick={handleZoomOut}
+          className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl font-medium text-sm transition-all border bg-white text-gray-600 border-gray-200 hover:border-gray-300"
+        >
+          <ZoomOut className="w-4 h-4" />
+          Zoom −
+        </motion.button>
+        <motion.button
+          whileTap={{ scale: 0.92 }}
+          onClick={handleCenter}
+          className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl font-medium text-sm transition-all border bg-white text-gray-600 border-gray-200 hover:border-gray-300"
+        >
+          <Maximize2 className="w-4 h-4" />
+          Centralizar
+        </motion.button>
+      </div>
+
+      {/* Propriedades */}
+      {onOpenProperties && (
+        <motion.button
+          whileTap={{ scale: 0.92 }}
+          onClick={onOpenProperties}
+          className="w-full flex items-center justify-center gap-2 py-3 rounded-xl font-medium text-sm transition-all border bg-gradient-to-r from-blue-50 to-indigo-50 text-blue-700 border-blue-200 hover:border-blue-300"
+        >
+          <SlidersHorizontal className="w-4 h-4" />
+          Propriedades
+        </motion.button>
+      )}
     </div>
   );
 }
@@ -214,6 +274,7 @@ export function Sidebar({
   onSave,
   isMobile,
   onClose,
+  onOpenProperties,
 }: SidebarProps) {
   const [activeTab, setActiveTab] = useState<'scenes' | 'layers' | 'stats'>('scenes');
   const [expandedLayers, setExpandedLayers] = useState(true);
@@ -240,11 +301,8 @@ export function Sidebar({
     }
   };
 
-  // Função para selecionar ferramenta
   const handleToolSelect = (toolId: Tool) => {
     setTool(toolId);
-    // Opcional: fechar menu ao selecionar ferramenta
-    // if (onClose) onClose();
   };
 
   return (
@@ -426,7 +484,7 @@ export function Sidebar({
                   <div className="h-px bg-gray-200 my-2" />
                   <div className="space-y-3">
                     <p className="text-[10px] uppercase tracking-wider text-gray-400 font-semibold px-1">Canvas</p>
-                    <MobileCanvasControls />
+                    <MobileCanvasControls onOpenProperties={onOpenProperties} />
                   </div>
                 </>
               )}
