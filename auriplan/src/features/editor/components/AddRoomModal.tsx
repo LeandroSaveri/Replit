@@ -4,7 +4,7 @@
 
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, ChevronRight, ChevronLeft, Square, PenLine, Layers, Grid3X3 } from 'lucide-react';
+import { X, ChevronRight, ChevronLeft, Square, PenLine, Layers } from 'lucide-react';
 import { useEditorStore } from '@store/editorStore';
 import type { Vec2 } from '@auriplan-types';
 
@@ -16,40 +16,67 @@ interface AddRoomModalProps {
 type View = 'main' | 'fill' | 'roomTypes' | 'shapes';
 
 const ROOM_TYPES_RESIDENTIAL = [
-  'Cozinha', 'Sala de Jantar', 'Sala de Estar', 'Hall de Entrada',
-  'Dormitório', 'Dormitório Primário', 'Dormitório para crianças',
-  'Banheiro', 'Meia casa de banho', 'Armário', 'Escritório',
-  'Sala da Música', 'Sacada', 'Garagem', 'Corredor', 'Lavanderia',
+  'Sala de Estar',
+  'Dormitório',
+  'Cozinha',
+  'Banheiro',
+  'Sala de Jantar',
+  'Hall de Entrada',
+  'Dormitório Primário',
+  'Dormitório para crianças',
+  'Meia casa de banho',
+  'Armário',
+  'Escritório',
+  'Sala da Música',
+  'Sacada',
+  'Garagem',
+  'Corredor',
+  'Lavanderia',
 ];
 
 const ROOM_TYPES_COMMERCIAL = [
-  'Recepção', 'Sala de Reuniões', 'Escritório Privativo', 'Copa',
-  'Depósito', 'Banheiro', 'Corredor', 'Área Técnica',
+  'Recepção',
+  'Sala de Reuniões',
+  'Escritório Privativo',
+  'Copa',
+  'Depósito',
+  'Banheiro',
+  'Corredor',
+  'Área Técnica',
 ];
 
 // Dimensões padrão por tipo e formato (em metros)
-const ROOM_DIMENSIONS: Record<string, Record<string, { width: number; depth: number; lCut?: { width: number; depth: number } }>> = {
+const ROOM_DIMENSIONS: Record<string, Record<string, { width: number; depth: number; lCut?: { width: number; depth: number }; tCut?: { width: number; depth: number; position: 'left' | 'center' | 'right' }; uCut?: { leftWidth: number; rightWidth: number; depth: number } }>> = {
   'Sala de Estar': {
-    retangular: { width: 5.0, depth: 4.0 },
     quadrado: { width: 4.5, depth: 4.5 },
+    retangularHorizontal: { width: 5.5, depth: 4.0 },
+    retangularVertical: { width: 4.0, depth: 5.5 },
     l: { width: 5.0, depth: 4.0, lCut: { width: 2.0, depth: 2.0 } },
+    t: { width: 5.0, depth: 4.0, tCut: { width: 2.0, depth: 1.5, position: 'center' } },
   },
   'Dormitório': {
-    retangular: { width: 4.0, depth: 3.5 },
     quadrado: { width: 3.5, depth: 3.5 },
+    retangularHorizontal: { width: 4.5, depth: 3.5 },
+    retangularVertical: { width: 3.5, depth: 4.5 },
+    l: { width: 4.0, depth: 3.5, lCut: { width: 1.5, depth: 1.5 } },
   },
   'Cozinha': {
-    retangular: { width: 3.5, depth: 3.0 },
-    l: { width: 3.5, depth: 3.0, lCut: { width: 1.5, depth: 1.5 } },
+    quadrado: { width: 3.0, depth: 3.0 },
+    retangularHorizontal: { width: 3.5, depth: 2.5 },
+    retangularVertical: { width: 2.5, depth: 3.5 },
+    l: { width: 3.0, depth: 2.5, lCut: { width: 1.2, depth: 1.2 } },
+    u: { width: 3.0, depth: 2.5, uCut: { leftWidth: 0.8, rightWidth: 0.8, depth: 1.2 } },
   },
   'Banheiro': {
-    retangular: { width: 2.5, depth: 2.0 },
     quadrado: { width: 2.0, depth: 2.0 },
+    retangularHorizontal: { width: 2.5, depth: 1.8 },
+    retangularVertical: { width: 1.8, depth: 2.5 },
   },
-  // Fallback para outros tipos
   default: {
-    retangular: { width: 4.0, depth: 3.0 },
-    quadrado: { width: 3.5, depth: 3.5 },
+    quadrado: { width: 4.0, depth: 4.0 },
+    retangularHorizontal: { width: 5.0, depth: 3.5 },
+    retangularVertical: { width: 3.5, depth: 5.0 },
+    l: { width: 4.5, depth: 3.5, lCut: { width: 1.8, depth: 1.8 } },
   },
 };
 
@@ -64,23 +91,52 @@ const ROOM_PALETTE: { floor: string; wall: string }[] = [
 ];
 
 function generateRoomPoints(
-  shape: 'retangular' | 'quadrado' | 'l',
+  shape: string,
   width: number,
   depth: number,
-  lCut?: { width: number; depth: number }
+  options?: { lCut?: { width: number; depth: number }; tCut?: { width: number; depth: number; position: 'left' | 'center' | 'right' }; uCut?: { leftWidth: number; rightWidth: number; depth: number } }
 ): Vec2[] {
   const x0 = 0;
   const y0 = 0;
-  if (shape === 'l' && lCut) {
+  if (shape === 'l' && options?.lCut) {
+    const { width: cw, depth: cd } = options.lCut;
     return [
       [x0, y0],
       [x0 + width, y0],
-      [x0 + width, y0 + lCut.depth],
-      [x0 + lCut.width, y0 + lCut.depth],
-      [x0 + lCut.width, y0 + depth],
+      [x0 + width, y0 + cd],
+      [x0 + cw, y0 + cd],
+      [x0 + cw, y0 + depth],
       [x0, y0 + depth],
     ];
   }
+  if (shape === 't' && options?.tCut) {
+    const { width: tw, depth: td, position } = options.tCut;
+    const stemX = position === 'left' ? x0 : position === 'right' ? x0 + width - tw : x0 + (width - tw) / 2;
+    return [
+      [x0, y0],
+      [x0 + width, y0],
+      [x0 + width, y0 + depth],
+      [stemX + tw, y0 + depth],
+      [stemX + tw, y0 + td],
+      [stemX, y0 + td],
+      [stemX, y0 + depth],
+      [x0, y0 + depth],
+    ];
+  }
+  if (shape === 'u' && options?.uCut) {
+    const { leftWidth, rightWidth, depth: ud } = options.uCut;
+    return [
+      [x0, y0],
+      [x0 + width, y0],
+      [x0 + width, y0 + depth],
+      [x0 + width - rightWidth, y0 + depth],
+      [x0 + width - rightWidth, y0 + ud],
+      [x0 + leftWidth, y0 + ud],
+      [x0 + leftWidth, y0 + depth],
+      [x0, y0 + depth],
+    ];
+  }
+  // default: retangular ou quadrado
   return [
     [x0, y0],
     [x0 + width, y0],
@@ -89,13 +145,56 @@ function generateRoomPoints(
   ];
 }
 
+// Componente de miniatura para cada formato
+function ShapeThumbnail({ shape, width, depth, label, dimensions }: { shape: string; width: number; depth: number; label: string; dimensions: string }) {
+  const aspect = width / depth;
+  const maxSize = 80;
+  let thumbWidth = maxSize;
+  let thumbHeight = maxSize;
+  if (aspect > 1) thumbHeight = maxSize / aspect;
+  else thumbWidth = maxSize * aspect;
+
+  return (
+    <div className="flex flex-col items-center">
+      <div className="w-20 h-20 flex items-center justify-center mb-2">
+        <div
+          className="border-2 border-blue-400 rounded-lg bg-blue-50 relative"
+          style={{ width: thumbWidth, height: thumbHeight }}
+        >
+          {shape === 'l' && (
+            <>
+              <div className="absolute bottom-0 right-0 w-1/2 h-1/2 border-t-2 border-l-2 border-blue-400 bg-blue-100/50 rounded-br-lg" />
+            </>
+          )}
+          {shape === 't' && (
+            <>
+              <div className="absolute bottom-0 left-1/4 w-1/2 h-1/2 border-t-2 border-x-2 border-blue-400 bg-blue-100/50" />
+            </>
+          )}
+          {shape === 'u' && (
+            <>
+              <div className="absolute bottom-0 left-0 right-0 h-1/2 border-t-2 border-blue-400 bg-blue-100/50 flex">
+                <div className="w-1/3 border-r-2 border-blue-400 h-full" />
+                <div className="w-1/3" />
+                <div className="w-1/3 border-l-2 border-blue-400 h-full" />
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+      <p className="text-sm font-medium text-gray-800">{label}</p>
+      <p className="text-xs text-gray-500">{dimensions}</p>
+    </div>
+  );
+}
+
 export function AddRoomModal({ onClose, onScan }: AddRoomModalProps) {
   const [view, setView] = useState<View>('main');
   const [roomCategory, setRoomCategory] = useState<'Residencial' | 'Comercial'>('Residencial');
   const [selectedRoomType, setSelectedRoomType] = useState<string | null>(null);
   const { addRoom, addWall } = useEditorStore();
 
-  const handleAddSquareRoom = () => {
+  const handleAddRoom = () => {
     setView('roomTypes');
   };
 
@@ -104,21 +203,29 @@ export function AddRoomModal({ onClose, onScan }: AddRoomModalProps) {
     onClose();
   };
 
+  const handleFill = () => {
+    // Placeholder para preenchimento futuro
+    onClose();
+  };
+
   const handleRoomTypeSelect = (roomType: string) => {
     setSelectedRoomType(roomType);
     setView('shapes');
   };
 
-  const handleShapeSelect = (shape: 'retangular' | 'quadrado' | 'l') => {
+  const handleShapeSelect = (shape: string) => {
     if (!selectedRoomType) return;
 
     const dims = ROOM_DIMENSIONS[selectedRoomType]?.[shape] || ROOM_DIMENSIONS.default[shape];
     if (!dims) return;
 
-    const points = generateRoomPoints(shape, dims.width, dims.depth, 'lCut' in dims ? dims.lCut : undefined);
+    const points = generateRoomPoints(shape, dims.width, dims.depth, {
+      lCut: 'lCut' in dims ? dims.lCut : undefined,
+      tCut: 'tCut' in dims ? dims.tCut : undefined,
+      uCut: 'uCut' in dims ? dims.uCut : undefined,
+    });
     const palette = ROOM_PALETTE[Math.floor(Math.random() * ROOM_PALETTE.length)];
 
-    // Adiciona o cômodo
     addRoom(points);
     const state = useEditorStore.getState();
     const scene = state.scenes.find(s => s.id === state.currentSceneId);
@@ -132,7 +239,6 @@ export function AddRoomModal({ onClose, onScan }: AddRoomModalProps) {
       });
     }
 
-    // Adiciona as paredes
     for (let i = 0; i < points.length; i++) {
       addWall(points[i], points[(i + 1) % points.length]);
     }
@@ -141,11 +247,21 @@ export function AddRoomModal({ onClose, onScan }: AddRoomModalProps) {
   };
 
   const roomTypes = roomCategory === 'Residencial' ? ROOM_TYPES_RESIDENTIAL : ROOM_TYPES_COMMERCIAL;
-
-  // Obtém os formatos disponíveis para o tipo selecionado
   const availableShapes = selectedRoomType
-    ? Object.keys(ROOM_DIMENSIONS[selectedRoomType] || ROOM_DIMENSIONS.default) as ('retangular' | 'quadrado' | 'l')[]
+    ? Object.keys(ROOM_DIMENSIONS[selectedRoomType] || ROOM_DIMENSIONS.default)
     : [];
+
+  const getShapeLabel = (shape: string) => {
+    switch (shape) {
+      case 'quadrado': return 'Quadrado';
+      case 'retangularHorizontal': return 'Retangular Horizontal';
+      case 'retangularVertical': return 'Retangular Vertical';
+      case 'l': return 'Forma L';
+      case 't': return 'Forma T';
+      case 'u': return 'Forma U';
+      default: return shape;
+    }
+  };
 
   return (
     <motion.div
@@ -164,12 +280,10 @@ export function AddRoomModal({ onClose, onScan }: AddRoomModalProps) {
         className="bg-white rounded-t-3xl shadow-2xl overflow-hidden max-h-[90vh] flex flex-col"
         onClick={e => e.stopPropagation()}
       >
-        {/* Handle */}
         <div className="flex justify-center pt-3 pb-1">
           <div className="w-10 h-1 bg-gray-300 rounded-full" />
         </div>
 
-        {/* Header */}
         <div className="flex items-center px-5 pb-3 pt-1">
           {(view === 'fill' || view === 'roomTypes' || view === 'shapes') && (
             <button
@@ -193,7 +307,6 @@ export function AddRoomModal({ onClose, onScan }: AddRoomModalProps) {
           </button>
         </div>
 
-        {/* Content */}
         <div className="flex-1 overflow-y-auto">
           <AnimatePresence mode="wait">
             {view === 'main' && (
@@ -204,7 +317,6 @@ export function AddRoomModal({ onClose, onScan }: AddRoomModalProps) {
                 exit={{ opacity: 0, x: -16 }}
                 className="px-4 pb-8"
               >
-                {/* Scan cards */}
                 <div className="grid grid-cols-2 gap-3 mb-5">
                   {[
                     { label: 'Auto-Scan', desc: 'Escaneie vários cômodos.', onClick: () => { onClose(); onScan(); }, color: 'from-blue-500 to-blue-600' },
@@ -231,12 +343,11 @@ export function AddRoomModal({ onClose, onScan }: AddRoomModalProps) {
                   ))}
                 </div>
 
-                {/* List options */}
                 <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden divide-y divide-gray-100">
                   {[
-                    { icon: Square, label: 'Adicionar um cômodo quadrado', desc: 'Comece com um modelo.', action: handleAddSquareRoom },
+                    { icon: Square, label: 'Adicionar um cômodo', desc: 'Escolha um tipo e formato.', action: handleAddRoom },
                     { icon: PenLine, label: 'Desenhar cômodo', desc: 'Adicione pontos de canto.', action: handleDrawRoom },
-                    { icon: Layers, label: 'Inserir um preenchimento...', desc: 'Preencher espaço entre cômodos.', action: () => setView('fill') },
+                    { icon: Layers, label: 'Inserir um preenchimento...', desc: 'Preencher espaço entre cômodos.', action: handleFill },
                   ].map(item => (
                     <button
                       key={item.label}
@@ -306,48 +417,25 @@ export function AddRoomModal({ onClose, onScan }: AddRoomModalProps) {
               >
                 <p className="text-sm text-gray-500 mb-4">Escolha um formato para {selectedRoomType}</p>
                 <div className="grid grid-cols-2 gap-4">
-                  {availableShapes.includes('retangular') && (
-                    <button
-                      onClick={() => handleShapeSelect('retangular')}
-                      className="p-4 bg-white rounded-xl border border-gray-200 hover:border-blue-300 transition-colors text-center"
-                    >
-                      <div className="w-20 h-14 mx-auto mb-2 border-2 border-blue-400 rounded-lg bg-blue-50 flex items-center justify-center">
-                        <Grid3X3 className="w-6 h-6 text-blue-500" />
-                      </div>
-                      <p className="text-sm font-medium">Retangular</p>
-                      <p className="text-xs text-gray-500">
-                        {ROOM_DIMENSIONS[selectedRoomType]?.retangular?.width || 4.0} x {ROOM_DIMENSIONS[selectedRoomType]?.retangular?.depth || 3.0} m
-                      </p>
-                    </button>
-                  )}
-                  {availableShapes.includes('quadrado') && (
-                    <button
-                      onClick={() => handleShapeSelect('quadrado')}
-                      className="p-4 bg-white rounded-xl border border-gray-200 hover:border-blue-300 transition-colors text-center"
-                    >
-                      <div className="w-14 h-14 mx-auto mb-2 border-2 border-blue-400 rounded-lg bg-blue-50 flex items-center justify-center">
-                        <Square className="w-6 h-6 text-blue-500" />
-                      </div>
-                      <p className="text-sm font-medium">Quadrado</p>
-                      <p className="text-xs text-gray-500">
-                        {ROOM_DIMENSIONS[selectedRoomType]?.quadrado?.width || 3.5} x {ROOM_DIMENSIONS[selectedRoomType]?.quadrado?.depth || 3.5} m
-                      </p>
-                    </button>
-                  )}
-                  {availableShapes.includes('l') && (
-                    <button
-                      onClick={() => handleShapeSelect('l')}
-                      className="p-4 bg-white rounded-xl border border-gray-200 hover:border-blue-300 transition-colors text-center col-span-2"
-                    >
-                      <div className="w-24 h-16 mx-auto mb-2 border-2 border-blue-400 rounded-lg bg-blue-50 flex items-center justify-center">
-                        <span className="text-blue-500 font-bold">L</span>
-                      </div>
-                      <p className="text-sm font-medium">Forma L</p>
-                      <p className="text-xs text-gray-500">
-                        {ROOM_DIMENSIONS[selectedRoomType]?.l?.width || 5.0} x {ROOM_DIMENSIONS[selectedRoomType]?.l?.depth || 4.0} m
-                      </p>
-                    </button>
-                  )}
+                  {availableShapes.map(shape => {
+                    const dims = ROOM_DIMENSIONS[selectedRoomType]?.[shape] || ROOM_DIMENSIONS.default[shape];
+                    if (!dims) return null;
+                    return (
+                      <button
+                        key={shape}
+                        onClick={() => handleShapeSelect(shape)}
+                        className="p-4 bg-white rounded-xl border border-gray-200 hover:border-blue-300 transition-colors"
+                      >
+                        <ShapeThumbnail
+                          shape={shape}
+                          width={dims.width}
+                          depth={dims.depth}
+                          label={getShapeLabel(shape)}
+                          dimensions={`${dims.width.toFixed(1)} x ${dims.depth.toFixed(1)} m`}
+                        />
+                      </button>
+                    );
+                  })}
                 </div>
               </motion.div>
             )}
@@ -362,8 +450,8 @@ export function AddRoomModal({ onClose, onScan }: AddRoomModalProps) {
               >
                 <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden divide-y divide-gray-100">
                   {[
-                    { label: 'Sala de enchimento', desc: 'Preencha espaço entre cômodos.', action: () => {} },
-                    { label: 'Parede de preenchimento', desc: 'Adicione uma parede hachurada.', action: () => {} },
+                    { label: 'Sala de enchimento', desc: 'Preencha espaço entre cômodos.', action: handleFill },
+                    { label: 'Parede de preenchimento', desc: 'Adicione uma parede hachurada.', action: handleFill },
                   ].map(item => (
                     <button
                       key={item.label}
