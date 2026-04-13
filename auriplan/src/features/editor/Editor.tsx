@@ -1,7 +1,7 @@
 // ============================================================
 // CAMINHO: src/features/editor/Editor.tsx
-// FUNÇÃO: Componente raiz – menu mobile flutuante, botão + reduzido,
-//         sem botão flutuante de propriedades (build corrigido)
+// FUNÇÃO: Componente raiz – menu mobile ancorado, cores azuis,
+//         persistência de estado, sem botão flutuante de propriedades
 // ============================================================
 
 import { useState, useEffect, useRef } from 'react';
@@ -189,7 +189,7 @@ export function Editor({ onBack, openScanOnMount }: EditorProps) {
               <Menu className="w-[18px] h-[18px]" />
             </button>
             <div className="flex items-center gap-2 sm:gap-2.5 min-w-0">
-              <div className="w-6 h-6 sm:w-7 sm:h-7 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-lg flex items-center justify-center flex-shrink-0 shadow-sm">
+              <div className="w-6 h-6 sm:w-7 sm:h-7 bg-gradient-to-br from-blue-500 to-blue-600 rounded-lg flex items-center justify-center flex-shrink-0 shadow-sm">
                 <Box className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-white" />
               </div>
               <div className="min-w-0 hidden sm:block">
@@ -209,12 +209,12 @@ export function Editor({ onBack, openScanOnMount }: EditorProps) {
               </button>
             </div>
             <div className="flex items-center bg-gray-100 dark:bg-slate-800 rounded-lg p-0.5 flex-shrink-0">
-              <button onClick={() => setViewMode('2d')} className={`px-2 sm:px-3 py-1 sm:py-1.5 text-[10px] sm:text-xs font-semibold rounded-md transition-all ${viewMode === '2d' ? 'bg-emerald-500 text-white shadow-sm' : 'text-gray-600 dark:text-slate-400 hover:text-gray-900 dark:hover:text-white'}`}>2D</button>
-              <button onClick={() => setViewMode('3d')} className={`px-2 sm:px-3 py-1 sm:py-1.5 text-[10px] sm:text-xs font-semibold rounded-md transition-all ${viewMode === '3d' ? 'bg-emerald-500 text-white shadow-sm' : 'text-gray-600 dark:text-slate-400 hover:text-gray-900 dark:hover:text-white'}`}>3D</button>
-              <button onClick={() => setViewMode('split')} className={`px-2 sm:px-3 py-1 sm:py-1.5 text-[10px] sm:text-xs font-semibold rounded-md transition-all ${viewMode === 'split' ? 'bg-emerald-500 text-white shadow-sm' : 'text-gray-600 dark:text-slate-400 hover:text-gray-900 dark:hover:text-white'}`}>Split</button>
+              <button onClick={() => setViewMode('2d')} className={`px-2 sm:px-3 py-1 sm:py-1.5 text-[10px] sm:text-xs font-semibold rounded-md transition-all ${viewMode === '2d' ? 'bg-blue-500 text-white shadow-sm' : 'text-gray-600 dark:text-slate-400 hover:text-gray-900 dark:hover:text-white'}`}>2D</button>
+              <button onClick={() => setViewMode('3d')} className={`px-2 sm:px-3 py-1 sm:py-1.5 text-[10px] sm:text-xs font-semibold rounded-md transition-all ${viewMode === '3d' ? 'bg-blue-500 text-white shadow-sm' : 'text-gray-600 dark:text-slate-400 hover:text-gray-900 dark:hover:text-white'}`}>3D</button>
+              <button onClick={() => setViewMode('split')} className={`px-2 sm:px-3 py-1 sm:py-1.5 text-[10px] sm:text-xs font-semibold rounded-md transition-all ${viewMode === 'split' ? 'bg-blue-500 text-white shadow-sm' : 'text-gray-600 dark:text-slate-400 hover:text-gray-900 dark:hover:text-white'}`}>Split</button>
             </div>
             <div className="hidden sm:block w-px h-5 bg-gray-300 dark:bg-slate-700 mx-0.5" />
-            <button onClick={() => setShowScan(true)} className="flex items-center gap-1 sm:gap-1.5 px-2 sm:px-2.5 py-1 sm:py-1.5 text-xs sm:text-sm bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-white rounded-lg transition-all shadow-md hover:shadow-lg flex-shrink-0" title="Escanear Cômodo">
+            <button onClick={() => setShowScan(true)} className="flex items-center gap-1 sm:gap-1.5 px-2 sm:px-2.5 py-1 sm:py-1.5 text-xs sm:text-sm bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-400 hover:to-blue-500 text-white rounded-lg transition-all shadow-md hover:shadow-lg flex-shrink-0" title="Escanear Cômodo">
               <Camera className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
               <span className="hidden sm:inline text-xs font-medium">Scan</span>
             </button>
@@ -265,12 +265,12 @@ export function Editor({ onBack, openScanOnMount }: EditorProps) {
             </AnimatePresence>
           </div>
 
-          {/* Mobile sidebar – flutuante */}
+          {/* Mobile sidebar – flutuante, ancorada abaixo do botão de menu */}
           <AnimatePresence>
             {isSidebarOpen && (
-              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-40 md:hidden flex items-center justify-center p-2" onClick={() => setIsSidebarOpen(false)} onTouchMove={(e) => e.preventDefault()} onPointerMove={(e) => e.preventDefault()}>
+              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-40 md:hidden" onClick={() => setIsSidebarOpen(false)} onTouchMove={(e) => e.preventDefault()} onPointerMove={(e) => e.preventDefault()}>
                 <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
-                <motion.div initial={{ scale: 0.92, opacity: 0, y: 20 }} animate={{ scale: 1, opacity: 1, y: 0 }} exit={{ scale: 0.92, opacity: 0, y: 20 }} transition={{ type: 'spring', damping: 25, stiffness: 300 }} className="relative w-52 max-h-[80vh] bg-white/95 backdrop-blur-md rounded-3xl shadow-2xl overflow-hidden" onClick={(e) => e.stopPropagation()}>
+                <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} transition={{ type: 'spring', damping: 25, stiffness: 300 }} className="absolute top-14 left-2 w-52 max-h-[80vh] bg-white/95 backdrop-blur-md rounded-3xl shadow-2xl overflow-hidden" onClick={(e) => e.stopPropagation()}>
                   <div className="flex justify-end p-2">
                     <button onClick={() => setIsSidebarOpen(false)} className="p-2 text-gray-500"><X className="w-5 h-5" /></button>
                   </div>
