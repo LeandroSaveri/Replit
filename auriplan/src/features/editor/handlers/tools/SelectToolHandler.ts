@@ -9,8 +9,9 @@ import type { ToolHandler } from '../ToolHandler';
 import type { PreviewState } from '../ToolContext';
 import type { EditorStore } from '@store/editorStore';
 import type { Vec2 } from '@auriplan-types';
+import { SnapSolver } from '@core/snap/SnapSolver';
+import type { SnapType } from '@core/snap/SnapSolver';
 
-// Hit tolerance in world units
 const VERTEX_R = 0.18;
 const EDGE_MID_R = 0.15;
 const WALL_HIT_TOL = 0.14;
@@ -35,10 +36,6 @@ type DragState =
   | { kind: 'wall-push'; wallId: string; origStart: Vec2; origEnd: Vec2; ds: Vec2; affectedWallIds: string[] }
   | { kind: 'wall-move'; wallId: string; origStart: Vec2; origEnd: Vec2; ds: Vec2; affectedWallIds: string[] };
 
-/**
- * Serviço de topologia de paredes – deve ser fornecido pelo core (WallGraph).
- * Responsável por encontrar paredes conectadas a um vértice ou a uma parede.
- */
 export interface WallTopology {
   getWallsConnectedToVertex(vertex: Vec2, excludeWallId?: string): Array<{ id: string; start: Vec2; end: Vec2 }>;
   getWallsConnectedToWall(wallId: string): Array<{ id: string; start: Vec2; end: Vec2 }>;
@@ -90,7 +87,6 @@ export class SelectToolHandler implements ToolHandler {
 
   getPreviewState(): PreviewState | null { return null; }
 
-  // ── Pointer Down ──────────────────────────────────────────
   private onPointerDown(event: InteractionEvent): void {
     const pos = event.position;
     this.downPos = pos;
@@ -140,7 +136,6 @@ export class SelectToolHandler implements ToolHandler {
         if (!wall) return;
         state.select(hit.wallId, addToSel);
         const origPos: Vec2 = hit.vertex === 'start' ? [...wall.start] as Vec2 : [...wall.end] as Vec2;
-        // Inicialmente apenas a própria parede é afetada; a lista será preenchida durante o drag
         this.drag = { kind: 'wall-vertex', wallId: hit.wallId, vertex: hit.vertex, origPos, ds: pos, affectedWallIds: [hit.wallId] };
         break;
       }
@@ -164,7 +159,6 @@ export class SelectToolHandler implements ToolHandler {
     }
   }
 
-  // ── Pointer Move ──────────────────────────────────────────
   private onPointerMove(event: InteractionEvent): void {
     const pos = event.position;
 
@@ -180,7 +174,6 @@ export class SelectToolHandler implements ToolHandler {
 
     if (!this.drag || !this.downPos) return;
 
-    // Drag threshold
     if (!this.isDragging) {
       const dx = pos[0] - this.downPos[0];
       const dy = pos[1] - this.downPos[1];
@@ -192,6 +185,25 @@ export class SelectToolHandler implements ToolHandler {
     const state = this.store.getState();
     const dx = pos[0] - this.drag.ds[0];
     const dy = pos[1] - this.drag.ds[1];
+
+    // Calcular snap se for arrasto de parede ou vértice
+    let snappedPos = pos;
+    let snapType: SnapType | null = null;
+    if (this.drag.kind === 'wall-vertex' || this.drag.kind === 'wall-move' || this.drag.kind === 'wall-push') {
+      const walls = state.scenes.find(s => s.id === state.currentSceneId)?.walls ?? [];
+      const snapResult = SnapSolver.computeSnap(pos, walls, undefined, {
+        enableVertex: true,
+        enableGrid: state.snap.grid,
+        enableMidpoint: state.snap.midpoints,
+        enableWall: state.snap.perpendicular,
+        enableAngle: false,
+        zoom: 60,
+        gridSize: state.grid.size,
+        snapTol: state.snap.distance / 60,
+      });
+      snappedPos = snapResult.point;
+      snapType = snapResult.type;
+    }
 
     switch (this.drag.kind) {
       case 'furniture': {
@@ -225,7 +237,7 @@ export class SelectToolHandler implements ToolHandler {
       case 'wall-vertex': {
         const _wvDrag = this.drag!;
         if (_wvDrag.kind !== 'wall-vertex') break;
-        const newPos: Vec2 = [_wvDrag.origPos[0] + dx, _wvDrag.origPos[1] + dy];
+        const newPos: Vec2 = [_wvDrag.origPos[0] + (snappedPos[0] - _wvDrag.ds[0]), _wvDrag.origPos[1] + (snappedPos[1] - _wvDrag.ds[1])];
         const scene = state.scenes.find(s => s.id === state.currentSceneId);
         const wall = scene?.walls.find(w => w.id === _wvDrag.wallId);
         if (!wall) break;
@@ -262,7 +274,9 @@ export class SelectToolHandler implements ToolHandler {
         const wdy = this.drag.origEnd[1] - this.drag.origStart[1];
         const len = Math.hypot(wdx, wdy) || 1;
         const perp: Vec2 = [-wdy / len, wdx / len];
-        const proj = dx * perp[0] + dy * perp[1];
+        const deltaX = snappedPos[0] - this.drag.ds[0];
+        const deltaY = snappedPos[1] - this.drag.ds[1];
+        const proj = deltaX * perp[0] + deltaY * perp[1];
         const deltaPerp: Vec2 = [perp[0] * proj, perp[1] * proj];
         const newStart: Vec2 = [this.drag.origStart[0] + deltaPerp[0], this.drag.origStart[1] + deltaPerp[1]];
         const newEnd: Vec2 = [this.drag.origEnd[0] + deltaPerp[0], this.drag.origEnd[1] + deltaPerp[1]];
@@ -271,13 +285,21 @@ export class SelectToolHandler implements ToolHandler {
         break;
       }
       case 'wall-move': {
-        const delta: Vec2 = [dx, dy];
-        const newStart: Vec2 = [this.drag.origStart[0] + delta[0], this.drag.origStart[1] + delta[1]];
-        const newEnd: Vec2 = [this.drag.origEnd[0] + delta[0], this.drag.origEnd[1] + delta[1]];
+        const deltaX = snappedPos[0] - this.drag.ds[0];
+        const deltaY = snappedPos[1] - this.drag.ds[1];
+        const newStart: Vec2 = [this.drag.origStart[0] + deltaX, this.drag.origStart[1] + deltaY];
+        const newEnd: Vec2 = [this.drag.origEnd[0] + deltaX, this.drag.origEnd[1] + deltaY];
         const affected = this.applyWallMoveWithPropagation(this.drag.wallId, newStart, newEnd);
         this.drag.affectedWallIds = affected;
         break;
       }
+    }
+
+    // Emite snap visual durante o arrasto
+    if (snapType && (this.drag.kind === 'wall-vertex' || this.drag.kind === 'wall-move' || this.drag.kind === 'wall-push')) {
+      this.onPreviewChange({ type: 'edit', wall: { start: [0,0], end: [0,0] }, snapPoint: snappedPos, snapType } as any);
+    } else {
+      this.onPreviewChange(null);
     }
   }
 
@@ -323,12 +345,12 @@ export class SelectToolHandler implements ToolHandler {
     return affectedIds;
   }
 
-  // ── Pointer Up ────────────────────────────────────────────
   private onPointerUp(_event: InteractionEvent): void {
     if (!this.isDragging || !this.drag) {
       this.drag = null;
       this.isDragging = false;
       this.downPos = null;
+      this.onPreviewChange(null);
       return;
     }
 
@@ -339,7 +361,6 @@ export class SelectToolHandler implements ToolHandler {
       return;
     }
 
-    // Para cada tipo de drag, chamamos a ação canônica correspondente
     switch (this.drag.kind) {
       case 'furniture': {
         const furn = scene.furniture.find(f => f.id === this.drag!.id);
@@ -360,7 +381,6 @@ export class SelectToolHandler implements ToolHandler {
       case 'wall-vertex':
       case 'wall-push':
       case 'wall-move': {
-        // Coletamos as posições atuais de todas as paredes afetadas
         const affectedIds = this.drag.affectedWallIds || [this.drag.wallId];
         const updates: Array<{ id: string; start: Vec2; end: Vec2 }> = [];
         for (const wid of affectedIds) {
@@ -374,11 +394,10 @@ export class SelectToolHandler implements ToolHandler {
         }
         break;
       }
-      default:
-        break;
     }
 
     this.resetDrag();
+    this.onPreviewChange(null);
   }
 
   private resetDrag(): void {
@@ -387,7 +406,6 @@ export class SelectToolHandler implements ToolHandler {
     this.downPos = null;
   }
 
-  // ── Keyboard ──────────────────────────────────────────────
   private onKeyDown(event: InteractionEvent): void {
     if (event.key === 'Escape') {
       this.store.getState().deselectAll();
@@ -419,7 +437,6 @@ export class SelectToolHandler implements ToolHandler {
     }
   }
 
-  // ── Double-click (agora usa action canônica do store) ─────
   private onDoubleClick(event: InteractionEvent): void {
     const hit = this.hitTest(event.position);
     if (hit.type === 'room') {
@@ -445,19 +462,16 @@ export class SelectToolHandler implements ToolHandler {
       ((splitPoint[0] - wall.start[0]) * ax + (splitPoint[1] - wall.start[1]) * ay) / len2
     ));
     const mid: Vec2 = [wall.start[0] + ax * t, wall.start[1] + ay * t];
-    // CHAMA A ACTION CANÔNICA DO STORE
     state.splitWall(wallId, mid);
     state.deselectAll();
   }
 
-  // ── Hit test ──────────────────────────────────────────────
   private hitTest(point: Vec2): HitResult {
     const state = this.store.getState();
     const scene = state.scenes.find(s => s.id === state.currentSceneId);
     if (!scene) return { type: 'none' };
     const selectedIds = state.selectedIds;
 
-    // selected room vertex
     for (const room of scene.rooms) {
       if (!selectedIds.includes(room.id)) continue;
       for (let i = 0; i < room.points.length; i++) {
@@ -466,7 +480,6 @@ export class SelectToolHandler implements ToolHandler {
         }
       }
     }
-    // selected room edge
     for (const room of scene.rooms) {
       if (!selectedIds.includes(room.id)) continue;
       for (let i = 0; i < room.points.length; i++) {
@@ -479,7 +492,6 @@ export class SelectToolHandler implements ToolHandler {
         }
       }
     }
-    // furniture
     for (let i = scene.furniture.length - 1; i >= 0; i--) {
       const furn = scene.furniture[i];
       if (!furn.visible) continue;
@@ -496,7 +508,6 @@ export class SelectToolHandler implements ToolHandler {
         return { type: 'furniture', id: furn.id };
       }
     }
-    // room body
     for (let i = scene.rooms.length - 1; i >= 0; i--) {
       const room = scene.rooms[i];
       if (room.visible === false || room.points.length < 3) continue;
@@ -504,7 +515,6 @@ export class SelectToolHandler implements ToolHandler {
         return { type: 'room', id: room.id };
       }
     }
-    // wall vertices
     for (const wall of scene.walls) {
       if (!wall.visible) continue;
       if (Math.hypot(point[0] - wall.start[0], point[1] - wall.start[1]) < VERTEX_R) {
@@ -514,7 +524,6 @@ export class SelectToolHandler implements ToolHandler {
         return { type: 'wall-vertex', wallId: wall.id, vertex: 'end' };
       }
     }
-    // selected wall midpoint
     for (const wall of scene.walls) {
       if (!selectedIds.includes(wall.id)) continue;
       const mx = (wall.start[0] + wall.end[0]) / 2;
@@ -523,7 +532,6 @@ export class SelectToolHandler implements ToolHandler {
         return { type: 'wall-midpoint', wallId: wall.id };
       }
     }
-    // wall body
     for (const wall of scene.walls) {
       if (!wall.visible) continue;
       const dist = this.segmentDist(point, wall.start, wall.end);
