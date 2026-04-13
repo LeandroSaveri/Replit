@@ -34,30 +34,30 @@ import { splitWallAtPoint } from '@core/wall/WallSplitEngine';
 // ==================== EDITOR STATE INTERFACE ====================
 export interface EditorState {
   // Data
-  project: import('@auriplan-types').Project | null;
-  scenes: import('@auriplan-types').Scene[];
+  project: Project | null;
+  scenes: Scene[];
   currentSceneId: string | null;
 
   // UI state
-  viewMode: import('@auriplan-types').ViewMode;
-  tool: import('@auriplan-types').Tool;
+  viewMode: ViewMode;
+  tool: Tool;
   selectedIds: string[];
   hoveredId: string | null;
 
   // Settings
-  grid: import('@auriplan-types').GridSettings;
-  snap: import('@auriplan-types').SnapSettings;
-  camera: import('@auriplan-types').CameraState;
+  grid: GridSettings;
+  snap: SnapSettings;
+  camera: CameraState;
 
   // History
-  history: Array<{ scenes: import('@auriplan-types').Scene[]; currentSceneId: string | null }>;
+  history: Array<{ scenes: Scene[]; currentSceneId: string | null }>;
   historyIndex: number;
 
   // Internal cache
   _junctionsCache: Record<string, any>;
 
   // Actions - Project
-  createProject: (name: string, owner: import('@auriplan-types').User, description?: string) => void;
+  createProject: (name: string, owner: User, description?: string) => void;
   loadTemplate: (templateId: string, name: string) => void;
   saveProject: () => void;
   exportProject: () => string;
@@ -67,44 +67,44 @@ export interface EditorState {
   setCurrentScene: (id: string) => void;
 
   // Actions - Walls
-  addWall: (start: import('@auriplan-types').Vec2, end: import('@auriplan-types').Vec2) => void;
-  updateWall: (id: string, updates: Partial<import('@auriplan-types').Wall>) => void;
+  addWall: (start: Vec2, end: Vec2, options?: { skipPipeline?: boolean }) => void;
+  updateWall: (id: string, updates: Partial<Wall>) => void;
   deleteWall: (id: string) => void;
-  moveWallVertex: (wallId: string, vertex: 'start' | 'end', newPosition: import('@auriplan-types').Vec2) => void;
-  moveWall: (wallId: string, delta: import('@auriplan-types').Vec2) => void;
-  createWallsFromPolygon: (points: import('@auriplan-types').Vec2[]) => void;
-  splitWall: (wallId: string, point: import('@auriplan-types').Vec2) => void;
+  moveWallVertex: (wallId: string, vertex: 'start' | 'end', newPosition: Vec2) => void;
+  moveWall: (wallId: string, delta: Vec2) => void;
+  createWallsFromPolygon: (points: Vec2[]) => void;
+  splitWall: (wallId: string, point: Vec2) => void;
   updateWallsBatch: (updates: Array<{ id: string; start: Vec2; end: Vec2 }>) => void;
 
   // Live updates (no history — for smooth dragging)
-  _liveUpdateWall: (id: string, start: import('@auriplan-types').Vec2, end: import('@auriplan-types').Vec2) => void;
-  _liveUpdateRoomPoints: (id: string, points: import('@auriplan-types').Vec2[]) => void;
+  _liveUpdateWall: (id: string, start: Vec2, end: Vec2) => void;
+  _liveUpdateRoomPoints: (id: string, points: Vec2[]) => void;
   _liveUpdateFurniturePos: (id: string, position: [number, number, number]) => void;
   _liveUpdateWallsBatch: (updates: Array<{ id: string; start: Vec2; end: Vec2 }>) => void;
 
   // Actions - Rooms
-  addRoom: (points: import('@auriplan-types').Vec2[], options?: { name?: string; type?: Room['type']; floorColor?: string; wallColor?: string; ceilingColor?: string }) => void;
-  updateRoom: (id: string, updates: Partial<import('@auriplan-types').Room>) => void;
+  addRoom: (points: Vec2[], options?: { name?: string; type?: Room['type']; floorColor?: string; wallColor?: string; ceilingColor?: string; skipPipeline?: boolean }) => void;
+  updateRoom: (id: string, updates: Partial<Room>) => void;
   deleteRoom: (id: string) => void;
 
   // Actions - Doors
   addDoor: (wallId: string, position: number, width: number) => void;
-  updateDoor: (id: string, updates: Partial<import('@auriplan-types').Door>) => void;
+  updateDoor: (id: string, updates: Partial<Door>) => void;
   deleteDoor: (id: string) => void;
 
   // Actions - Windows
   addWindow: (wallId: string, position: number, width: number) => void;
-  updateWindow: (id: string, updates: Partial<import('@auriplan-types').Window>) => void;
+  updateWindow: (id: string, updates: Partial<Window>) => void;
   deleteWindow: (id: string) => void;
 
   // Actions - Furniture
-  addFurniture: (furniture: Omit<import('@auriplan-types').Furniture, 'id'>) => void;
-  updateFurniture: (id: string, updates: Partial<import('@auriplan-types').Furniture>) => void;
+  addFurniture: (furniture: Omit<Furniture, 'id'>) => void;
+  updateFurniture: (id: string, updates: Partial<Furniture>) => void;
   deleteFurniture: (id: string) => void;
   duplicateFurniture: (id: string) => void;
 
   // Actions - Measurements
-  addMeasurement: (start: import('@auriplan-types').Vec2, end: import('@auriplan-types').Vec2) => void;
+  addMeasurement: (start: Vec2, end: Vec2) => void;
   deleteMeasurement: (id: string) => void;
 
   // Actions - Selection
@@ -113,13 +113,13 @@ export interface EditorState {
   deselectAll: () => void;
 
   // Actions - UI
-  setViewMode: (mode: import('@auriplan-types').ViewMode) => void;
-  setTool: (tool: import('@auriplan-types').Tool) => void;
+  setViewMode: (mode: ViewMode) => void;
+  setTool: (tool: Tool) => void;
   toggleGrid: () => void;
   toggleSnap: () => void;
-  setGrid: (grid: Partial<import('@auriplan-types').GridSettings>) => void;
-  setSnap: (snap: Partial<import('@auriplan-types').SnapSettings>) => void;
-  setCamera: (camera: Partial<import('@auriplan-types').CameraState>) => void;
+  setGrid: (grid: Partial<GridSettings>) => void;
+  setSnap: (snap: Partial<SnapSettings>) => void;
+  setCamera: (camera: Partial<CameraState>) => void;
   zoomIn: () => void;
   zoomOut: () => void;
   fitToView: () => void;
@@ -176,16 +176,8 @@ function updateJunctionsForScene(state: EditorState, sceneId: string) {
 }
 
 // ==================== APLICA O PIPELINE GEOMÉTRICO EM UMA CENA ====================
-/**
- * Executa o pipeline de geometria (split, grafo, detecção de cômodos)
- * utilizando o wrapper seguro applyGeometryPipeline.
- *
- * LIMITAÇÃO ATUAL: scene.walls é substituído pelas paredes resultantes do pipeline,
- * o que pode quebrar referências de IDs em doors.wallId, windows.wallId e openingIds.
- * TODO: Futuramente, o WallSplitEngine deve retornar um idMap para atualizar essas referências.
- */
 function applyGeometryToScene(scene: Scene): void {
-  applyGeometryPipeline(scene); // o wrapper já atualiza scene.walls e scene.rooms
+  applyGeometryPipeline(scene);
 }
 
 // ==================== AUXILIARES ====================
@@ -231,7 +223,6 @@ const initialState = {
 };
 
 // ==================== STORE PRINCIPAL ====================
-// EditorStore represents the full zustand store API
 export type EditorStore = {
   getState: () => EditorState;
   setState: (state: Partial<EditorState> | ((s: EditorState) => Partial<EditorState>)) => void;
@@ -322,7 +313,6 @@ export const useEditorStore = create<EditorState>()(
           updatedAt: new Date().toISOString(),
           settings: { units: 'metric', currency: 'BRL' },
         };
-        // Run geometry pipeline to auto-detect rooms
         applyGeometryPipeline(newScene);
         set(state => {
           state.project = newProject;
@@ -416,7 +406,7 @@ export const useEditorStore = create<EditorState>()(
       // --------------------------------------------------------------
       // AÇÕES DE PAREDES (COM PIPELINE AUTOMÁTICO)
       // --------------------------------------------------------------
-      addWall: (start: Vec2, end: Vec2) => {
+      addWall: (start: Vec2, end: Vec2, options = {}) => {
         const dx = end[0] - start[0];
         const dy = end[1] - start[1];
         if (Math.hypot(dx, dy) < 1e-6) return;
@@ -440,7 +430,9 @@ export const useEditorStore = create<EditorState>()(
             metadata: {},
           };
           scene.walls.push(newWall);
-          applyGeometryToScene(scene);
+          if (!options.skipPipeline) {
+            applyGeometryToScene(scene);
+          }
           updateJunctionsForScene(state, scene.id);
         });
         get().saveToHistory();
@@ -532,7 +524,6 @@ export const useEditorStore = create<EditorState>()(
         get().saveToHistory();
       },
 
-      // NOVA AÇÃO CANÔNICA: ATUALIZAÇÃO EM LOTE DE PAREDES
       updateWallsBatch: (updates: Array<{ id: string; start: Vec2; end: Vec2 }>) => {
         set(state => {
           const scene = getCurrentScene(state);
@@ -570,7 +561,6 @@ export const useEditorStore = create<EditorState>()(
           const room = scene.rooms.find(r => r.id === id);
           if (!room) return;
           room.points = points.map(p => [...p] as Vec2);
-          // Update area/perimeter live
           let area = 0;
           for (let i = 0; i < points.length; i++) {
             const j = (i + 1) % points.length;
@@ -614,7 +604,7 @@ export const useEditorStore = create<EditorState>()(
       // --------------------------------------------------------------
       // AÇÕES DE CÔMODOS (MANUAIS)
       // --------------------------------------------------------------
-      addRoom: (points: Vec2[], options?: { name?: string; type?: Room['type']; floorColor?: string; wallColor?: string; ceilingColor?: string }) => {
+      addRoom: (points: Vec2[], options = {}) => {
         const scene = getCurrentScene(get());
         if (!scene) return;
         let area = 0;
@@ -631,12 +621,12 @@ export const useEditorStore = create<EditorState>()(
         }
         const newRoom: Room = {
           id: uuidv4(),
-          name: options?.name || 'Novo Cômodo',
-          type: options?.type || 'custom',
+          name: options.name || 'Novo Cômodo',
+          type: options.type || 'custom',
           points,
-          wallColor: options?.wallColor || '#F5F5DC',
-          floorColor: options?.floorColor || '#D2691E',
-          ceilingColor: options?.ceilingColor || '#FFFFFF',
+          wallColor: options.wallColor || '#F5F5DC',
+          floorColor: options.floorColor || '#D2691E',
+          ceilingColor: options.ceilingColor || '#FFFFFF',
           height: 2.8,
           area,
           perimeter,
@@ -646,7 +636,12 @@ export const useEditorStore = create<EditorState>()(
         };
         set(state => {
           const sc = state.scenes.find(s => s.id === state.currentSceneId);
-          if (sc) sc.rooms.push(newRoom);
+          if (sc) {
+            sc.rooms.push(newRoom);
+            if (!options.skipPipeline) {
+              applyGeometryToScene(sc);
+            }
+          }
         });
         get().saveToHistory();
       },
