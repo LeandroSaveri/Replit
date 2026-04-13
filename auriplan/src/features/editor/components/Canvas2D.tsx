@@ -411,7 +411,7 @@ export function Canvas2D() {
   }), []);
 
   // ============================================================
-  // POINTER EVENTS (Mobile/Desktop/Tablet Unified)
+  // POINTER EVENTS (Mobile/Desktop/Tablet Unified) — CORRIGIDO
   // ============================================================
 
   const handlePointerDown = useCallback((e: React.PointerEvent) => {
@@ -420,7 +420,6 @@ export function Canvas2D() {
 
     activePointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
 
-    // Multi-touch: Pinch/Zoom com 2 dedos
     if (activePointersRef.current.size === 2) {
       const pts = Array.from(activePointersRef.current.values());
       const dx = pts[1].x - pts[0].x;
@@ -436,7 +435,6 @@ export function Canvas2D() {
       return;
     }
 
-    // Pan mode (espaço ou botão do meio)
     if (isSpacePressedRef.current || e.button === 1 || tool === 'pan') {
       isPanningRef.current = true;
       panStartRef.current = { x: e.clientX, y: e.clientY };
@@ -446,7 +444,6 @@ export function Canvas2D() {
 
     if (e.button !== 0) return;
 
-    // Delegar para ToolManager
     const worldPos = screenToWorld(e.clientX, e.clientY);
     const event: InteractionEvent = createInteractionEvent('mousedown', worldPos, getModifiers(e));
     toolManager.handleEvent(event);
@@ -457,7 +454,6 @@ export function Canvas2D() {
   const handlePointerMove = useCallback((e: React.PointerEvent) => {
     activePointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
 
-    // Multi-touch: Pinch/Zoom
     if (activePointersRef.current.size === 2) {
       const pts = Array.from(activePointersRef.current.values());
       const dx = pts[1].x - pts[0].x;
@@ -495,7 +491,6 @@ export function Canvas2D() {
       return;
     }
 
-    // Panning
     if (isPanningRef.current) {
       const dx = e.clientX - panStartRef.current.x;
       const dy = e.clientY - panStartRef.current.y;
@@ -505,8 +500,6 @@ export function Canvas2D() {
     }
 
     const worldPos = screenToWorld(e.clientX, e.clientY);
-
-    // Delegar para ToolManager
     const event: InteractionEvent = createInteractionEvent('mousemove', worldPos, getModifiers(e));
     toolManager.handleEvent(event);
     
@@ -517,6 +510,12 @@ export function Canvas2D() {
     (e.target as HTMLElement).releasePointerCapture(e.pointerId);
     const wasMultiTouch = activePointersRef.current.size >= 2;
     activePointersRef.current.delete(e.pointerId);
+
+    // Limpa completamente se todos os pointers saíram
+    if (activePointersRef.current.size === 0) {
+      pinchStartDistRef.current = 0;
+      isPanningRef.current = false;
+    }
 
     if (wasMultiTouch) {
       pinchStartDistRef.current = 0;
@@ -530,8 +529,6 @@ export function Canvas2D() {
     }
 
     const worldPos = screenToWorld(e.clientX, e.clientY);
-
-    // Delegar para ToolManager
     const event: InteractionEvent = createInteractionEvent('mouseup', worldPos, getModifiers(e));
     toolManager.handleEvent(event);
     
@@ -653,13 +650,16 @@ export function Canvas2D() {
   }, [contextMenu, store]);
 
   // ============================================================
-  // WHEEL / ZOOM
+  // WHEEL / ZOOM (CORRIGIDO)
   // ============================================================
 
   const handleWheel = useCallback((e: WheelEvent) => {
     e.preventDefault();
     const canvas = canvasRef.current;
     if (!canvas) return;
+
+    // Ignora wheel se estiver arrastando (evita conflito)
+    if (isPanningRef.current || activePointersRef.current.size > 0) return;
 
     const rect = canvas.getBoundingClientRect();
     const cursorX = e.clientX - rect.left - rect.width / 2;
