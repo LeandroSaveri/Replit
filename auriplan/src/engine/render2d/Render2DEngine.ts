@@ -466,33 +466,29 @@ export class Render2DEngine {
       const centroid = this.polygonCentroid(room.points);
       const area = this.polygonArea(room.points);
 
-      // Only show label if room is large enough (> 0.2 m²)
-      if (area > 0.2) {
-        this.ctx.save();
-        // Scale-invariant label rendering in world space
-        // We use ctx.scale(-1) trick below so we need to flip text
-        const scale = this.transform.scale;
-        const fontSize = Math.max(0.15, Math.min(0.4, 1.4 / scale));
-        const smallFontSize = fontSize * 0.75;
+      // Sempre exibe o label, independentemente da área
+      this.ctx.save();
+      const scale = this.transform.scale;
+      // Tamanho de fonte adaptativo, com mínimo legível
+      const fontSize = Math.max(0.2, Math.min(0.5, 1.6 / scale));
+      const smallFontSize = fontSize * 0.75;
 
-        // Name
-        this.ctx.font = `600 ${fontSize}px system-ui, -apple-system, sans-serif`;
-        this.ctx.textAlign = 'center';
-        this.ctx.textBaseline = 'middle';
-        this.ctx.fillStyle = '#1e293b';
-        // Canvas Y is flipped, so text also needs scale(-1) on Y
-        this.ctx.save();
-        this.ctx.translate(centroid[0], centroid[1]);
-        this.ctx.scale(1, -1);
-        this.ctx.fillText(room.name || 'Cômodo', 0, -smallFontSize * 0.6);
+      // Name
+      this.ctx.font = `600 ${fontSize}px system-ui, -apple-system, sans-serif`;
+      this.ctx.textAlign = 'center';
+      this.ctx.textBaseline = 'middle';
+      this.ctx.fillStyle = '#1e293b';
+      this.ctx.save();
+      this.ctx.translate(centroid[0], centroid[1]);
+      this.ctx.scale(1, -1);
+      this.ctx.fillText(room.name || 'Cômodo', 0, -smallFontSize * 0.6);
 
-        // Area label
-        this.ctx.font = `${smallFontSize}px system-ui, -apple-system, sans-serif`;
-        this.ctx.fillStyle = '#64748b';
-        this.ctx.fillText(`${area.toFixed(1)} m²`, 0, fontSize * 0.6);
-        this.ctx.restore();
-        this.ctx.restore();
-      }
+      // Area label
+      this.ctx.font = `${smallFontSize}px system-ui, -apple-system, sans-serif`;
+      this.ctx.fillStyle = '#64748b';
+      this.ctx.fillText(`${area.toFixed(1)} m²`, 0, fontSize * 0.6);
+      this.ctx.restore();
+      this.ctx.restore();
 
       // ── Edge dimension labels (always visible when scale is big enough) ──
       if (this.config.showDimensions && this.transform.scale > 12) {
