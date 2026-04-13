@@ -182,7 +182,7 @@ class Render3DEngine {
 
   createLOD(lodId: string, levels: LODLevel[]): THREE.LOD {
     const lod = new THREE.LOD();
-    levels.forEach((level, index) => {
+    levels.forEach((level) => {
       const mesh = new THREE.Mesh(level.geometry, level.material);
       mesh.castShadow = true;
       mesh.receiveShadow = true;
@@ -244,25 +244,19 @@ class Render3DEngine {
     this.occlusionCullingEnabled = enabled;
   }
 
-  /**
-   * Adiciona objeto à cena e ao particionamento
-   */
   addObject(object: THREE.Object3D): void {
     this.scene.add(object);
     this.partitionManager.addObject(object);
   }
 
-  /**
-   * Remove objeto da cena e do particionamento
-   */
   removeObject(object: THREE.Object3D): void {
     this.scene.remove(object);
     this.partitionManager.removeObject(object);
   }
 
   /**
-   * Sincroniza a cena com os dados atuais do editor
-   * (Chamado externamente via componente Render3D)
+   * Sincroniza a cena com os dados do editor.
+   * Remove todos os objetos de domínio existentes e recria a partir dos dados fornecidos.
    */
   syncScene(data: {
     walls: any[];
@@ -271,37 +265,36 @@ class Render3DEngine {
     windows: any[];
     furniture: any[];
   }): void {
-    // Limpa objetos existentes (exceto luzes, câmera, etc.)
+    // Remove objetos de domínio (mantém luzes, câmera, etc.)
     const toRemove: THREE.Object3D[] = [];
     this.scene.traverse(obj => {
-      if (obj instanceof THREE.Mesh && !(obj instanceof THREE.InstancedMesh)) {
+      if (obj.userData?.type) {
         toRemove.push(obj);
       }
     });
     toRemove.forEach(obj => this.removeObject(obj));
 
-    // Recria representações visuais a partir dos dados
-    // Nota: Esta é a única parte que "conhece" o domínio, mas apenas para conversão visual.
-    data.walls.forEach(wall => this.createWallMesh(wall));
-    data.rooms.forEach(room => this.createRoomMesh(room));
-    data.doors.forEach(door => this.createDoorMesh(door, data.walls));
-    data.windows.forEach(win => this.createWindowMesh(win, data.walls));
-    data.furniture.forEach(furn => this.createFurnitureMesh(furn));
+    // Recria geometrias
+    data.walls.forEach(w => this.createWallMesh(w));
+    data.rooms.forEach(r => this.createRoomMesh(r));
+    data.doors.forEach(d => this.createDoorMesh(d, data.walls));
+    data.windows.forEach(w => this.createWindowMesh(w, data.walls));
+    data.furniture.forEach(f => this.createFurnitureMesh(f));
   }
 
   private createWallMesh(wall: any): void {
     const start = new THREE.Vector3(wall.start[0], 0, wall.start[1]);
     const end = new THREE.Vector3(wall.end[0], 0, wall.end[1]);
-    const direction = new THREE.Vector3().subVectors(end, start);
-    const length = direction.length();
-    const angle = Math.atan2(direction.z, direction.x);
-    const position = new THREE.Vector3().addVectors(start, end).multiplyScalar(0.5);
-    position.y = (wall.height || 2.8) / 2;
+    const dir = new THREE.Vector3().subVectors(end, start);
+    const length = dir.length();
+    const angle = Math.atan2(dir.z, dir.x);
+    const pos = new THREE.Vector3().addVectors(start, end).multiplyScalar(0.5);
+    pos.y = (wall.height || 2.8) / 2;
 
     const geometry = new THREE.BoxGeometry(length, wall.height || 2.8, wall.thickness || 0.15);
     const material = new THREE.MeshStandardMaterial({ color: wall.color || '#cbd5e1' });
     const mesh = new THREE.Mesh(geometry, material);
-    mesh.position.copy(position);
+    mesh.position.copy(pos);
     mesh.rotation.y = -angle;
     mesh.castShadow = true;
     mesh.receiveShadow = true;
@@ -319,15 +312,14 @@ class Render3DEngine {
     shape.closePath();
 
     const geometry = new THREE.ShapeGeometry(shape);
-    const material = new THREE.MeshStandardMaterial({ color: room.floorColor || '#e2e8f0', side: THREE.DoubleSide });
-    const mesh = new THREE.Mesh(geometry, material);
-    mesh.rotation.x = -Math.PI / 2;
-    mesh.position.y = 0.01;
-    mesh.receiveShadow = true;
-    mesh.userData = { type: 'room', id: room.id };
-    this.addObject(mesh);
+    const floorMat = new THREE.MeshStandardMaterial({ color: room.floorColor || '#e2e8f0', side: THREE.DoubleSide });
+    const floor = new THREE.Mesh(geometry, floorMat);
+    floor.rotation.x = -Math.PI / 2;
+    floor.position.y = 0.01;
+    floor.receiveShadow = true;
+    floor.userData = { type: 'roomFloor', id: room.id };
+    this.addObject(floor);
 
-    // Teto simples
     const ceilingMat = new THREE.MeshStandardMaterial({ color: room.ceilingColor || '#f8fafc', side: THREE.DoubleSide });
     const ceiling = new THREE.Mesh(geometry, ceilingMat);
     ceiling.rotation.x = Math.PI / 2;
@@ -338,21 +330,20 @@ class Render3DEngine {
   }
 
   private createDoorMesh(door: any, walls: any[]): void {
-    const wall = walls.find((w: any) => w.id === door.wallId);
+    const wall = walls.find(w => w.id === door.wallId);
     if (!wall) return;
     const start = new THREE.Vector3(wall.start[0], 0, wall.start[1]);
     const end = new THREE.Vector3(wall.end[0], 0, wall.end[1]);
     const dir = new THREE.Vector3().subVectors(end, start);
-    const length = dir.length();
+    const len = dir.length();
     const angle = Math.atan2(dir.z, dir.x);
-    const pos = start.clone().add(dir.clone().multiplyScalar(door.position / length));
+    const pos = start.clone().add(dir.clone().multiplyScalar(door.position / len));
     pos.y = (door.height || 2.1) / 2;
 
-    const doorWidth = door.width || 0.9;
-    const doorHeight = door.height || 2.1;
-    const doorDepth = door.depth || 0.05;
-
-    const geometry = new THREE.BoxGeometry(doorWidth, doorHeight, doorDepth);
+    const w = door.width || 0.9;
+    const h = door.height || 2.1;
+    const d = door.depth || 0.05;
+    const geometry = new THREE.BoxGeometry(w, h, d);
     const material = new THREE.MeshStandardMaterial({ color: door.panelColor || '#b45309' });
     const mesh = new THREE.Mesh(geometry, material);
     mesh.position.copy(pos);
@@ -364,31 +355,31 @@ class Render3DEngine {
   }
 
   private createWindowMesh(win: any, walls: any[]): void {
-    const wall = walls.find((w: any) => w.id === win.wallId);
+    const wall = walls.find(w => w.id === win.wallId);
     if (!wall) return;
     const start = new THREE.Vector3(wall.start[0], 0, wall.start[1]);
     const end = new THREE.Vector3(wall.end[0], 0, wall.end[1]);
     const dir = new THREE.Vector3().subVectors(end, start);
-    const length = dir.length();
+    const len = dir.length();
     const angle = Math.atan2(dir.z, dir.x);
-    const pos = start.clone().add(dir.clone().multiplyScalar(win.position / length));
+    const pos = start.clone().add(dir.clone().multiplyScalar(win.position / len));
     pos.y = (win.sillHeight || 0.9) + (win.height || 1.2) / 2;
 
-    const width = win.width || 1.2;
-    const height = win.height || 1.2;
-    const depth = 0.1;
+    const w = win.width || 1.2;
+    const h = win.height || 1.2;
+    const d = 0.1;
 
-    const glassGeo = new THREE.BoxGeometry(width, height, 0.02);
-    const glassMat = new THREE.MeshPhysicalMaterial({ color: '#87CEEB', transparent: true, opacity: 0.3, roughness: 0, metalness: 0 });
+    const glassGeo = new THREE.BoxGeometry(w, h, 0.02);
+    const glassMat = new THREE.MeshPhysicalMaterial({ color: '#87CEEB', transparent: true, opacity: 0.3 });
     const glass = new THREE.Mesh(glassGeo, glassMat);
     glass.position.copy(pos);
     glass.rotation.y = -angle;
     glass.castShadow = true;
     glass.receiveShadow = true;
-    glass.userData = { type: 'window', id: win.id };
+    glass.userData = { type: 'windowGlass', id: win.id };
     this.addObject(glass);
 
-    const frameGeo = new THREE.BoxGeometry(width + 0.08, height + 0.08, 0.06);
+    const frameGeo = new THREE.BoxGeometry(w + 0.08, h + 0.08, 0.06);
     const frameMat = new THREE.MeshStandardMaterial({ color: win.frameColor || '#475569' });
     const frame = new THREE.Mesh(frameGeo, frameMat);
     frame.position.copy(pos);
@@ -465,10 +456,7 @@ class Render3DEngine {
   }
 
   takeScreenshot(): string {
-    if (this.renderer) {
-      return this.renderer.domElement.toDataURL('image/png');
-    }
-    return '';
+    return this.renderer?.domElement.toDataURL('image/png') || '';
   }
 
   getDrawCalls(): number {
@@ -483,13 +471,13 @@ class Render3DEngine {
     this.renderer.dispose();
     this.controls.dispose();
 
-    this.scene.traverse((object) => {
-      if (object instanceof THREE.Mesh) {
-        object.geometry.dispose();
-        if (Array.isArray(object.material)) {
-          object.material.forEach(m => m.dispose());
+    this.scene.traverse(obj => {
+      if (obj instanceof THREE.Mesh) {
+        obj.geometry.dispose();
+        if (Array.isArray(obj.material)) {
+          obj.material.forEach(m => m.dispose());
         } else {
-          object.material.dispose();
+          obj.material.dispose();
         }
       }
     });
@@ -500,7 +488,6 @@ class Render3DEngine {
     this.partitionManager.clear();
 
     window.removeEventListener('resize', this.handleResize.bind(this));
-    console.log('[Render3DEngine] Resources disposed');
   }
 
   getStats(): { fps: number; drawCalls: number; triangles: number } {
