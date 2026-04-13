@@ -1,7 +1,7 @@
 // ============================================================
 // CAMINHO: src/features/editor/Editor.tsx
 // FUNÇÃO: Componente raiz – menu mobile ancorado, cores azuis,
-//         persistência de estado, sem botão flutuante de propriedades
+//         persistência de estado, sidebar desktop flutuante
 // ============================================================
 
 import { useState, useEffect, useRef } from 'react';
@@ -255,15 +255,50 @@ export function Editor({ onBack, openScanOnMount }: EditorProps) {
         </div>
 
         <div className="flex-1 flex overflow-hidden min-h-0 relative">
-          <div className="hidden md:block">
-            <AnimatePresence initial={false}>
-              {isSidebarOpen && (
-                <motion.div initial={{ width: 0, opacity: 0 }} animate={{ width: 256, opacity: 1 }} exit={{ width: 0, opacity: 0 }} transition={{ duration: 0.18, ease: 'easeInOut' }} className="border-r border-gray-200 dark:border-slate-800 overflow-hidden flex-shrink-0">
-                  <Sidebar scenes={scenes} currentSceneId={currentSceneId} onSceneChange={setCurrentScene} onAddScene={addScene} stats={stats} onOpenCatalog={() => setIsCatalogOpen(true)} onShare={() => setShowShare(true)} onSave={() => { saveProject(); toast.success('Projeto salvo'); }} viewMode={viewMode} onViewModeChange={setViewMode} onOpenProperties={() => setShowProperties(true)} isMobile={false} />
+          {/* Desktop sidebar – flutuante */}
+          <AnimatePresence>
+            {isSidebarOpen && (
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="fixed inset-0 z-40 hidden md:block"
+                onClick={() => setIsSidebarOpen(false)}
+              >
+                <div className="absolute inset-0 bg-black/20 backdrop-blur-sm" />
+                <motion.div
+                  initial={{ x: -280, opacity: 0 }}
+                  animate={{ x: 0, opacity: 1 }}
+                  exit={{ x: -280, opacity: 0 }}
+                  transition={{ type: 'spring', damping: 25, stiffness: 300 }}
+                  className="absolute left-0 top-0 bottom-0 w-60 bg-white/95 backdrop-blur-md shadow-2xl overflow-hidden"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <div className="flex justify-end p-2">
+                    <button onClick={() => setIsSidebarOpen(false)} className="p-2 text-gray-500">
+                      <X className="w-5 h-5" />
+                    </button>
+                  </div>
+                  <div className="h-full overflow-y-auto">
+                    <Sidebar
+                      scenes={scenes}
+                      currentSceneId={currentSceneId}
+                      onSceneChange={setCurrentScene}
+                      onAddScene={addScene}
+                      stats={stats}
+                      onOpenCatalog={() => setIsCatalogOpen(true)}
+                      onShare={() => setShowShare(true)}
+                      onSave={() => { saveProject(); toast.success('Projeto salvo'); }}
+                      viewMode={viewMode}
+                      onViewModeChange={setViewMode}
+                      onOpenProperties={() => setShowProperties(true)}
+                      isMobile={false}
+                    />
+                  </div>
                 </motion.div>
-              )}
-            </AnimatePresence>
-          </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
 
           {/* Mobile sidebar – flutuante, ancorada abaixo do botão de menu */}
           <AnimatePresence>
