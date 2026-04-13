@@ -1,7 +1,8 @@
 // ============================================================
 // Canvas2D — Orquestrador de desenho 2D
 // Fluxo: ResizeObserver → buffer correto → engine → preview overlay
-// Zoom inicial ajustado, centralização garantida
+// Zoom/Pan corrigidos – interação estilo MagicPlan
+// Sem tooltips ou mensagens poluentes
 // ============================================================
 
 import { useRef, useEffect, useState, useCallback, useLayoutEffect } from 'react';
@@ -29,7 +30,7 @@ export function Canvas2D() {
   const toolManagerRef = useRef<ToolManager | null>(null);
   const animFrameRef = useRef<number>(0);
 
-  const scaleRef = useRef(40); // ← zoom inicial reduzido
+  const scaleRef = useRef(40);
   const panRef = useRef<Vec2>([0, 0]);
   const isPanningRef = useRef(false);
   const panStartRef = useRef({ x: 0, y: 0 });
@@ -150,7 +151,7 @@ export function Canvas2D() {
     });
     engine.initialize(canvasRef.current);
     renderEngineRef.current = engine;
-    resetView(); // centraliza ao iniciar
+    resetView();
     requestRenderFrame();
   }, [resetView]);
 
@@ -357,9 +358,6 @@ export function Canvas2D() {
     return m;
   };
 
-  // ============================================================
-  // POINTER EVENTS (corrigidos)
-  // ============================================================
   const handlePointerDown = (e: React.PointerEvent) => {
     if (e.button !== 2) e.preventDefault();
     (e.target as HTMLElement).setPointerCapture(e.pointerId);
@@ -604,9 +602,6 @@ export function Canvas2D() {
     return actions;
   };
 
-  // ============================================================
-  // WHEEL ZOOM (com proteção contra multi‑touch)
-  // ============================================================
   const handleWheel = useCallback((e: WheelEvent) => {
     e.preventDefault();
     const canvas = canvasRef.current;
@@ -636,7 +631,6 @@ export function Canvas2D() {
     return () => canvas.removeEventListener('wheel', handleWheel);
   }, [handleWheel]);
 
-  // ── Keyboard ──────────────────────────────────────────────────
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.code === 'Space' && !e.repeat) {
@@ -688,8 +682,6 @@ export function Canvas2D() {
     }
   };
 
-  const isMobile = typeof window !== 'undefined' && window.matchMedia('(max-width: 768px)').matches;
-
   return (
     <ToolContext.Provider value={{ previewState, setPreviewState, activeTool: tool }}>
       <div ref={containerRef} className="w-full h-full relative overflow-hidden bg-slate-100">
@@ -725,7 +717,6 @@ export function Canvas2D() {
           </div>
         )}
 
-        {/* Scale info - apenas desktop */}
         <div className="hidden md:block absolute bottom-4 left-4 bg-white/80 backdrop-blur-sm px-3 py-1.5 rounded-lg text-xs text-slate-600 border border-slate-200 shadow-sm z-10">
           1 : {(100 / scale * 10).toFixed(0)} &nbsp;|&nbsp; {scale.toFixed(0)} px/m
         </div>
