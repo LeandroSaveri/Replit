@@ -74,7 +74,7 @@ export interface EditorState {
   moveWall: (wallId: string, delta: import('@auriplan-types').Vec2) => void;
   createWallsFromPolygon: (points: import('@auriplan-types').Vec2[]) => void;
   splitWall: (wallId: string, point: import('@auriplan-types').Vec2) => void;
-  updateWallsBatch: (updates: Array<{ id: string; start: Vec2; end: Vec2 }>) => void; // NOVA AÇÃO CANÔNICA
+  updateWallsBatch: (updates: Array<{ id: string; start: Vec2; end: Vec2 }>) => void;
 
   // Live updates (no history — for smooth dragging)
   _liveUpdateWall: (id: string, start: import('@auriplan-types').Vec2, end: import('@auriplan-types').Vec2) => void;
@@ -83,7 +83,7 @@ export interface EditorState {
   _liveUpdateWallsBatch: (updates: Array<{ id: string; start: Vec2; end: Vec2 }>) => void;
 
   // Actions - Rooms
-  addRoom: (points: import('@auriplan-types').Vec2[]) => void;
+  addRoom: (points: import('@auriplan-types').Vec2[], options?: { name?: string; type?: Room['type']; floorColor?: string; wallColor?: string; ceilingColor?: string }) => void;
   updateRoom: (id: string, updates: Partial<import('@auriplan-types').Room>) => void;
   deleteRoom: (id: string) => void;
 
@@ -614,7 +614,7 @@ export const useEditorStore = create<EditorState>()(
       // --------------------------------------------------------------
       // AÇÕES DE CÔMODOS (MANUAIS)
       // --------------------------------------------------------------
-      addRoom: (points: Vec2[]) => {
+      addRoom: (points: Vec2[], options?: { name?: string; type?: Room['type']; floorColor?: string; wallColor?: string; ceilingColor?: string }) => {
         const scene = getCurrentScene(get());
         if (!scene) return;
         let area = 0;
@@ -631,12 +631,12 @@ export const useEditorStore = create<EditorState>()(
         }
         const newRoom: Room = {
           id: uuidv4(),
-          name: 'Novo Cômodo',
-          type: 'custom',
+          name: options?.name || 'Novo Cômodo',
+          type: options?.type || 'custom',
           points,
-          wallColor: '#F5F5DC',
-          floorColor: '#D2691E',
-          ceilingColor: '#FFFFFF',
+          wallColor: options?.wallColor || '#F5F5DC',
+          floorColor: options?.floorColor || '#D2691E',
+          ceilingColor: options?.ceilingColor || '#FFFFFF',
           height: 2.8,
           area,
           perimeter,
