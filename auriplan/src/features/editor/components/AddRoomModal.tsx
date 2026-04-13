@@ -136,7 +136,6 @@ function generateRoomPoints(
       [x0, y0 + depth],
     ];
   }
-  // default: retangular ou quadrado
   return [
     [x0, y0],
     [x0 + width, y0],
@@ -162,23 +161,17 @@ function ShapeThumbnail({ shape, width, depth, label, dimensions }: { shape: str
           style={{ width: thumbWidth, height: thumbHeight }}
         >
           {shape === 'l' && (
-            <>
-              <div className="absolute bottom-0 right-0 w-1/2 h-1/2 border-t-2 border-l-2 border-blue-400 bg-blue-100/50 rounded-br-lg" />
-            </>
+            <div className="absolute bottom-0 right-0 w-1/2 h-1/2 border-t-2 border-l-2 border-blue-400 bg-blue-100/50 rounded-br-lg" />
           )}
           {shape === 't' && (
-            <>
-              <div className="absolute bottom-0 left-1/4 w-1/2 h-1/2 border-t-2 border-x-2 border-blue-400 bg-blue-100/50" />
-            </>
+            <div className="absolute bottom-0 left-1/4 w-1/2 h-1/2 border-t-2 border-x-2 border-blue-400 bg-blue-100/50" />
           )}
           {shape === 'u' && (
-            <>
-              <div className="absolute bottom-0 left-0 right-0 h-1/2 border-t-2 border-blue-400 bg-blue-100/50 flex">
-                <div className="w-1/3 border-r-2 border-blue-400 h-full" />
-                <div className="w-1/3" />
-                <div className="w-1/3 border-l-2 border-blue-400 h-full" />
-              </div>
-            </>
+            <div className="absolute bottom-0 left-0 right-0 h-1/2 border-t-2 border-blue-400 bg-blue-100/50 flex">
+              <div className="w-1/3 border-r-2 border-blue-400 h-full" />
+              <div className="w-1/3" />
+              <div className="w-1/3 border-l-2 border-blue-400 h-full" />
+            </div>
           )}
         </div>
       </div>
@@ -204,7 +197,6 @@ export function AddRoomModal({ onClose, onScan }: AddRoomModalProps) {
   };
 
   const handleFill = () => {
-    // Placeholder para preenchimento futuro
     onClose();
   };
 
@@ -226,18 +218,19 @@ export function AddRoomModal({ onClose, onScan }: AddRoomModalProps) {
     });
     const palette = ROOM_PALETTE[Math.floor(Math.random() * ROOM_PALETTE.length)];
 
-    // Cria o cômodo diretamente com nome, tipo e cores
+    // Adiciona as paredes sem pipeline (para não sobrescrever o cômodo)
+    for (let i = 0; i < points.length; i++) {
+      addWall(points[i], points[(i + 1) % points.length], { skipPipeline: true });
+    }
+
+    // Adiciona o cômodo com nome e cores (também sem pipeline)
     addRoom(points, {
       name: selectedRoomType,
       type: selectedRoomType.toLowerCase().replace(/\s+/g, '_') as any,
       floorColor: palette.floor,
       wallColor: palette.wall,
+      skipPipeline: true,
     });
-
-    // Adiciona as paredes
-    for (let i = 0; i < points.length; i++) {
-      addWall(points[i], points[(i + 1) % points.length]);
-    }
 
     onClose();
   };
