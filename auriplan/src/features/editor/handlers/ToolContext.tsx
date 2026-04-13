@@ -1,5 +1,5 @@
 // ============================================================
-// CAMINHO: src/features/editor/handlers/ToolContext.tsx
+// CAMINHO: src/features/editor/handlers/ToolContext.ts
 // FUNÇÃO: Prover ToolManager e estado de preview para toda a UI
 // ============================================================
 
@@ -8,6 +8,7 @@ import type { Vec2, Tool } from '@auriplan-types';
 import type { EditorStore } from '@store/editorStore';
 import { ToolManager } from './ToolManager';
 import { WallGraphTopology } from '@core/wall/WallGraph';
+import type { SnapType } from '@core/snap/SnapSolver';
 
 export type PreviewType = 'wall' | 'polygon' | 'edit' | 'none';
 
@@ -15,12 +16,16 @@ export interface WallPreview {
   type: 'wall';
   start: Vec2;
   end: Vec2;
+  snapPoint?: Vec2;
+  snapType?: SnapType;
 }
 
 export interface PolygonPreview {
   type: 'polygon';
   vertices: Vec2[];
   previewPoint: Vec2 | null;
+  snapPoint?: Vec2;
+  snapType?: SnapType;
 }
 
 export interface EditPreview {
@@ -38,7 +43,6 @@ export interface ToolContextValue {
   activeTool: Tool | null;
 }
 
-// CORREÇÃO: Adicionado 'export' antes de 'const ToolContext'
 export const ToolContext = createContext<ToolContextValue | null>(null);
 
 export function useToolContext() {
@@ -60,12 +64,8 @@ export function ToolProvider({ store, children }: ToolProviderProps) {
 
   if (!toolManagerRef.current) {
     const onPreviewChange = (state: PreviewState) => setPreviewState(state);
-    const onHoverChange = (id: string | null) => {
-      // Hover feedback pode ser tratado externamente
-    };
-    const onCursorChange = (cursor: string) => {
-      // Cursor será atualizado pelo Canvas2D/3D conforme necessário
-    };
+    const onHoverChange = (id: string | null) => {};
+    const onCursorChange = (cursor: string) => {};
     const currentScene = store.getState().scenes.find(s => s.id === store.getState().currentSceneId);
     const topology = new WallGraphTopology(currentScene?.walls || []);
     toolManagerRef.current = new ToolManager(store, onPreviewChange, onHoverChange, onCursorChange, topology);
