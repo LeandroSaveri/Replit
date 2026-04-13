@@ -1,5 +1,6 @@
 // ============================================
 // PROPERTIES PANEL - Responsivo (mobile drawer)
+// Agora controlado externamente via props isOpen/onClose no desktop
 // ============================================
 
 import { useState, useEffect } from 'react';
@@ -124,8 +125,13 @@ function Vector3Input({ label, values, onChange }: { label: string; values: [num
 // Componente principal responsivo
 // ─────────────────────────────────────────────────────────────
 
-export function PropertiesPanel() {
-  const [isOpen, setIsOpen] = useState(true);
+interface PropertiesPanelProps {
+  isOpen?: boolean;      // controle externo no desktop
+  onClose?: () => void;  // para fechar quando clicar no X (desktop)
+}
+
+export function PropertiesPanel({ isOpen: externalIsOpen, onClose }: PropertiesPanelProps) {
+  const [internalIsOpen, setInternalIsOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
   
   const { 
@@ -152,17 +158,29 @@ export function PropertiesPanel() {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
+  // Sincroniza com a prop externa no desktop
   useEffect(() => {
-    if (isMobile && selectedIds.length === 0 && isOpen) setIsOpen(false);
-  }, [selectedIds, isMobile, isOpen]);
+    if (!isMobile) {
+      setInternalIsOpen(!!externalIsOpen);
+    }
+  }, [externalIsOpen, isMobile]);
 
+  // No mobile, fecha o drawer se não houver seleção
+  useEffect(() => {
+    if (isMobile && selectedIds.length === 0 && internalIsOpen) {
+      setInternalIsOpen(false);
+    }
+  }, [selectedIds, isMobile, internalIsOpen]);
+
+  // Se não houver seleção e não estiver aberto (mobile), não renderiza nada
   if (selectedIds.length === 0) {
     if (!isMobile) {
-      return (
+      // Desktop: renderiza painel vazio se estiver aberto
+      return externalIsOpen ? (
         <aside className="w-80 bg-slate-900 border-l border-slate-800 flex flex-col">
           <div className="h-12 border-b border-slate-800 flex items-center justify-between px-4">
             <span className="text-sm font-medium text-slate-300">Propriedades</span>
-            <button onClick={() => setIsOpen(false)} className="text-slate-500 hover:text-white">
+            <button onClick={onClose} className="text-slate-500 hover:text-white">
               <X className="w-4 h-4" />
             </button>
           </div>
@@ -173,7 +191,7 @@ export function PropertiesPanel() {
             </div>
           </div>
         </aside>
-      );
+      ) : null;
     }
     return null;
   }
@@ -192,7 +210,7 @@ export function PropertiesPanel() {
     else if (isWindow) deleteWindow(selectedItem.id);
     else if (isFurniture) deleteFurniture(selectedItem.id);
     deselectAll();
-    if (isMobile) setIsOpen(false);
+    if (isMobile) setInternalIsOpen(false);
   };
 
   // Componente interno que contém o conteúdo do painel (sem o header do drawer)
@@ -318,6 +336,8 @@ export function PropertiesPanel() {
 
   // ─────────────── RENDER RESPONSIVO ───────────────
   if (!isMobile) {
+    // Desktop: só renderiza se externalIsOpen for true
+    if (!externalIsOpen) return null;
     return (
       <motion.div
         initial={{ width: 0, opacity: 0 }}
@@ -329,7 +349,7 @@ export function PropertiesPanel() {
         <div className="flex flex-col h-full bg-slate-900">
           <div className="h-12 border-b border-slate-800 flex items-center justify-between px-4 flex-shrink-0">
             <span className="text-sm font-medium text-slate-300">Propriedades</span>
-            <button onClick={() => setIsOpen(false)} className="text-slate-500 hover:text-white">
+            <button onClick={onClose} className="text-slate-500 hover:text-white">
               <X className="w-4 h-4" />
             </button>
           </div>
@@ -342,9 +362,9 @@ export function PropertiesPanel() {
   // Mobile: drawer inferior + botão flutuante
   return (
     <>
-      {!isOpen && selectedIds.length > 0 && (
+      {!internalIsOpen && selectedIds.length > 0 && (
         <button
-          onClick={() => setIsOpen(true)}
+          onClick={() => setInternalIsOpen(true)}
           className="fixed bottom-36 right-4 z-30 w-12 h-12 rounded-full bg-slate-800 border border-slate-700 text-white shadow-xl flex items-center justify-center hover:bg-slate-700 transition-all active:scale-95 md:hidden"
           title="Editar propriedades"
         >
@@ -353,14 +373,14 @@ export function PropertiesPanel() {
       )}
 
       <AnimatePresence>
-        {isOpen && (
+        {internalIsOpen && (
           <>
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               className="fixed inset-0 bg-black/60 z-40 md:hidden"
-              onClick={() => setIsOpen(false)}
+              onClick={() => setInternalIsOpen(false)}
             />
             <motion.div
               initial={{ y: '100%' }}
@@ -371,7 +391,7 @@ export function PropertiesPanel() {
             >
               <div className="flex items-center justify-between px-4 py-3 border-b border-slate-800">
                 <span className="text-sm font-medium text-slate-300">Propriedades</span>
-                <button onClick={() => setIsOpen(false)} className="p-1 text-slate-500 hover:text-white">
+                <button onClick={() => setInternalIsOpen(false)} className="p-1 text-slate-500 hover:text-white">
                   <X className="w-5 h-5" />
                 </button>
               </div>
