@@ -50,7 +50,8 @@ class Render3DEngine {
   private options: Render3DOptions;
   private objectPoolManager: ObjectPoolManager;
   private partitionManager: ScenePartitionManager;
-  private controlsPromise: Promise<any> | null = null;
+
+  private cameraAdjusted = false; // ← evita reenquadramento repetido
 
   constructor(options: Render3DOptions) {
     this.options = {
@@ -82,9 +83,12 @@ class Render3DEngine {
       this.controls.enableDamping = true;
       this.controls.dampingFactor = 0.05;
       this.controls.screenSpacePanning = true;
-      this.controls.maxPolarAngle = Math.PI / 2;
-      this.controls.minDistance = 2;
-      this.controls.maxDistance = 100;
+      this.controls.enableRotate = true;        // ← rotação livre
+      this.controls.enableZoom = true;
+      this.controls.enablePan = true;
+      this.controls.maxPolarAngle = Math.PI;     // ← permite olhar para baixo/para cima
+      this.controls.minDistance = 1;
+      this.controls.maxDistance = 200;
       this.controls.target.set(0, 1, 0);
       this.controls.update();
     } catch (error) {
@@ -276,7 +280,11 @@ class Render3DEngine {
     data.windows.forEach(w => this.createWindowMesh(w, data.walls));
     data.furniture.forEach(f => this.createFurnitureMesh(f));
 
-    this.fitCameraToScene();
+    // Ajusta câmera apenas na primeira vez que a cena tiver objetos
+    if (!this.cameraAdjusted && (data.walls.length > 0 || data.rooms.length > 0)) {
+      this.fitCameraToScene();
+      this.cameraAdjusted = true;
+    }
   }
 
   private createWallMesh(wall: any): void {
@@ -419,7 +427,7 @@ class Render3DEngine {
     const maxDim = Math.max(size.x, size.y, size.z);
     const distance = maxDim * 1.8;
 
-    // Posiciona a câmera em um ângulo isométrico agradável
+    // Posição isométrica fixa, sem acumular
     this.camera.position.set(
       center.x + distance * 0.8,
       center.y + distance * 0.6,
