@@ -7,8 +7,6 @@ import * as THREE from 'three';
 import { ObjectPoolManager } from './ObjectPoolManager';
 import { ScenePartitionManager } from './ScenePartitionManager';
 
-type OrbitControls = any;
-
 export interface Render3DOptions {
   canvas: HTMLCanvasElement;
   width: number;
@@ -34,27 +32,25 @@ export interface InstancedMeshData {
 }
 
 class Render3DEngine {
-  private readonly DEBUG = true; // ← Temporário para diagnóstico
-
   public renderer: THREE.WebGLRenderer;
   public scene: THREE.Scene;
   public camera: THREE.PerspectiveCamera;
-  public controls: OrbitControls;
-  
+  public controls: any = null;
+
   private lodManager = new Map<string, THREE.LOD>();
   private instancedMeshes = new Map<string, THREE.InstancedMesh>();
   private frustum = new THREE.Frustum();
   private frustumMatrix = new THREE.Matrix4();
   private occlusionCullingEnabled = true;
-  
+
   private frameCount = 0;
   private lastTime = performance.now();
   public fps = 0;
-  
-  private options: Render3DOptions;
 
+  private options: Render3DOptions;
   private objectPoolManager: ObjectPoolManager;
   private partitionManager: ScenePartitionManager;
+  private controlsPromise: Promise<any> | null = null;
 
   constructor(options: Render3DOptions) {
     this.options = {
@@ -66,20 +62,34 @@ class Render3DEngine {
       ...options,
     };
 
-    if (this.DEBUG) console.log('[Render3DEngine] Inicializando com opções:', this.options);
-
     this.renderer = this.createRenderer();
     this.scene = this.createScene();
     this.camera = this.createCamera();
-    this.controls = this.createControls();
-    
+
     this.setupLighting();
     this.setupEventListeners();
 
     this.objectPoolManager = new ObjectPoolManager();
     this.partitionManager = new ScenePartitionManager({ cellSize: 5 });
 
-    if (this.DEBUG) console.log('[Render3DEngine] Engine inicializada.');
+    this.initControls();
+  }
+
+  private async initControls(): Promise<void> {
+    try {
+      const { OrbitControls } = await import('three/examples/jsm/controls/OrbitControls.js');
+      this.controls = new OrbitControls(this.camera, this.renderer.domElement);
+      this.controls.enableDamping = true;
+      this.controls.dampingFactor = 0.05;
+      this.controls.screenSpacePanning = true;
+      this.controls.maxPolarAngle = Math.PI / 2;
+      this.controls.minDistance = 2;
+      this.controls.maxDistance = 100;
+      this.controls.target.set(0, 1, 0);
+      this.controls.update();
+    } catch (error) {
+      console.error('Failed to load OrbitControls:', error);
+    }
   }
 
   private createRenderer(): THREE.WebGLRenderer {
@@ -103,15 +113,13 @@ class Render3DEngine {
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1.0;
 
-    if (this.DEBUG) console.log('[Render3DEngine] Renderer criado. Tamanho:', this.options.width, this.options.height);
-
     return renderer;
   }
 
   private createScene(): THREE.Scene {
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(0xf5f5f5);
-    scene.fog = new THREE.Fog(0xf5f5f5, 10, 50);
+    scene.fog = new THREE.Fog(0xf5f5f5, 20, 100);
     return scene;
   }
 
@@ -127,49 +135,35 @@ class Render3DEngine {
     return camera;
   }
 
-  private createControls(): OrbitControls {
-    const ControlsClass: any = class {
-      camera: any; domElement: any;
-      enableDamping = true; dampingFactor = 0.05; enableZoom = true;
-      constructor(cam: any, dom: any) { this.camera = cam; this.domElement = dom; }
-      update() {} dispose() {} addEventListener() {} removeEventListener() {}
-    };
-    const controls = new ControlsClass(this.camera, this.renderer.domElement);
-    controls.enableDamping = true;
-    controls.dampingFactor = 0.05;
-    controls.minDistance = 1;
-    controls.maxDistance = 50;
-    controls.maxPolarAngle = Math.PI / 2 - 0.1;
-    return controls;
-  }
-
   private setupLighting(): void {
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.4);
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
     this.scene.add(ambientLight);
 
-    const sunLight = new THREE.DirectionalLight(0xffffff, 1.0);
-    sunLight.position.set(10, 20, 10);
+    const sunLight = new THREE.DirectionalLight(0xffffff, 1.2);
+    sunLight.position.set(15, 25, 10);
     sunLight.castShadow = this.options.shadows ?? false;
-    
+
     if (this.options.shadows) {
       sunLight.shadow.mapSize.width = this.options.shadowMapSize!;
       sunLight.shadow.mapSize.height = this.options.shadowMapSize!;
       sunLight.shadow.camera.near = 0.5;
-      sunLight.shadow.camera.far = 50;
-      sunLight.shadow.camera.left = -20;
-      sunLight.shadow.camera.right = 20;
-      sunLight.shadow.camera.top = 20;
-      sunLight.shadow.camera.bottom = -20;
+      sunLight.shadow.camera.far = 60;
+      sunLight.shadow.camera.left = -25;
+      sunLight.shadow.camera.right = 25;
+      sunLight.shadow.camera.top = 25;
+      sunLight.shadow.camera.bottom = -25;
       sunLight.shadow.bias = -0.0005;
     }
-    
+
     this.scene.add(sunLight);
 
-    const fillLight = new THREE.DirectionalLight(0xffffff, 0.3);
-    fillLight.position.set(-10, 10, -10);
+    const fillLight = new THREE.DirectionalLight(0xffeedd, 0.4);
+    fillLight.position.set(-10, 15, -15);
     this.scene.add(fillLight);
 
-    if (this.DEBUG) console.log('[Render3DEngine] Iluminação configurada.');
+    const backLight = new THREE.PointLight(0xccddff, 0.3);
+    backLight.position.set(0, 5, -20);
+    this.scene.add(backLight);
   }
 
   private setupEventListeners(): void {
@@ -181,7 +175,6 @@ class Render3DEngine {
     if (parent) {
       const width = parent.clientWidth;
       const height = parent.clientHeight;
-      if (this.DEBUG) console.log('[Render3DEngine] Resize para:', width, height);
       this.resize(width, height);
     }
   }
@@ -260,9 +253,6 @@ class Render3DEngine {
     this.partitionManager.removeObject(object);
   }
 
-  /**
-   * Sincroniza a cena com os dados do editor.
-   */
   syncScene(data: {
     walls: any[];
     rooms: any[];
@@ -270,34 +260,22 @@ class Render3DEngine {
     windows: any[];
     furniture: any[];
   }): void {
-    if (this.DEBUG) {
-      console.log('[Render3DEngine] syncScene chamado com:', {
-        walls: data.walls.length,
-        rooms: data.rooms.length,
-        doors: data.doors.length,
-        windows: data.windows.length,
-        furniture: data.furniture.length,
-      });
-    }
-
-    // Remove objetos de domínio existentes
+    // Remove objetos existentes
     const toRemove: THREE.Object3D[] = [];
     this.scene.traverse(obj => {
       if (obj.userData?.type) {
         toRemove.push(obj);
       }
     });
-    if (this.DEBUG) console.log(`[Render3DEngine] Removendo ${toRemove.length} objetos existentes.`);
     toRemove.forEach(obj => this.removeObject(obj));
 
-    // Recria geometrias
+    // Recria objetos
     data.walls.forEach(w => this.createWallMesh(w));
     data.rooms.forEach(r => this.createRoomMesh(r));
     data.doors.forEach(d => this.createDoorMesh(d, data.walls));
     data.windows.forEach(w => this.createWindowMesh(w, data.walls));
     data.furniture.forEach(f => this.createFurnitureMesh(f));
 
-    if (this.DEBUG) console.log('[Render3DEngine] Objetos recriados. Ajustando câmera...');
     this.fitCameraToScene();
   }
 
@@ -433,34 +411,32 @@ class Render3DEngine {
       }
     });
 
-    if (box.isEmpty()) {
-      if (this.DEBUG) console.warn('[Render3DEngine] fitCameraToScene: Nenhum objeto na cena. Câmera mantida na posição padrão.');
-      return;
-    }
+    if (box.isEmpty()) return;
 
     const size = box.getSize(new THREE.Vector3());
     const center = box.getCenter(new THREE.Vector3());
 
-    if (this.DEBUG) {
-      console.log('[Render3DEngine] Bounds da cena:', { size, center });
-    }
-
     const maxDim = Math.max(size.x, size.y, size.z);
-    const fov = this.camera.fov * (Math.PI / 180);
-    let cameraZ = Math.abs(maxDim / 2 / Math.tan(fov / 2));
-    cameraZ *= 1.5;
+    const distance = maxDim * 1.8;
 
-    this.camera.position.set(center.x + cameraZ, center.y + cameraZ, center.z + cameraZ);
+    // Posiciona a câmera em um ângulo isométrico agradável
+    this.camera.position.set(
+      center.x + distance * 0.8,
+      center.y + distance * 0.6,
+      center.z + distance * 0.8
+    );
     this.camera.lookAt(center);
-    if (this.controls.target) {
-      this.controls.target.copy(center);
-    }
 
-    if (this.DEBUG) console.log('[Render3DEngine] Câmera ajustada para:', this.camera.position);
+    if (this.controls) {
+      this.controls.target.copy(center);
+      this.controls.update();
+    }
   }
 
   render(): void {
-    this.controls.update();
+    if (this.controls) {
+      this.controls.update();
+    }
     this.updateFrustum();
     this.updateFPS();
     this.renderer.render(this.scene, this.camera);
@@ -483,7 +459,6 @@ class Render3DEngine {
       callback?.();
     };
     animate();
-    if (this.DEBUG) console.log('[Render3DEngine] Render loop iniciado.');
   }
 
   setCameraPosition(x: number, y: number, z: number): void {
@@ -506,9 +481,6 @@ class Render3DEngine {
       this.renderer.setSize(width, height);
       this.camera.aspect = width / height;
       this.camera.updateProjectionMatrix();
-      if (this.DEBUG) console.log('[Render3DEngine] Renderer redimensionado para:', width, height);
-    } else {
-      if (this.DEBUG) console.warn('[Render3DEngine] Tentativa de redimensionar com dimensões inválidas:', width, height);
     }
   }
 
@@ -526,7 +498,9 @@ class Render3DEngine {
 
   dispose(): void {
     this.renderer.dispose();
-    this.controls.dispose();
+    if (this.controls) {
+      this.controls.dispose();
+    }
 
     this.scene.traverse(obj => {
       if (obj instanceof THREE.Mesh) {
@@ -545,7 +519,6 @@ class Render3DEngine {
     this.partitionManager.clear();
 
     window.removeEventListener('resize', this.handleResize.bind(this));
-    if (this.DEBUG) console.log('[Render3DEngine] Engine destruída.');
   }
 
   getStats(): { fps: number; drawCalls: number; triangles: number } {
