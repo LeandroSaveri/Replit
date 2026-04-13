@@ -88,5 +88,9 @@ export function ToolProvider({ store, children }: ToolProviderProps) {
     activeTool,
   }), [previewState, activeTool]);
 
-  return <ToolContext.Provider value={value}>{children}</ToolContext.Provider>;
+  return (
+    <ToolContext.Provider value={value}>
+      {children}
+    </ToolContext.Provider>
+  );
 }
