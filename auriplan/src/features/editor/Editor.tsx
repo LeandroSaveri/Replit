@@ -1,7 +1,6 @@
 // ============================================================
 // CAMINHO: src/features/editor/Editor.tsx
-// FUNÇÃO: Componente raiz do editor – sem botões de zoom flutuantes,
-//         propriedades no mobile via Sidebar, botão + azul claro
+// FUNÇÃO: Componente raiz do editor – largura do drawer mobile ajustada
 // ============================================================
 
 import { useState, useCallback, useEffect, useRef } from 'react';
@@ -368,7 +367,7 @@ export function Editor({ onBack, openScanOnMount }: EditorProps) {
               {isSidebarOpen && (
                 <motion.div
                   initial={{ width: 0, opacity: 0 }}
-                  animate={{ width: 288, opacity: 1 }}
+                  animate={{ width: 256, opacity: 1 }} // ← largura reduzida para 256px
                   exit={{ width: 0, opacity: 0 }}
                   transition={{ duration: 0.18, ease: 'easeInOut' }}
                   className="border-r border-gray-200 dark:border-slate-800 overflow-hidden flex-shrink-0"
@@ -406,11 +405,11 @@ export function Editor({ onBack, openScanOnMount }: EditorProps) {
               >
                 <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
                 <motion.div
-                  initial={{ x: -280 }}
+                  initial={{ x: -224 }} // ← ajustado para 224px
                   animate={{ x: 0 }}
-                  exit={{ x: -280 }}
+                  exit={{ x: -224 }}
                   transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-                  className="absolute left-0 top-0 bottom-0 w-72 bg-white dark:bg-slate-900 shadow-2xl"
+                  className="absolute left-0 top-0 bottom-0 w-56 bg-white dark:bg-slate-900 shadow-2xl" // ← w-56 = 224px
                   onClick={(e) => e.stopPropagation()}
                 >
                   <div className="flex justify-end p-2">
