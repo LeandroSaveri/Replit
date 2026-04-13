@@ -401,6 +401,8 @@ export function Editor({ onBack, openScanOnMount }: EditorProps) {
                 exit={{ opacity: 0 }}
                 className="fixed inset-0 z-40 md:hidden"
                 onClick={() => setIsSidebarOpen(false)}
+                onTouchMove={(e) => e.preventDefault()}
+                onPointerMove={(e) => e.preventDefault()}
               >
                 <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
                 <motion.div
