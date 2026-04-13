@@ -1,6 +1,8 @@
 // ============================================
 // SIDEBAR - Painel Lateral Premium
 // TEMA CLARO – Cores azuis, persistência de estado
+// Ferramentas "Parede" e "Cômodo" removidas (já estão no botão +)
+// Menu fecha ao selecionar ferramenta no mobile
 // ============================================
 
 import { useState, useEffect } from 'react';
@@ -24,7 +26,6 @@ import {
   X,
   MousePointer2,
   Hand,
-  BrickWall,
   Type,
   Grid3X3,
   Magnet,
@@ -70,7 +71,7 @@ interface LayerItemProps {
   onToggleLock: () => void;
 }
 
-// Tool groups - apenas para MOBILE
+// Tool groups - apenas para MOBILE (sem "Desenhar")
 interface ToolGroup {
   label: string;
   tools: Array<{ id: Tool; icon: React.ElementType; label: string; shortcut: string }>;
@@ -82,13 +83,6 @@ const toolGroups: ToolGroup[] = [
     tools: [
       { id: 'select', icon: MousePointer2, label: 'Selecionar', shortcut: 'V' },
       { id: 'pan', icon: Hand, label: 'Mover', shortcut: 'H' },
-    ],
-  },
-  {
-    label: 'Desenhar',
-    tools: [
-      { id: 'wall', icon: BrickWall, label: 'Parede', shortcut: 'W' },
-      { id: 'room', icon: Square, label: 'Cômodo', shortcut: 'R' },
     ],
   },
   {
@@ -275,6 +269,10 @@ export function Sidebar({
 
   const handleToolSelect = (toolId: Tool) => {
     setTool(toolId);
+    // Fecha o menu mobile ao selecionar uma ferramenta
+    if (isMobile && onClose) {
+      onClose();
+    }
   };
 
   return (
@@ -411,7 +409,7 @@ export function Sidebar({
                       onClick={() => setExpandedTools(!expandedTools)}
                       className="w-full flex items-center justify-between p-1 text-[10px] font-semibold uppercase tracking-wider text-gray-500 hover:text-gray-700 transition-colors"
                     >
-                      <span>Ferramentas de Desenho</span>
+                      <span>Ferramentas</span>
                       {expandedTools ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
                     </button>
 
