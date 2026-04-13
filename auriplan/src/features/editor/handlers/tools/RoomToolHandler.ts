@@ -1,8 +1,7 @@
 // ============================================================
 // CAMINHO: src/features/editor/handlers/tools/RoomToolHandler.ts
 // FUNCIONALIDADE: Implementa a ferramenta de desenho de cômodos
-// por polígono (cliques) e oferece formas prontas.
-// OBJETO: Criar paredes a partir de um polígono fechado.
+// por polígono (cliques) e oferece formas prontas com ícones.
 // ============================================================
 
 import type { InteractionEvent } from '@core/interaction/InteractionEngine';
@@ -11,18 +10,19 @@ import type { PreviewState } from '../ToolContext';
 import type { EditorStore } from '@store/editorStore';
 import { SnapSolver } from '@core/snap/SnapSolver';
 import type { Vec2 } from '@auriplan-types';
+import { Square, LayoutGrid, Grid3X3 } from 'lucide-react';
 
 const LAST_POINT_CONNECT_TOLERANCE = 0.4;
 
-// Formas prontas (relativas ao centro)
+// Formas prontas com ícones
 export const ROOM_SHAPES = [
-  { name: 'Quadrado 5x5', points: [[-2.5,-2.5],[2.5,-2.5],[2.5,2.5],[-2.5,2.5]] },
-  { name: 'Retângulo 6x4', points: [[-3,-2],[3,-2],[3,2],[-3,2]] },
-  { name: 'Quarto 4x4', points: [[-2,-2],[2,-2],[2,2],[-2,2]] },
-  { name: 'Cozinha 3x4', points: [[-1.5,-2],[1.5,-2],[1.5,2],[-1.5,2]] },
-  { name: 'Formato L', points: [[-3,-2],[0,-2],[0,0],[3,0],[3,2],[-3,2]] },
-  { name: 'Formato U', points: [[-3,-2],[3,-2],[3,0],[1,0],[1,2],[-1,2],[-1,0],[-3,0]] },
-  { name: 'Formato T', points: [[-3,-2],[3,-2],[3,0],[1,0],[1,2],[-1,2],[-1,0],[-3,0]] },
+  { name: 'Quadrado 5x5', points: [[-2.5,-2.5],[2.5,-2.5],[2.5,2.5],[-2.5,2.5]], icon: Square },
+  { name: 'Retângulo 6x4', points: [[-3,-2],[3,-2],[3,2],[-3,2]], icon: LayoutGrid },
+  { name: 'Quarto 4x4', points: [[-2,-2],[2,-2],[2,2],[-2,2]], icon: Square },
+  { name: 'Cozinha 3x4', points: [[-1.5,-2],[1.5,-2],[1.5,2],[-1.5,2]], icon: Grid3X3 },
+  { name: 'Formato L', points: [[-3,-2],[0,-2],[0,0],[3,0],[3,2],[-3,2]], icon: 'l' },
+  { name: 'Formato U', points: [[-3,-2],[3,-2],[3,0],[1,0],[1,2],[-1,2],[-1,0],[-3,0]], icon: 'u' },
+  { name: 'Formato T', points: [[-3,-2],[3,-2],[3,0],[1,0],[1,2],[-1,2],[-1,0],[-3,0]], icon: 't' },
 ];
 
 export class RoomToolHandler implements ToolHandler {
