@@ -1,7 +1,7 @@
 // ============================================================
 // CAMINHO: src/features/editor/Editor.tsx
 // FUNÇÃO: Componente raiz – menu mobile flutuante, botão + reduzido,
-//         sem botão flutuante de propriedades
+//         sem botão flutuante de propriedades (build corrigido)
 // ============================================================
 
 import { useState, useEffect, useRef } from 'react';
@@ -304,9 +304,24 @@ export function Editor({ onBack, openScanOnMount }: EditorProps) {
           <StatusBar viewMode={viewMode} tool={tool} stats={stats} selectedCount={selectedIds.length} />
         </div>
 
-        {/* Modais (inalterados) */}
+        {/* Modais */}
         <AnimatePresence>
-          {isCatalogOpen && ( /* ... */ )}
+          {isCatalogOpen && (
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => setIsCatalogOpen(false)}>
+              <motion.div initial={{ scale: 0.92, opacity: 0, y: 16 }} animate={{ scale: 1, opacity: 1, y: 0 }} exit={{ scale: 0.92, opacity: 0, y: 16 }} transition={{ type: 'spring', damping: 25, stiffness: 300 }} className="w-full max-w-4xl h-[80vh] bg-white dark:bg-slate-900 rounded-2xl border border-gray-200 dark:border-slate-700 shadow-2xl overflow-hidden" onClick={e => e.stopPropagation()}>
+                <div className="h-12 border-b border-gray-200 dark:border-slate-800 flex items-center justify-between px-5 py-3.5">
+                  <div className="flex items-center gap-2.5">
+                    <Box className="w-5 h-5 text-blue-400" />
+                    <h2 className="text-base font-semibold text-gray-900 dark:text-white">Catálogo de Móveis</h2>
+                  </div>
+                  <button onClick={() => setIsCatalogOpen(false)} className="p-1.5 text-gray-500 dark:text-slate-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-slate-800 rounded-lg transition-colors">
+                    <X className="w-[18px] h-[18px]" />
+                  </button>
+                </div>
+                <div className="h-[calc(80vh-52px)]"><FurnitureCatalog /></div>
+              </motion.div>
+            </motion.div>
+          )}
           {showAIAssistant && <AIAssistant onClose={() => setShowAIAssistant(false)} />}
           {showScan && <ScanModal onClose={() => setShowScan(false)} />}
           {showAddRoom && <AddRoomModal onClose={() => setShowAddRoom(false)} onScan={() => { setShowAddRoom(false); setShowScan(true); }} />}
@@ -316,7 +331,28 @@ export function Editor({ onBack, openScanOnMount }: EditorProps) {
           {showTour && <VirtualTour onClose={() => setShowTour(false)} />}
           {showShare && <ShareSystem onClose={() => setShowShare(false)} />}
           {showSettings && <SettingsPanel onClose={() => setShowSettings(false)} />}
-          {showCommandPalette && <CommandPalette onClose={() => setShowCommandPalette(false)} onAction={(id) => { /* ... */ }} />}
+          {showCommandPalette && <CommandPalette onClose={() => setShowCommandPalette(false)} onAction={(id) => {
+            const actions: Record<string, () => void> = {
+              'save': () => { saveProject(); toast.success('Salvo', 'Projeto salvo.'); },
+              'undo': () => canUndo() && undo(),
+              'redo': () => canRedo() && redo(),
+              'tool-select': () => setTool('select'),
+              'tool-wall': () => setTool('wall'),
+              'tool-door': () => setTool('door'),
+              'tool-window': () => setTool('window'),
+              'view-2d': () => setViewMode('2d'),
+              'view-3d': () => setViewMode('3d'),
+              'view-split': () => setViewMode('split'),
+              'catalog': () => setIsCatalogOpen(true),
+              'templates': () => setShowTemplates(true),
+              'quotation': () => setShowQuotation(true),
+              'tour': () => setShowTour(true),
+              'share': () => setShowShare(true),
+              'ai-assistant': () => setShowAIAssistant(true),
+              'open-project': () => setShowProjectManager(true),
+            };
+            actions[id]?.();
+          }} />}
         </AnimatePresence>
       </div>
     </ToolProvider>
