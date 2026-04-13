@@ -20,7 +20,6 @@ export const Canvas3D: React.FC<Canvas3DProps> = ({
 }) => {
   const currentScene = useEditorStore(selectCurrentScene);
 
-  // Prepara os dados para passar à engine
   const sceneData = currentScene ? {
     walls: currentScene.walls,
     rooms: currentScene.rooms,
