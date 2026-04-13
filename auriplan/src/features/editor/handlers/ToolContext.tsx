@@ -38,7 +38,8 @@ export interface ToolContextValue {
   activeTool: Tool | null;
 }
 
-const ToolContext = createContext<ToolContextValue | null>(null);
+// CORREÇÃO: Adicionado 'export' antes de 'const ToolContext'
+export const ToolContext = createContext<ToolContextValue | null>(null);
 
 export function useToolContext() {
   const ctx = useContext(ToolContext);
