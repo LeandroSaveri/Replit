@@ -43,6 +43,7 @@ export interface EditorState {
   tool: Tool;
   selectedIds: string[];
   hoveredId: string | null;
+  assembleMode: boolean; // Modo montagem para arrastar cômodos inteiros
 
   // Settings
   grid: GridSettings;
@@ -86,6 +87,9 @@ export interface EditorState {
   addRoom: (points: Vec2[], options?: { name?: string; type?: Room['type']; floorColor?: string; wallColor?: string; ceilingColor?: string; skipPipeline?: boolean }) => void;
   updateRoom: (id: string, updates: Partial<Room>) => void;
   deleteRoom: (id: string) => void;
+  duplicateRoom: (id: string) => void;
+  zoomToRoom: (id: string) => void;
+  setAssembleMode: (enabled: boolean) => void;
 
   // Actions - Doors
   addDoor: (wallId: string, position: number, width: number) => void;
@@ -194,6 +198,7 @@ const initialState = {
   tool: 'select' as Tool,
   selectedIds: [],
   hoveredId: null,
+  assembleMode: false,
   grid: {
     visible: true,
     size: 0.5,
@@ -661,6 +666,72 @@ export const useEditorStore = create<EditorState>()(
           if (scene) scene.rooms = scene.rooms.filter(r => r.id !== id);
         });
         get().saveToHistory();
+      },
+
+      duplicateRoom: (id: string) => {
+        const state = get();
+        const scene = getCurrentScene(state);
+        if (!scene) return;
+        const original = scene.rooms.find(r => r.id === id);
+        if (!original) return;
+        const offset = 2.0; // desloca 2 metros para direita
+        const newPoints = original.points.map(p => [p[0] + offset, p[1]] as Vec2);
+        const newRoom: Room = {
+          ...original,
+          id: uuidv4(),
+          points: newPoints,
+          name: `${original.name} (cópia)`,
+        };
+        // Adiciona paredes correspondentes
+        for (let i = 0; i < newPoints.length; i++) {
+          const start = newPoints[i];
+          const end = newPoints[(i + 1) % newPoints.length];
+          get().addWall(start, end, { skipPipeline: true });
+        }
+        set(state => {
+          const sc = state.scenes.find(s => s.id === state.currentSceneId);
+          if (sc) {
+            sc.rooms.push(newRoom);
+            applyGeometryToScene(sc);
+          }
+        });
+        get().saveToHistory();
+      },
+
+      zoomToRoom: (id: string) => {
+        const state = get();
+        const scene = getCurrentScene(state);
+        if (!scene) return;
+        const room = scene.rooms.find(r => r.id === id);
+        if (!room) return;
+        const points = room.points;
+        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+        for (const p of points) {
+          minX = Math.min(minX, p[0]);
+          minY = Math.min(minY, p[1]);
+          maxX = Math.max(maxX, p[0]);
+          maxY = Math.max(maxY, p[1]);
+        }
+        const centerX = (minX + maxX) / 2;
+        const centerY = (minY + maxY) / 2;
+        const width = maxX - minX;
+        const height = maxY - minY;
+        const padding = 1.5;
+        const newZoom = Math.min(10, 5 / Math.max(width, height));
+        set(state => {
+          state.camera.target = [centerX, centerY, 0];
+          state.camera.zoom = newZoom;
+        });
+      },
+
+      setAssembleMode: (enabled: boolean) => {
+        set(state => {
+          state.assembleMode = enabled;
+          // Se sair do modo montagem, garante que ferramenta volte para select
+          if (!enabled && state.tool === 'select') {
+            // nada
+          }
+        });
       },
 
       // --------------------------------------------------------------
