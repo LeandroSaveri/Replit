@@ -12,7 +12,7 @@ import { SnapSolver } from '@core/snap/SnapSolver';
 import type { Vec2 } from '@auriplan-types';
 
 const MIN_WALL_LENGTH = 0.05;
-const CLOSE_TOLERANCE = 0.3; // world-units to snap back to start
+const CLOSE_TOLERANCE = 0.3;
 
 type Mode = 'idle' | 'drawing';
 
@@ -20,7 +20,7 @@ export class WallToolHandler implements ToolHandler {
   private mode: Mode = 'idle';
   private startPoint: Vec2 | null = null;
   private currentPoint: Vec2 | null = null;
-  private segmentStartHistory: Vec2[] = []; // history of segment starts (for chain drawing)
+  private segmentStartHistory: Vec2[] = [];
   private store: EditorStore;
   private onPreviewChange: (state: PreviewState) => void;
 
@@ -33,7 +33,7 @@ export class WallToolHandler implements ToolHandler {
     switch (event.type) {
       case 'mousedown': this.onDown(event); break;
       case 'mousemove': this.onMove(event); break;
-      case 'mouseup': break; // ignored — we use click-to-click
+      case 'mouseup': break;
       case 'dblclick': this.onDoubleClick(event); break;
       case 'keydown': this.onKey(event); break;
     }
@@ -56,7 +56,6 @@ export class WallToolHandler implements ToolHandler {
     const snapped = this.snap(event.position);
 
     if (this.mode === 'idle') {
-      // First click: set start point and enter drawing mode
       this.startPoint = snapped;
       this.currentPoint = snapped;
       this.mode = 'drawing';
@@ -65,7 +64,6 @@ export class WallToolHandler implements ToolHandler {
       return;
     }
 
-    // Already drawing: commit this segment
     if (!this.startPoint) { this.reset(); return; }
     const end = this.snap(event.position, this.startPoint);
     const length = Math.hypot(end[0] - this.startPoint[0], end[1] - this.startPoint[1]);
@@ -73,17 +71,15 @@ export class WallToolHandler implements ToolHandler {
     if (length >= MIN_WALL_LENGTH) {
       this.store.getState().addWall(this.startPoint, end);
       this.segmentStartHistory.push(end);
-      this.startPoint = end; // continue chain from this point
+      this.startPoint = end;
       this.currentPoint = end;
       this.updatePreview();
     }
-    // If too short, ignore (still in drawing mode)
   }
 
   private onMove(event: InteractionEvent): void {
     if (this.mode !== 'drawing' || !this.startPoint) return;
     let pos = event.position;
-    // Orthogonal constraint (Shift)
     if (event.modifiers.includes('shift')) {
       const dx = pos[0] - this.startPoint[0];
       const dy = pos[1] - this.startPoint[1];
@@ -93,8 +89,9 @@ export class WallToolHandler implements ToolHandler {
         pos = [this.startPoint[0], this.startPoint[1] + dy];
       }
     }
-    this.currentPoint = this.snap(pos, this.startPoint);
-    this.updatePreview();
+    const snapResult = this.snapWithDetails(pos, this.startPoint);
+    this.currentPoint = snapResult.point;
+    this.updatePreview(snapResult.point, snapResult.type);
   }
 
   private onDoubleClick(_event: InteractionEvent): void {
@@ -105,7 +102,6 @@ export class WallToolHandler implements ToolHandler {
     if (event.key === 'Escape' || event.key === 'Enter') {
       this.reset();
     }
-    // Ctrl+Z while drawing: undo last segment and go back one step
     if (event.key === 'Backspace' && this.segmentStartHistory.length > 1) {
       this.segmentStartHistory.pop();
       const prev = this.segmentStartHistory[this.segmentStartHistory.length - 1];
@@ -116,11 +112,25 @@ export class WallToolHandler implements ToolHandler {
     }
   }
 
-  private updatePreview(): void {
-    this.onPreviewChange(this.getPreviewState());
+  private updatePreview(snapPoint?: Vec2, snapType?: any): void {
+    const baseState = this.getPreviewState();
+    if (!baseState) {
+      this.onPreviewChange(null);
+      return;
+    }
+    const preview: PreviewState = {
+      ...baseState,
+      snapPoint: snapPoint ?? this.currentPoint ?? undefined,
+      snapType: snapType ?? undefined,
+    };
+    this.onPreviewChange(preview);
   }
 
   private snap(point: Vec2, startPoint?: Vec2): Vec2 {
+    return this.snapWithDetails(point, startPoint).point;
+  }
+
+  private snapWithDetails(point: Vec2, startPoint?: Vec2): { point: Vec2; type: any } {
     const state = this.store.getState();
     const scene = state.scenes.find(s => s.id === state.currentSceneId);
     const walls = scene?.walls ?? [];
@@ -138,6 +148,7 @@ export class WallToolHandler implements ToolHandler {
       enableAngle: snapConfig.angle,
       zoom: scale,
     };
-    return SnapSolver.computeSnap(point, walls, startPoint, options).point;
+    const result = SnapSolver.computeSnap(point, walls, startPoint, options);
+    return { point: result.point, type: result.type };
   }
 }
