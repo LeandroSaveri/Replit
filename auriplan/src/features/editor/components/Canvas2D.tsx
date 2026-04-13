@@ -1,7 +1,7 @@
 // ============================================================
 // Canvas2D — Orquestrador de desenho 2D
 // Fluxo: ResizeObserver → buffer correto → engine → preview overlay
-// Zoom/Pan originais restaurados – Fase 7 consolidada
+// Zoom/Pan corrigidos – interação estilo MagicPlan
 // ============================================================
 
 import { useRef, useEffect, useState, useCallback, useLayoutEffect } from 'react';
@@ -36,14 +36,12 @@ export function Canvas2D() {
   const toolManagerRef = useRef<ToolManager | null>(null);
   const animFrameRef = useRef<number>(0);
 
-  // Use refs for transform to avoid stale closures in event handlers
   const scaleRef = useRef(60);
   const panRef = useRef<Vec2>([0, 0]);
   const isPanningRef = useRef(false);
   const panStartRef = useRef({ x: 0, y: 0 });
   const isSpacePressedRef = useRef(false);
 
-  // Multi-touch (pinch-to-zoom) tracking
   const activePointersRef = useRef<Map<number, { x: number; y: number }>>(new Map());
   const pinchStartDistRef = useRef(0);
   const pinchStartScaleRef = useRef(60);
@@ -58,11 +56,8 @@ export function Canvas2D() {
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const hoveredIdRef = useRef<string | null>(null);
 
-  // Rename room overlay
   const [renameRoom, setRenameRoom] = useState<{ id: string; name: string } | null>(null);
   const renameInputRef = useRef<HTMLInputElement>(null);
-
-  // Context menu (right-click)
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; worldPos: Vec2 } | null>(null);
 
   const store = useEditorStore;
@@ -74,7 +69,6 @@ export function Canvas2D() {
   const walls = currentScene?.walls ?? [];
   const rooms = currentScene?.rooms ?? [];
 
-  // Sync state to refs
   const setScale = (v: number | ((prev: number) => number)) => {
     setScaleState(prev => {
       const next = typeof v === 'function' ? v(prev) : v;
@@ -91,7 +85,6 @@ export function Canvas2D() {
     });
   };
 
-  // ── Canvas resize (critical fix) ──────────────────────────────
   useLayoutEffect(() => {
     const container = containerRef.current;
     const canvas = canvasRef.current;
@@ -119,7 +112,6 @@ export function Canvas2D() {
     return () => ro.disconnect();
   }, []);
 
-  // ── Coordinate transforms (use canvas BUFFER size for consistency) ─
   const screenToWorld = useCallback((screenX: number, screenY: number): Vec2 => {
     const canvas = canvasRef.current;
     if (!canvas) return [0, 0];
@@ -146,7 +138,6 @@ export function Canvas2D() {
     };
   }, []);
 
-  // ── Render engine init ─────────────────────────────────────────
   useEffect(() => {
     if (!canvasRef.current || renderEngineRef.current) return;
     const engine = new Render2DEngine({
@@ -164,13 +155,11 @@ export function Canvas2D() {
     requestRenderFrame();
   }, []);
 
-  // ── ToolManager init ───────────────────────────────────────────
   useEffect(() => {
     if (!toolManagerRef.current) {
       toolManagerRef.current = new ToolManager(
         store as any,
         (state) => {
-          // Handle special preview states from SelectToolHandler
           if (state && (state as any).type === 'rename-room') {
             const roomId = (state as any).roomId as string;
             const room = store.getState().scenes
@@ -186,12 +175,10 @@ export function Canvas2D() {
             setSnapPoint(null);
           }
         },
-        // Hover callback
         (id) => {
           hoveredIdRef.current = id;
           setHoveredId(id);
         },
-        // Cursor callback (only in select tool)
         (cursor) => {
           if (store.getState().tool === 'select') setCursorStyle(cursor);
         },
@@ -203,13 +190,11 @@ export function Canvas2D() {
     };
   }, [store]);
 
-  // Sync active tool to manager + cursor
   useEffect(() => {
     toolManagerRef.current?.setTool(tool);
     setCursorStyle(TOOL_CURSORS[tool] ?? 'default');
   }, [tool]);
 
-  // Sync engine transform
   useEffect(() => {
     const dpr = window.devicePixelRatio || 1;
     renderEngineRef.current?.setTransform({
@@ -220,12 +205,10 @@ export function Canvas2D() {
     requestRenderFrame();
   }, [scale, pan]);
 
-  // Re-render on data change (including hover)
   useEffect(() => {
     requestRenderFrame();
   }, [walls, rooms, previewState, selectedIds, gridSettings, hoveredId]);
 
-  // ── Render ────────────────────────────────────────────────────
   const doRenderRef = useRef<() => void>(() => {});
 
   const requestRenderFrame = useCallback(() => {
@@ -267,7 +250,6 @@ export function Canvas2D() {
 
   doRenderRef.current = doRender;
 
-  // Ghost wall preview
   const drawGhostWall = (ctx: CanvasRenderingContext2D, start: Vec2, end: Vec2) => {
     const p1 = worldToScreenPx(start[0], start[1]);
     const p2 = worldToScreenPx(end[0], end[1]);
@@ -377,7 +359,7 @@ export function Canvas2D() {
   };
 
   // ============================================================
-  // POINTER EVENTS (RESTAURADOS AO COMPORTAMENTO PRÉ-FASE 7)
+  // POINTER EVENTS (corrigidos)
   // ============================================================
   const handlePointerDown = (e: React.PointerEvent) => {
     if (e.button !== 2) e.preventDefault();
@@ -480,9 +462,12 @@ export function Canvas2D() {
     const wasMultiTouch = activePointersRef.current.size >= 2;
     activePointersRef.current.delete(e.pointerId);
 
-    if (wasMultiTouch) {
+    // Limpeza completa do estado de pinch
+    if (activePointersRef.current.size === 0) {
       pinchStartDistRef.current = 0;
-      return;
+      isPanningRef.current = false;
+    } else if (wasMultiTouch) {
+      pinchStartDistRef.current = 0;
     }
 
     if (isPanningRef.current) {
@@ -510,7 +495,6 @@ export function Canvas2D() {
     requestRenderFrame();
   };
 
-  // ── Right-click context menu ────────────────────────────────
   const handleContextMenu = useCallback((e: MouseEvent | React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
@@ -623,12 +607,15 @@ export function Canvas2D() {
   };
 
   // ============================================================
-  // WHEEL ZOOM (RESTAURADO – sem verificações que bloqueiem)
+  // WHEEL ZOOM (com proteção contra multi‑touch)
   // ============================================================
   const handleWheel = useCallback((e: WheelEvent) => {
     e.preventDefault();
     const canvas = canvasRef.current;
     if (!canvas) return;
+
+    // Ignora wheel se um gesto multi‑touch estiver ativo (pinch)
+    if (activePointersRef.current.size > 0) return;
 
     const rect = canvas.getBoundingClientRect();
     const cursorX = e.clientX - rect.left - rect.width / 2;
