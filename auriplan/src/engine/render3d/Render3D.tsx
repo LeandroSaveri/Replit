@@ -1,92 +1,77 @@
-/**
- * Render3D Component for AuriPlan
- * React wrapper for the 3D rendering engine (public API)
- */
+// ============================================================
+// CAMINHO: src/engine/render3d/Render3D.tsx
+// FUNÇÃO: Componente público de renderização 3D com suporte a raycast
+// ============================================================
 
-import React, { useEffect, useRef, useCallback, useState, useMemo } from 'react';
+import React, { useEffect, useRef, useCallback, useState, useMemo, forwardRef, useImperativeHandle } from 'react';
 import * as THREE from 'three';
 import Render3DEngine from './Render3DEngine';
 
-export interface Render3DProps {
+export interface Render3DHandle {
+  raycastGround: (clientX: number, clientY: number) => [number, number] | null;
+}
+
+interface Render3DProps {
   width: number;
   height: number;
   className?: string;
   antialias?: boolean;
   shadows?: boolean;
-  onLoad?: () => void;
-  onError?: (error: Error) => void;
-  onObjectSelect?: (object: THREE.Object3D) => void;
-  onObjectDeselect?: () => void;
-  backgroundColor?: string;
-  sceneData?: {
-    walls: any[];
-    rooms: any[];
-    doors: any[];
-    windows: any[];
-    furniture: any[];
-  };
+  sceneData?: any;
+  enableOrbitControls?: boolean;
+  onMouseDown?: (e: React.MouseEvent<HTMLCanvasElement>) => void;
+  onMouseMove?: (e: React.MouseEvent<HTMLCanvasElement>) => void;
+  onMouseUp?: (e: React.MouseEvent<HTMLCanvasElement>) => void;
+  onDoubleClick?: (e: React.MouseEvent<HTMLCanvasElement>) => void;
 }
 
-export const Render3D: React.FC<Render3DProps> = ({
-  width,
-  height,
-  className = '',
-  antialias = true,
-  shadows = true,
-  onLoad,
-  onError,
-  onObjectSelect,
-  onObjectDeselect,
-  backgroundColor = '#f5f5f5',
-  sceneData,
-}) => {
+export const Render3D = forwardRef<Render3DHandle, Render3DProps>(({
+  width, height, className = '', antialias = true, shadows = true,
+  sceneData, enableOrbitControls = true,
+  onMouseDown, onMouseMove, onMouseUp, onDoubleClick,
+}, ref) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const engineRef = useRef<Render3DEngine | null>(null);
   const [isLoaded, setIsLoaded] = useState(false);
   const [fps, setFps] = useState(0);
 
-  const memoizedSceneData = useMemo(() => sceneData, [
-    sceneData?.walls.length,
-    sceneData?.rooms.length,
-    sceneData?.doors.length,
-    sceneData?.windows.length,
-    sceneData?.furniture.length,
-  ]);
+  useImperativeHandle(ref, () => ({
+    raycastGround: (clientX: number, clientY: number) => {
+      if (!engineRef.current || !canvasRef.current) return null;
+      const rect = canvasRef.current.getBoundingClientRect();
+      const x = ((clientX - rect.left) / rect.width) * 2 - 1;
+      const y = -((clientY - rect.top) / rect.height) * 2 + 1;
+      return engineRef.current.raycastGround(x, y);
+    }
+  }), []);
 
   useEffect(() => {
     if (!canvasRef.current) return;
 
-    try {
-      const engine = new Render3DEngine({
-        canvas: canvasRef.current,
-        width: width || 800,
-        height: height || 600,
-        antialias,
-        shadows,
-      });
+    const engine = new Render3DEngine({
+      canvas: canvasRef.current,
+      width: width || 800,
+      height: height || 600,
+      antialias,
+      shadows,
+    });
 
-      engine.setBackgroundColor(backgroundColor);
-      engineRef.current = engine;
+    engineRef.current = engine;
 
-      const fpsInterval = setInterval(() => {
-        setFps(engine.getStats().fps);
-      }, 1000);
+    const fpsInterval = setInterval(() => {
+      setFps(engine.getStats().fps);
+    }, 1000);
 
-      engine.startRenderLoop();
-      setIsLoaded(true);
-      onLoad?.();
+    engine.startRenderLoop();
+    setIsLoaded(true);
 
-      return () => {
-        clearInterval(fpsInterval);
-        engine.dispose();
-        engineRef.current = null;
-      };
-    } catch (error) {
-      console.error('[Render3D] Initialization error:', error);
-      onError?.(error as Error);
-    }
-  }, [width, height, antialias, shadows, backgroundColor, onLoad, onError]);
+    return () => {
+      clearInterval(fpsInterval);
+      engine.dispose();
+      engineRef.current = null;
+    };
+  }, [width, height, antialias, shadows]);
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -105,49 +90,27 @@ export const Render3D: React.FC<Render3DProps> = ({
   }, []);
 
   useEffect(() => {
-    if (engineRef.current && memoizedSceneData) {
-      engineRef.current.syncScene(memoizedSceneData);
+    if (engineRef.current && sceneData) {
+      engineRef.current.syncScene(sceneData);
     }
-  }, [memoizedSceneData]);
+  }, [sceneData]);
 
-  const handleMouseDown = useCallback((e: React.MouseEvent) => {
-    e.preventDefault(); // evita seleção de texto
-  }, []);
-
-  const handleClick = useCallback((event: React.MouseEvent<HTMLCanvasElement>) => {
-    if (!engineRef.current) return;
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-
-    const rect = canvas.getBoundingClientRect();
-    const mouse = new THREE.Vector2(
-      ((event.clientX - rect.left) / rect.width) * 2 - 1,
-      -((event.clientY - rect.top) / rect.height) * 2 + 1
-    );
-
-    const raycaster = new THREE.Raycaster();
-    raycaster.setFromCamera(mouse, engineRef.current.camera);
-
-    const intersects = raycaster.intersectObjects(engineRef.current.scene.children, true);
-    if (intersects.length > 0) {
-      onObjectSelect?.(intersects[0].object);
-    } else {
-      onObjectDeselect?.();
+  useEffect(() => {
+    if (engineRef.current) {
+      engineRef.current.setControlsEnabled(enableOrbitControls);
     }
-  }, [onObjectSelect, onObjectDeselect]);
+  }, [enableOrbitControls]);
 
   return (
-    <div
-      ref={containerRef}
-      className={`relative ${className}`}
-      style={{ width: width || '100%', height: height || '100%', minHeight: '400px' }}
-    >
+    <div ref={containerRef} className={`relative ${className}`} style={{ width: width || '100%', height: height || '100%', minHeight: '400px' }}>
       <canvas
         ref={canvasRef}
-        className="w-full h-full cursor-grab active:cursor-grabbing"
+        className="w-full h-full"
         style={{ userSelect: 'none' }}
-        onMouseDown={handleMouseDown}
-        onClick={handleClick}
+        onMouseDown={onMouseDown}
+        onMouseMove={onMouseMove}
+        onMouseUp={onMouseUp}
+        onDoubleClick={onDoubleClick}
       />
       {isLoaded && (
         <div className="absolute top-2 right-2 bg-black/50 text-white text-xs px-2 py-1 rounded">
@@ -161,6 +124,6 @@ export const Render3D: React.FC<Render3DProps> = ({
       )}
     </div>
   );
-};
+});
 
 export default Render3D;
