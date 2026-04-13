@@ -1,7 +1,7 @@
 // ============================================================
 // Canvas2D — Orquestrador de desenho 2D
 // Fluxo: ResizeObserver → buffer correto → engine → preview overlay
-// Zoom/Pan corrigidos – interação estilo MagicPlan
+// Zoom inicial ajustado, centralização garantida
 // ============================================================
 
 import { useRef, useEffect, useState, useCallback, useLayoutEffect } from 'react';
@@ -29,7 +29,7 @@ export function Canvas2D() {
   const toolManagerRef = useRef<ToolManager | null>(null);
   const animFrameRef = useRef<number>(0);
 
-  const scaleRef = useRef(60);
+  const scaleRef = useRef(40); // ← zoom inicial reduzido
   const panRef = useRef<Vec2>([0, 0]);
   const isPanningRef = useRef(false);
   const panStartRef = useRef({ x: 0, y: 0 });
@@ -37,11 +37,11 @@ export function Canvas2D() {
 
   const activePointersRef = useRef<Map<number, { x: number; y: number }>>(new Map());
   const pinchStartDistRef = useRef(0);
-  const pinchStartScaleRef = useRef(60);
+  const pinchStartScaleRef = useRef(40);
   const pinchStartPanRef = useRef<Vec2>([0, 0]);
   const pinchStartMidRef = useRef({ x: 0, y: 0 });
 
-  const [scale, setScaleState] = useState(60);
+  const [scale, setScaleState] = useState(40);
   const [pan, setPanState] = useState<Vec2>([0, 0]);
   const [previewState, setPreviewState] = useState<any>(null);
   const [snapPoint, setSnapPoint] = useState<Vec2 | null>(null);
@@ -77,6 +77,11 @@ export function Canvas2D() {
       return next;
     });
   };
+
+  const resetView = useCallback(() => {
+    setScale(40);
+    setPan([0, 0]);
+  }, [setScale, setPan]);
 
   useLayoutEffect(() => {
     const container = containerRef.current;
@@ -145,8 +150,9 @@ export function Canvas2D() {
     });
     engine.initialize(canvasRef.current);
     renderEngineRef.current = engine;
+    resetView(); // centraliza ao iniciar
     requestRenderFrame();
-  }, []);
+  }, [resetView]);
 
   useEffect(() => {
     if (!toolManagerRef.current) {
@@ -455,7 +461,6 @@ export function Canvas2D() {
     const wasMultiTouch = activePointersRef.current.size >= 2;
     activePointersRef.current.delete(e.pointerId);
 
-    // Limpeza completa do estado de pinch
     if (activePointersRef.current.size === 0) {
       pinchStartDistRef.current = 0;
       isPanningRef.current = false;
@@ -607,7 +612,6 @@ export function Canvas2D() {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
-    // Ignora wheel se um gesto multi‑touch estiver ativo (pinch)
     if (activePointersRef.current.size > 0) return;
 
     const rect = canvas.getBoundingClientRect();
@@ -657,8 +661,7 @@ export function Canvas2D() {
         store.getState().redo();
       }
       if (e.key === 'f' && !e.ctrlKey) {
-        setScale(60);
-        setPan([0, 0]);
+        resetView();
       }
     };
     const onKeyUp = (e: KeyboardEvent) => {
@@ -675,7 +678,7 @@ export function Canvas2D() {
       window.removeEventListener('keydown', onKeyDown);
       window.removeEventListener('keyup', onKeyUp);
     };
-  }, [store]);
+  }, [store, resetView]);
 
   const insertShape = (shapeName: string) => {
     const handler = (toolManagerRef.current as any)?.currentHandler;
