@@ -769,13 +769,8 @@ export function Canvas2D() {
           </div>
         )}
 
-        <div className="absolute bottom-4 right-4 flex flex-col gap-1.5 z-10">
-          <button onClick={zoomIn} className="w-9 h-9 bg-white/90 hover:bg-white border border-slate-200 rounded-lg shadow-sm text-slate-700 flex items-center justify-center font-bold text-lg transition-colors">+</button>
-          <button onClick={zoomOut} className="w-9 h-9 bg-white/90 hover:bg-white border border-slate-200 rounded-lg shadow-sm text-slate-700 flex items-center justify-center font-bold text-lg transition-colors">−</button>
-          <button onClick={resetView} className="w-9 h-9 bg-white/90 hover:bg-white border border-slate-200 rounded-lg shadow-sm text-slate-600 flex items-center justify-center text-xs font-semibold transition-colors">⌖</button>
-        </div>
-
-        <div className="absolute bottom-4 left-4 bg-white/80 backdrop-blur-sm px-3 py-1.5 rounded-lg text-xs text-slate-600 border border-slate-200 shadow-sm z-10">
+        {/* Scale info - apenas desktop */}
+        <div className="hidden md:block absolute bottom-4 left-4 bg-white/80 backdrop-blur-sm px-3 py-1.5 rounded-lg text-xs text-slate-600 border border-slate-200 shadow-sm z-10">
           1 : {(100 / scale * 10).toFixed(0)} &nbsp;|&nbsp; {scale.toFixed(0)} px/m
         </div>
 
