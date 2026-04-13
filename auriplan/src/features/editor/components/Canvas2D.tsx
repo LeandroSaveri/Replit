@@ -1,7 +1,8 @@
 // ============================================================
 // CAMINHO: src/features/editor/components/Canvas2D.tsx
 // FUNÇÃO: Orquestrador de desenho 2D – zoom/pan, preview,
-//         contexto, menu de formas prontas com ícones
+//         contexto, menu de formas prontas com ícones,
+//         indicador de snap colorido
 // ============================================================
 
 import { useRef, useEffect, useState, useCallback, useLayoutEffect } from 'react';
@@ -9,8 +10,8 @@ import { useEditorStore, selectCurrentScene } from '@store/editorStore';
 import { Render2DEngine } from '@engine/render2d/Render2DEngine';
 import { ToolManager, ToolContext, ROOM_SHAPES, RoomToolHandler } from '../handlers';
 import type { Vec2 } from '@auriplan-types';
+import { SNAP_COLORS } from '@core/snap/SnapSolver';
 
-// Cursor por ferramenta
 const TOOL_CURSORS: Record<string, string> = {
   select: 'default',
   pan: 'grab',
@@ -45,6 +46,7 @@ export function Canvas2D() {
   const [pan, setPanState] = useState<Vec2>([0, 0]);
   const [previewState, setPreviewState] = useState<any>(null);
   const [snapPoint, setSnapPoint] = useState<Vec2 | null>(null);
+  const [snapType, setSnapType] = useState<string | null>(null);
   const [cursorStyle, setCursorStyle] = useState('crosshair');
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const hoveredIdRef = useRef<string | null>(null);
@@ -168,10 +170,12 @@ export function Canvas2D() {
             return;
           }
           setPreviewState(state);
-          if (state && 'snapPoint' in state && state.snapPoint) {
-            setSnapPoint(state.snapPoint as Vec2);
+          if (state && (state as any).snapPoint) {
+            setSnapPoint((state as any).snapPoint);
+            setSnapType((state as any).snapType || null);
           } else {
             setSnapPoint(null);
+            setSnapType(null);
           }
         },
         (id) => {
@@ -243,7 +247,7 @@ export function Canvas2D() {
     }
 
     if (snapPoint) {
-      drawSnapIndicator(ctx, snapPoint);
+      drawSnapIndicator(ctx, snapPoint, snapType);
     }
   };
 
@@ -334,16 +338,17 @@ export function Canvas2D() {
     ctx.restore();
   };
 
-  const drawSnapIndicator = (ctx: CanvasRenderingContext2D, point: Vec2) => {
+  const drawSnapIndicator = (ctx: CanvasRenderingContext2D, point: Vec2, type: string | null) => {
     const p = worldToScreenPx(point[0], point[1]);
     const dpr = window.devicePixelRatio || 1;
+    const color = (type && SNAP_COLORS[type as keyof typeof SNAP_COLORS]) || '#f59e0b';
     ctx.save();
-    ctx.strokeStyle = '#f59e0b';
-    ctx.lineWidth = 1.5 * dpr;
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 2.0 * dpr;
     ctx.beginPath();
-    ctx.arc(p.x, p.y, 6 * dpr, 0, 2 * Math.PI);
+    ctx.arc(p.x, p.y, 8 * dpr, 0, 2 * Math.PI);
     ctx.stroke();
-    ctx.fillStyle = 'rgba(245,158,11,0.2)';
+    ctx.fillStyle = color + '33';
     ctx.fill();
     ctx.restore();
   };
@@ -699,7 +704,6 @@ export function Canvas2D() {
           onContextMenu={handleContextMenu}
         />
 
-        {/* Formas prontas – versão com ícones em grid */}
         {tool === 'room' && (
           <div className="absolute top-3 left-3 bg-white/95 backdrop-blur-sm rounded-xl shadow-lg border border-slate-200 p-2 z-20 w-52">
             <div className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-2 px-2">
