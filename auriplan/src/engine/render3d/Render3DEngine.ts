@@ -91,7 +91,7 @@ class Render3DEngine {
       this.controls.enablePan = true;
       this.controls.maxPolarAngle = Math.PI / 1.8;
       this.controls.minDistance = 1;
-      this.controls.maxDistance = 200;
+      this.controls.maxDistance = 300; // ← aumentado para zoom out maior
       this.controls.target.set(0, 1, 0);
       this.controls.update();
     } catch (error) {
@@ -118,7 +118,7 @@ class Render3DEngine {
 
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 1.0;
+    renderer.toneMappingExposure = 1.2; // ← leve aumento de exposição
 
     return renderer;
   }
@@ -126,7 +126,8 @@ class Render3DEngine {
   private createScene(): THREE.Scene {
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(0xf5f5f5);
-    scene.fog = new THREE.Fog(0xf5f5f5, 20, 100);
+    // Fog ajustado para maior alcance visual
+    scene.fog = new THREE.Fog(0xf5f5f5, 50, 200);
     return scene;
   }
 
@@ -143,7 +144,8 @@ class Render3DEngine {
   }
 
   private setupLighting(): void {
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+    // Luz ambiente ligeiramente mais forte
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
     this.scene.add(ambientLight);
 
     const sunLight = new THREE.DirectionalLight(0xffffff, 1.2);
@@ -440,11 +442,13 @@ class Render3DEngine {
     const center = box.getCenter(new THREE.Vector3());
 
     const maxDim = Math.max(size.x, size.y, size.z);
-    const distance = maxDim * 1.8;
+    // Reduz fator de distância para não afastar tanto
+    const distance = maxDim * 1.5;
 
+    // Posiciona câmera com ângulo isométrico mais confortável
     this.camera.position.set(
       center.x + distance * 0.8,
-      center.y + distance * 0.6,
+      center.y + distance * 0.5,
       center.z + distance * 0.8
     );
     this.camera.lookAt(center);
@@ -552,7 +556,6 @@ class Render3DEngine {
     };
   }
 
-  // NOVOS MÉTODOS ADICIONADOS PARA SUPORTE À SELEÇÃO/ARRASTE 3D
   public raycastGround(normalizedX: number, normalizedY: number): [number, number] | null {
     const raycaster = new THREE.Raycaster();
     raycaster.setFromCamera(new THREE.Vector2(normalizedX, normalizedY), this.camera);
