@@ -30,13 +30,11 @@ export const Canvas3D: React.FC<{ width?: number; height?: number; className?: s
   const [isDragging, setIsDragging] = useState(false);
   const dragStartPos = useRef<Vec2 | null>(null);
 
-  // Converte coordenadas de tela para Vec2 usando raycast no chão
   const screenToWorld = useCallback((clientX: number, clientY: number): Vec2 | null => {
     if (!render3DRef.current) return null;
     return render3DRef.current.raycastGround(clientX, clientY);
   }, []);
 
-  // Cria InteractionEvent a partir de evento DOM
   const createInteractionEvent = useCallback((
     type: InteractionEvent['type'],
     worldPos: Vec2,
@@ -51,7 +49,7 @@ export const Canvas3D: React.FC<{ width?: number; height?: number; className?: s
   }, []);
 
   const handleMouseDown = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
-    if (activeTool !== 'select') return;
+    if (activeTool !== 'select' || !toolManager) return;
     const worldPos = screenToWorld(e.clientX, e.clientY);
     if (!worldPos) return;
     const event = createInteractionEvent('mousedown', worldPos, e);
@@ -63,7 +61,7 @@ export const Canvas3D: React.FC<{ width?: number; height?: number; className?: s
   }, [activeTool, screenToWorld, createInteractionEvent, toolManager]);
 
   const handleMouseMove = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
-    if (!isDragging || activeTool !== 'select') return;
+    if (!isDragging || activeTool !== 'select' || !toolManager) return;
     const worldPos = screenToWorld(e.clientX, e.clientY);
     if (!worldPos) return;
     const event = createInteractionEvent('mousemove', worldPos, e);
@@ -73,7 +71,7 @@ export const Canvas3D: React.FC<{ width?: number; height?: number; className?: s
   }, [isDragging, activeTool, screenToWorld, createInteractionEvent, toolManager]);
 
   const handleMouseUp = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
-    if (!isDragging || activeTool !== 'select') return;
+    if (!isDragging || activeTool !== 'select' || !toolManager) return;
     const worldPos = screenToWorld(e.clientX, e.clientY);
     if (!worldPos) return;
     const event = createInteractionEvent('mouseup', worldPos, e);
@@ -85,7 +83,7 @@ export const Canvas3D: React.FC<{ width?: number; height?: number; className?: s
   }, [isDragging, activeTool, screenToWorld, createInteractionEvent, toolManager]);
 
   const handleDoubleClick = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
-    if (activeTool !== 'select') return;
+    if (activeTool !== 'select' || !toolManager) return;
     const worldPos = screenToWorld(e.clientX, e.clientY);
     if (!worldPos) return;
     const event = createInteractionEvent('dblclick', worldPos, e);
