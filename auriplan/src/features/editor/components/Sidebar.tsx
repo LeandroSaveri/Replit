@@ -34,8 +34,6 @@ import {
   Maximize2,
   Calculator,
   SlidersHorizontal,
-  ZoomIn,
-  ZoomOut,
 } from 'lucide-react';
 import { useEditorStore } from '@store/editorStore';
 import type { Scene, Tool } from '@auriplan-types';
@@ -168,20 +166,9 @@ function MobileToolButton({
   );
 }
 
-// Canvas Controls - Mobile Light Theme (com zoom e propriedades)
+// Canvas Controls - Mobile Light Theme (SEM ZOOM)
 function MobileCanvasControls({ onOpenProperties }: { onOpenProperties?: () => void }) {
   const { grid, toggleGrid, snap, toggleSnap, fitToView } = useEditorStore();
-
-  // Funções para zoom (serão conectadas aos eventos globais)
-  const handleZoomIn = () => {
-    window.dispatchEvent(new CustomEvent('editor:zoom', { detail: 1 }));
-  };
-  const handleZoomOut = () => {
-    window.dispatchEvent(new CustomEvent('editor:zoom', { detail: -1 }));
-  };
-  const handleCenter = () => {
-    window.dispatchEvent(new CustomEvent('editor:center'));
-  };
 
   return (
     <div className="space-y-2">
@@ -217,34 +204,6 @@ function MobileCanvasControls({ onOpenProperties }: { onOpenProperties?: () => v
         >
           <Maximize2 className="w-4 h-4" />
           Ajustar
-        </motion.button>
-      </div>
-
-      {/* Zoom controls */}
-      <div className="flex gap-2">
-        <motion.button
-          whileTap={{ scale: 0.92 }}
-          onClick={handleZoomIn}
-          className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl font-medium text-sm transition-all border bg-white text-gray-600 border-gray-200 hover:border-gray-300"
-        >
-          <ZoomIn className="w-4 h-4" />
-          Zoom +
-        </motion.button>
-        <motion.button
-          whileTap={{ scale: 0.92 }}
-          onClick={handleZoomOut}
-          className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl font-medium text-sm transition-all border bg-white text-gray-600 border-gray-200 hover:border-gray-300"
-        >
-          <ZoomOut className="w-4 h-4" />
-          Zoom −
-        </motion.button>
-        <motion.button
-          whileTap={{ scale: 0.92 }}
-          onClick={handleCenter}
-          className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl font-medium text-sm transition-all border bg-white text-gray-600 border-gray-200 hover:border-gray-300"
-        >
-          <Maximize2 className="w-4 h-4" />
-          Centralizar
         </motion.button>
       </div>
 
