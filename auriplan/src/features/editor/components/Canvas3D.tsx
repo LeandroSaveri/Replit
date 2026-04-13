@@ -28,9 +28,6 @@ export const Canvas3D: React.FC<Canvas3DProps> = ({
     furniture: currentScene.furniture,
   } : undefined;
 
-  // Log simples para diagnóstico
-  console.log('[Canvas3D] currentScene:', currentScene?.id, '| walls:', currentScene?.walls.length || 0);
-
   const containerStyle = width && height
     ? { width, height }
     : { width: '100%', height: '100%', minHeight: '400px' };
