@@ -226,19 +226,15 @@ export function AddRoomModal({ onClose, onScan }: AddRoomModalProps) {
     });
     const palette = ROOM_PALETTE[Math.floor(Math.random() * ROOM_PALETTE.length)];
 
-    addRoom(points);
-    const state = useEditorStore.getState();
-    const scene = state.scenes.find(s => s.id === state.currentSceneId);
-    const newRoom = scene?.rooms[scene.rooms.length - 1];
-    if (newRoom) {
-      useEditorStore.getState().updateRoom(newRoom.id, {
-        name: selectedRoomType,
-        type: selectedRoomType.toLowerCase().replace(/\s+/g, '_') as any,
-        floorColor: palette.floor,
-        wallColor: palette.wall,
-      });
-    }
+    // Cria o cômodo diretamente com nome, tipo e cores
+    addRoom(points, {
+      name: selectedRoomType,
+      type: selectedRoomType.toLowerCase().replace(/\s+/g, '_') as any,
+      floorColor: palette.floor,
+      wallColor: palette.wall,
+    });
 
+    // Adiciona as paredes
     for (let i = 0; i < points.length; i++) {
       addWall(points[i], points[(i + 1) % points.length]);
     }
