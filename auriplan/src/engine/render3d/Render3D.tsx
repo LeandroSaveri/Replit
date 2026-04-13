@@ -7,6 +7,8 @@ import React, { useEffect, useRef, useCallback, useState } from 'react';
 import * as THREE from 'three';
 import Render3DEngine from './Render3DEngine';
 
+const DEBUG = true; // Temporário para diagnóstico
+
 export interface Render3DProps {
   width: number;
   height: number;
@@ -40,6 +42,7 @@ export const Render3D: React.FC<Render3DProps> = ({
   backgroundColor = '#f5f5f5',
   sceneData,
 }) => {
+  const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const engineRef = useRef<Render3DEngine | null>(null);
   const [isLoaded, setIsLoaded] = useState(false);
@@ -49,10 +52,12 @@ export const Render3D: React.FC<Render3DProps> = ({
     if (!canvasRef.current) return;
 
     try {
+      if (DEBUG) console.log('[Render3D] Inicializando engine com dimensões:', width, height);
+
       const engine = new Render3DEngine({
         canvas: canvasRef.current,
-        width,
-        height,
+        width: width || 800,
+        height: height || 600,
         antialias,
         shadows,
       });
@@ -68,19 +73,47 @@ export const Render3D: React.FC<Render3DProps> = ({
       setIsLoaded(true);
       onLoad?.();
 
+      if (DEBUG) console.log('[Render3D] Engine iniciada com sucesso.');
+
       return () => {
         clearInterval(fpsInterval);
         engine.dispose();
         engineRef.current = null;
+        if (DEBUG) console.log('[Render3D] Engine desmontada.');
       };
     } catch (error) {
+      console.error('[Render3D] Erro na inicialização:', error);
       onError?.(error as Error);
     }
   }, [width, height, antialias, shadows, backgroundColor, onLoad, onError]);
 
+  // Observa redimensionamento do container
   useEffect(() => {
-    if (engineRef.current && sceneData) {
-      engineRef.current.syncScene(sceneData);
+    if (!containerRef.current) return;
+
+    const resizeObserver = new ResizeObserver(entries => {
+      for (const entry of entries) {
+        const { width: w, height: h } = entry.contentRect;
+        if (engineRef.current && w > 0 && h > 0) {
+          if (DEBUG) console.log('[Render3D] Container redimensionado para:', w, h);
+          engineRef.current.resize(w, h);
+        }
+      }
+    });
+
+    resizeObserver.observe(containerRef.current);
+    return () => resizeObserver.disconnect();
+  }, []);
+
+  // Sincroniza dados da cena
+  useEffect(() => {
+    if (engineRef.current) {
+      if (sceneData) {
+        if (DEBUG) console.log('[Render3D] sceneData recebido, sincronizando...');
+        engineRef.current.syncScene(sceneData);
+      } else {
+        if (DEBUG) console.log('[Render3D] sceneData é undefined. Aguardando dados do editor...');
+      }
     }
   }, [sceneData]);
 
@@ -107,7 +140,11 @@ export const Render3D: React.FC<Render3DProps> = ({
   }, [onObjectSelect, onObjectDeselect]);
 
   return (
-    <div className={`relative ${className}`} style={{ width, height }}>
+    <div
+      ref={containerRef}
+      className={`relative ${className}`}
+      style={{ width: width || '100%', height: height || '100%', minHeight: '400px' }}
+    >
       <canvas
         ref={canvasRef}
         className="w-full h-full cursor-grab active:cursor-grabbing"
