@@ -64,22 +64,18 @@ export class AuriaEngine extends EventEmitter {
   }
 
   private initialize(): void {
-    // Initialize material system first (used by both renderers)
+    // Inicializa sistemas de suporte
     this.materialSystem = new MaterialSystem();
-    
-    // Initialize lighting system
     this.lightingSystem = new LightingSystem({
       maxLights: this.config.maxLights,
       shadows: this.config.shadows,
     });
-    
-    // Initialize camera system
     this.cameraSystem = new CameraSystem({
       width: this.config.width,
       height: this.config.height,
     });
     
-    // Inicializa renderer 2D usando a API pública Render2DEngine
+    // API pública 2D: Render2DEngine
     this.render2D = new Render2DEngine({
       antialias: this.config.antialias,
       showGrid: true,
@@ -93,7 +89,7 @@ export class AuriaEngine extends EventEmitter {
     });
     this.render2D.initialize(this.config.canvas2D);
     
-    // Initialize 3D renderer
+    // API pública 3D: Render3DEngine
     this.render3D = new Render3DEngine({
       canvas: this.config.canvas3D,
       width: this.config.width,
@@ -145,10 +141,7 @@ export class AuriaEngine extends EventEmitter {
     (this.cameraSystem as any).update(deltaTime);
     (this.lightingSystem as any).update(deltaTime);
 
-    // Render 3D
     this.render3D.render();
-
-    // O render 2D é acionado externamente via requestRenderFrame (Canvas2D)
 
     this.stats.drawCalls = this.render3D.getDrawCalls();
     this.stats.triangles = this.render3D.getTriangleCount();
