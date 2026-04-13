@@ -34,6 +34,8 @@ export interface InstancedMeshData {
 }
 
 class Render3DEngine {
+  private readonly DEBUG = true; // ← Temporário para diagnóstico
+
   public renderer: THREE.WebGLRenderer;
   public scene: THREE.Scene;
   public camera: THREE.PerspectiveCamera;
@@ -51,7 +53,6 @@ class Render3DEngine {
   
   private options: Render3DOptions;
 
-  // Gerenciadores de performance (uso interno)
   private objectPoolManager: ObjectPoolManager;
   private partitionManager: ScenePartitionManager;
 
@@ -65,6 +66,8 @@ class Render3DEngine {
       ...options,
     };
 
+    if (this.DEBUG) console.log('[Render3DEngine] Inicializando com opções:', this.options);
+
     this.renderer = this.createRenderer();
     this.scene = this.createScene();
     this.camera = this.createCamera();
@@ -73,9 +76,10 @@ class Render3DEngine {
     this.setupLighting();
     this.setupEventListeners();
 
-    // Inicializa sistemas de otimização
     this.objectPoolManager = new ObjectPoolManager();
     this.partitionManager = new ScenePartitionManager({ cellSize: 5 });
+
+    if (this.DEBUG) console.log('[Render3DEngine] Engine inicializada.');
   }
 
   private createRenderer(): THREE.WebGLRenderer {
@@ -98,6 +102,8 @@ class Render3DEngine {
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1.0;
+
+    if (this.DEBUG) console.log('[Render3DEngine] Renderer criado. Tamanho:', this.options.width, this.options.height);
 
     return renderer;
   }
@@ -162,6 +168,8 @@ class Render3DEngine {
     const fillLight = new THREE.DirectionalLight(0xffffff, 0.3);
     fillLight.position.set(-10, 10, -10);
     this.scene.add(fillLight);
+
+    if (this.DEBUG) console.log('[Render3DEngine] Iluminação configurada.');
   }
 
   private setupEventListeners(): void {
@@ -173,10 +181,8 @@ class Render3DEngine {
     if (parent) {
       const width = parent.clientWidth;
       const height = parent.clientHeight;
-      
-      this.camera.aspect = width / height;
-      this.camera.updateProjectionMatrix();
-      this.renderer.setSize(width, height);
+      if (this.DEBUG) console.log('[Render3DEngine] Resize para:', width, height);
+      this.resize(width, height);
     }
   }
 
@@ -256,7 +262,6 @@ class Render3DEngine {
 
   /**
    * Sincroniza a cena com os dados do editor.
-   * Remove todos os objetos de domínio existentes e recria a partir dos dados fornecidos.
    */
   syncScene(data: {
     walls: any[];
@@ -265,13 +270,24 @@ class Render3DEngine {
     windows: any[];
     furniture: any[];
   }): void {
-    // Remove objetos de domínio (mantém luzes, câmera, etc.)
+    if (this.DEBUG) {
+      console.log('[Render3DEngine] syncScene chamado com:', {
+        walls: data.walls.length,
+        rooms: data.rooms.length,
+        doors: data.doors.length,
+        windows: data.windows.length,
+        furniture: data.furniture.length,
+      });
+    }
+
+    // Remove objetos de domínio existentes
     const toRemove: THREE.Object3D[] = [];
     this.scene.traverse(obj => {
       if (obj.userData?.type) {
         toRemove.push(obj);
       }
     });
+    if (this.DEBUG) console.log(`[Render3DEngine] Removendo ${toRemove.length} objetos existentes.`);
     toRemove.forEach(obj => this.removeObject(obj));
 
     // Recria geometrias
@@ -280,6 +296,9 @@ class Render3DEngine {
     data.doors.forEach(d => this.createDoorMesh(d, data.walls));
     data.windows.forEach(w => this.createWindowMesh(w, data.walls));
     data.furniture.forEach(f => this.createFurnitureMesh(f));
+
+    if (this.DEBUG) console.log('[Render3DEngine] Objetos recriados. Ajustando câmera...');
+    this.fitCameraToScene();
   }
 
   private createWallMesh(wall: any): void {
@@ -406,6 +425,40 @@ class Render3DEngine {
     this.addObject(mesh);
   }
 
+  private fitCameraToScene(): void {
+    const box = new THREE.Box3();
+    this.scene.traverse(obj => {
+      if (obj instanceof THREE.Mesh && obj.userData?.type) {
+        box.expandByObject(obj);
+      }
+    });
+
+    if (box.isEmpty()) {
+      if (this.DEBUG) console.warn('[Render3DEngine] fitCameraToScene: Nenhum objeto na cena. Câmera mantida na posição padrão.');
+      return;
+    }
+
+    const size = box.getSize(new THREE.Vector3());
+    const center = box.getCenter(new THREE.Vector3());
+
+    if (this.DEBUG) {
+      console.log('[Render3DEngine] Bounds da cena:', { size, center });
+    }
+
+    const maxDim = Math.max(size.x, size.y, size.z);
+    const fov = this.camera.fov * (Math.PI / 180);
+    let cameraZ = Math.abs(maxDim / 2 / Math.tan(fov / 2));
+    cameraZ *= 1.5;
+
+    this.camera.position.set(center.x + cameraZ, center.y + cameraZ, center.z + cameraZ);
+    this.camera.lookAt(center);
+    if (this.controls.target) {
+      this.controls.target.copy(center);
+    }
+
+    if (this.DEBUG) console.log('[Render3DEngine] Câmera ajustada para:', this.camera.position);
+  }
+
   render(): void {
     this.controls.update();
     this.updateFrustum();
@@ -430,6 +483,7 @@ class Render3DEngine {
       callback?.();
     };
     animate();
+    if (this.DEBUG) console.log('[Render3DEngine] Render loop iniciado.');
   }
 
   setCameraPosition(x: number, y: number, z: number): void {
@@ -448,10 +502,13 @@ class Render3DEngine {
   }
 
   resize(width: number, height: number): void {
-    if (this.renderer) {
+    if (this.renderer && width > 0 && height > 0) {
       this.renderer.setSize(width, height);
       this.camera.aspect = width / height;
       this.camera.updateProjectionMatrix();
+      if (this.DEBUG) console.log('[Render3DEngine] Renderer redimensionado para:', width, height);
+    } else {
+      if (this.DEBUG) console.warn('[Render3DEngine] Tentativa de redimensionar com dimensões inválidas:', width, height);
     }
   }
 
@@ -488,6 +545,7 @@ class Render3DEngine {
     this.partitionManager.clear();
 
     window.removeEventListener('resize', this.handleResize.bind(this));
+    if (this.DEBUG) console.log('[Render3DEngine] Engine destruída.');
   }
 
   getStats(): { fps: number; drawCalls: number; triangles: number } {
