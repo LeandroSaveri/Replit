@@ -29,7 +29,7 @@ import type {
   Vec2,
 } from '@auriplan-types';
 
-import { splitWallAtPoint } from '@core/wall/WallSplitEngine';
+import { splitWallAtPoint, type SplitResult, type SplitSegment } from '@core/wall/WallSplitEngine';
 
 // ==================== EDITOR STATE INTERFACE ====================
 export interface EditorState {
@@ -187,6 +187,96 @@ function applyGeometryToScene(scene: Scene): void {
 // ==================== AUXILIARES ====================
 function getCurrentScene(state: EditorState): Scene | undefined {
   return state.scenes.find(s => s.id === state.currentSceneId);
+}
+
+// ==================== NOVA FUNÇÃO AUXILIAR PARA REASSOCIAÇÃO DE ABERTURAS ====================
+function reassignOpeningsAfterSplit(
+  scene: Scene,
+  splitResult: SplitResult
+): void {
+  const { originalWallId, segments } = splitResult;
+  if (segments.length === 0) return;
+
+  // Função para projetar a posição de uma abertura na parede original e encontrar o segmento
+  const findSegmentForPosition = (positionOnWall: number): SplitSegment | null => {
+    // positionOnWall é a distância ao longo da parede original (0..wallLength)
+    // Precisamos do comprimento da parede original (calculado a partir dos segmentos)
+    const originalLength = segments[segments.length - 1].tEnd; // tEnd do último segmento é 1, mas precisamos do comprimento real
+    // Como tStart/tEnd são paramétricos (0..1), usamos o t diretamente
+    const t = positionOnWall; // Assumimos que positionOnWall já está normalizado (0..1)
+    for (const seg of segments) {
+      if (t >= seg.tStart - 1e-6 && t <= seg.tEnd + 1e-6) {
+        return seg;
+      }
+    }
+    return null;
+  };
+
+  // Atualizar portas
+  for (const door of scene.doors) {
+    if (door.wallId === originalWallId) {
+      // A posição da porta é um valor absoluto (metros) a partir do início da parede.
+      // Precisamos normalizar para o comprimento total da parede original.
+      // Como não temos o comprimento total aqui, usamos o fato de que os segmentos cobrem [0,1].
+      // A posição da porta em termos paramétricos: t = position / originalWallLength
+      // Mas não temos originalWallLength. No entanto, a posição já está em metros e a parede original
+      // pode ser reconstruída a partir dos segmentos (soma dos comprimentos).
+      let totalLength = 0;
+      for (const seg of segments) {
+        totalLength += Math.hypot(seg.end[0] - seg.start[0], seg.end[1] - seg.start[1]);
+      }
+      const t = totalLength > 0 ? door.position / totalLength : 0;
+      const targetSeg = findSegmentForPosition(t);
+      if (targetSeg) {
+        door.wallId = targetSeg.wallId;
+        // Ajustar a posição da porta para o novo segmento (manter a distância relativa)
+        const segLength = Math.hypot(targetSeg.end[0] - targetSeg.start[0], targetSeg.end[1] - targetSeg.start[1]);
+        const localT = (t - targetSeg.tStart) / (targetSeg.tEnd - targetSeg.tStart);
+        door.position = localT * segLength;
+      }
+    }
+  }
+
+  // Atualizar janelas (mesma lógica)
+  for (const win of scene.windows) {
+    if (win.wallId === originalWallId) {
+      let totalLength = 0;
+      for (const seg of segments) {
+        totalLength += Math.hypot(seg.end[0] - seg.start[0], seg.end[1] - seg.start[1]);
+      }
+      const t = totalLength > 0 ? win.position / totalLength : 0;
+      const targetSeg = findSegmentForPosition(t);
+      if (targetSeg) {
+        win.wallId = targetSeg.wallId;
+        const segLength = Math.hypot(targetSeg.end[0] - targetSeg.start[0], targetSeg.end[1] - targetSeg.start[1]);
+        const localT = (t - targetSeg.tStart) / (targetSeg.tEnd - targetSeg.tStart);
+        win.position = localT * segLength;
+      }
+    }
+  }
+
+  // Atualizar openingIds nas novas paredes e remover da parede original
+  for (const seg of segments) {
+    const newWall = scene.walls.find(w => w.id === seg.wallId);
+    if (newWall) {
+      newWall.openingIds = [];
+    }
+  }
+  // Coletar todas as aberturas que agora pertencem a cada nova parede
+  for (const door of scene.doors) {
+    const wall = scene.walls.find(w => w.id === door.wallId);
+    if (wall && !wall.openingIds?.includes(door.id)) {
+      wall.openingIds = wall.openingIds || [];
+      wall.openingIds.push(door.id);
+    }
+  }
+  for (const win of scene.windows) {
+    const wall = scene.walls.find(w => w.id === win.wallId);
+    if (wall && !wall.openingIds?.includes(win.id)) {
+      wall.openingIds = wall.openingIds || [];
+      wall.openingIds.push(win.id);
+    }
+  }
 }
 
 // ==================== ESTADO INICIAL ====================
@@ -521,6 +611,9 @@ export const useEditorStore = create<EditorState>()(
 
           const result = splitWallAtPoint(scene.walls, wallId, point);
           if (result.removedWallIds.length === 0) return;
+
+          // Aplica a reassociação de portas/janelas antes de substituir as paredes
+          reassignOpeningsAfterSplit(scene, result);
 
           scene.walls = result.updatedWalls;
           applyGeometryToScene(scene);
