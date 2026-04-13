@@ -1,8 +1,7 @@
 // ============================================================
-// Canvas2D — Orquestrador de desenho 2D
-// Fluxo: ResizeObserver → buffer correto → engine → preview overlay
-// Zoom/Pan corrigidos – interação estilo MagicPlan
-// Sem tooltips ou mensagens poluentes
+// CAMINHO: src/features/editor/components/Canvas2D.tsx
+// FUNÇÃO: Orquestrador de desenho 2D – zoom/pan, preview,
+//         contexto, menu de formas prontas com ícones
 // ============================================================
 
 import { useRef, useEffect, useState, useCallback, useLayoutEffect } from 'react';
@@ -700,20 +699,36 @@ export function Canvas2D() {
           onContextMenu={handleContextMenu}
         />
 
+        {/* Formas prontas – versão com ícones em grid */}
         {tool === 'room' && (
           <div className="absolute top-3 left-3 bg-white/95 backdrop-blur-sm rounded-xl shadow-lg border border-slate-200 p-2 z-20 w-52">
             <div className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-2 px-2">
               Formas prontas
             </div>
-            {ROOM_SHAPES.map(shape => (
-              <button
-                key={shape.name}
-                onClick={() => insertShape(shape.name)}
-                className="text-left w-full px-3 py-2 text-sm text-slate-700 hover:bg-blue-50 hover:text-blue-700 rounded-lg transition-colors"
-              >
-                {shape.name}
-              </button>
-            ))}
+            <div className="grid grid-cols-3 gap-2">
+              {ROOM_SHAPES.map(shape => {
+                const IconComponent = typeof shape.icon === 'string' ? null : shape.icon;
+                return (
+                  <button
+                    key={shape.name}
+                    onClick={() => insertShape(shape.name)}
+                    className="flex flex-col items-center p-2 rounded-lg hover:bg-blue-50 transition-colors"
+                    title={shape.name}
+                  >
+                    {IconComponent ? (
+                      <IconComponent className="w-6 h-6 text-blue-500 mb-1" />
+                    ) : (
+                      <div className="w-6 h-6 flex items-center justify-center text-blue-500 font-bold mb-1">
+                        {shape.icon}
+                      </div>
+                    )}
+                    <span className="text-[10px] text-slate-600 text-center leading-tight">
+                      {shape.name}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
           </div>
         )}
 
