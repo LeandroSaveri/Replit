@@ -1,8 +1,7 @@
 // ============================================
 // SIDEBAR - Painel Lateral Premium
 // TEMA CLARO em todos os dispositivos
-// Ferramentas: Apenas MOBILE (≤md) no menu lateral
-// Desktop: Ferramentas ficam na Toolbar (barra superior escura)
+// Largura reduzida, hierarquia ajustada, botões com estilo consistente
 // ============================================
 
 import { useState } from 'react';
@@ -111,35 +110,35 @@ const toolGroups: ToolGroup[] = [
 
 function LayerItem({ icon: Icon, name, count, visible, locked, onToggleVisibility, onToggleLock }: LayerItemProps) {
   return (
-    <div className="flex items-center justify-between px-3 py-2.5 hover:bg-gray-100 rounded-xl group transition-colors">
-      <div className="flex items-center gap-3 min-w-0">
-        <div className="w-8 h-8 rounded-lg bg-gray-100 flex items-center justify-center flex-shrink-0">
-          <Icon className="w-4 h-4 text-gray-500" />
+    <div className="flex items-center justify-between px-2.5 py-2 hover:bg-gray-100 rounded-lg group transition-colors">
+      <div className="flex items-center gap-2.5 min-w-0">
+        <div className="w-7 h-7 rounded-lg bg-gray-100 flex items-center justify-center flex-shrink-0">
+          <Icon className="w-3.5 h-3.5 text-gray-500" />
         </div>
         <div className="min-w-0">
-          <span className="text-sm text-gray-700 font-medium">{name}</span>
-          <span className="text-xs text-gray-400 ml-1.5">({count})</span>
+          <span className="text-xs text-gray-700 font-medium">{name}</span>
+          <span className="text-[10px] text-gray-400 ml-1">({count})</span>
         </div>
       </div>
       <div className="flex items-center gap-0.5">
         <button
           onClick={onToggleVisibility}
-          className={`p-2 rounded-lg transition-all ${visible ? 'text-blue-500 hover:bg-blue-50' : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'}`}
+          className={`p-1.5 rounded-md transition-all ${visible ? 'text-blue-500 hover:bg-blue-50' : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'}`}
         >
-          {visible ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
+          {visible ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
         </button>
         <button
           onClick={onToggleLock}
-          className={`p-2 rounded-lg transition-all ${locked ? 'text-amber-500 hover:bg-amber-50' : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'}`}
+          className={`p-1.5 rounded-md transition-all ${locked ? 'text-amber-500 hover:bg-amber-50' : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'}`}
         >
-          {locked ? <Lock className="w-4 h-4" /> : <Unlock className="w-4 h-4" />}
+          {locked ? <Lock className="w-3.5 h-3.5" /> : <Unlock className="w-3.5 h-3.5" />}
         </button>
       </div>
     </div>
   );
 }
 
-// Tool Button - Mobile Light Theme
+// Tool Button - Mobile Light Theme (compacto)
 function MobileToolButton({ 
   tool, 
   isActive, 
@@ -155,14 +154,14 @@ function MobileToolButton({
     <motion.button
       whileTap={{ scale: 0.92 }}
       onClick={onClick}
-      className={`flex flex-col items-center gap-1.5 p-3 rounded-2xl transition-all duration-200 border ${
+      className={`flex flex-col items-center gap-1 p-2.5 rounded-xl transition-all duration-200 border ${
         isActive
-          ? 'bg-gradient-to-br from-blue-500 to-blue-600 text-white shadow-lg shadow-blue-500/30 border-transparent'
+          ? 'bg-gradient-to-br from-blue-500 to-blue-600 text-white shadow-md shadow-blue-500/30 border-transparent'
           : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300 hover:bg-gray-50'
       }`}
     >
-      <Icon className="w-5 h-5" />
-      <span className="text-[10px] font-medium leading-tight">{tool.label}</span>
+      <Icon className="w-4 h-4" />
+      <span className="text-[9px] font-medium leading-tight">{tool.label}</span>
     </motion.button>
   );
 }
@@ -177,33 +176,33 @@ function MobileCanvasControls({ onOpenProperties }: { onOpenProperties?: () => v
         <motion.button
           whileTap={{ scale: 0.92 }}
           onClick={toggleGrid}
-          className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl font-medium text-sm transition-all border ${
+          className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-lg font-medium text-xs transition-all border ${
             grid.visible 
               ? 'bg-blue-50 text-blue-600 border-blue-200' 
               : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'
           }`}
         >
-          <Grid3X3 className="w-4 h-4" />
+          <Grid3X3 className="w-3.5 h-3.5" />
           Grade
         </motion.button>
         <motion.button
           whileTap={{ scale: 0.92 }}
           onClick={toggleSnap}
-          className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl font-medium text-sm transition-all border ${
+          className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-lg font-medium text-xs transition-all border ${
             snap.enabled 
               ? 'bg-purple-50 text-purple-600 border-purple-200' 
               : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'
           }`}
         >
-          <Magnet className="w-4 h-4" />
+          <Magnet className="w-3.5 h-3.5" />
           Snap
         </motion.button>
         <motion.button
           whileTap={{ scale: 0.92 }}
           onClick={fitToView}
-          className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl font-medium text-sm transition-all border bg-white text-gray-600 border-gray-200 hover:border-gray-300"
+          className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-lg font-medium text-xs transition-all border bg-white text-gray-600 border-gray-200 hover:border-gray-300"
         >
-          <Maximize2 className="w-4 h-4" />
+          <Maximize2 className="w-3.5 h-3.5" />
           Ajustar
         </motion.button>
       </div>
@@ -213,9 +212,9 @@ function MobileCanvasControls({ onOpenProperties }: { onOpenProperties?: () => v
         <motion.button
           whileTap={{ scale: 0.92 }}
           onClick={onOpenProperties}
-          className="w-full flex items-center justify-center gap-2 py-3 rounded-xl font-medium text-sm transition-all border bg-gradient-to-r from-blue-50 to-indigo-50 text-blue-700 border-blue-200 hover:border-blue-300"
+          className="w-full flex items-center justify-center gap-2 py-2.5 rounded-lg font-medium text-xs transition-all border bg-gradient-to-r from-blue-50 to-indigo-50 text-blue-700 border-blue-200 hover:border-blue-300"
         >
-          <SlidersHorizontal className="w-4 h-4" />
+          <SlidersHorizontal className="w-3.5 h-3.5" />
           Propriedades
         </motion.button>
       )}
@@ -266,14 +265,14 @@ export function Sidebar({
   };
 
   return (
-    <div className="h-full flex flex-col bg-gray-50">
+    <div className="h-full flex flex-col bg-gray-50" style={{ overscrollBehavior: 'contain' }}>
       {/* Header com tabs - TEMA CLARO */}
       <div className="flex border-b bg-white/95 backdrop-blur-sm border-gray-200">
         {tabs.map(tab => (
           <button
             key={tab.id}
             onClick={() => setActiveTab(tab.id)}
-            className={`flex-1 flex items-center justify-center gap-1.5 py-3 text-xs sm:text-sm font-medium transition-all duration-200 ${
+            className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 text-xs font-medium transition-all duration-200 ${
               activeTab === tab.id
                 ? 'text-blue-600 border-b-2 border-blue-500 bg-blue-50/50'
                 : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
@@ -287,7 +286,7 @@ export function Sidebar({
       </div>
 
       {/* Content Area */}
-      <div className="flex-1 overflow-auto">
+      <div className="flex-1 overflow-y-auto" style={{ overscrollBehavior: 'contain' }}>
         <AnimatePresence mode="wait">
           
           {/* SCENES TAB - Com ferramentas apenas em MOBILE */}
@@ -298,10 +297,10 @@ export function Sidebar({
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: -20 }}
               transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-              className="p-4 space-y-4"
+              className="p-3 space-y-3"
             >
               {/* Lista de Cenas */}
-              <div className="space-y-2">
+              <div className="space-y-1.5">
                 {scenes.map((scene) => (
                   <motion.div
                     key={scene.id}
@@ -310,36 +309,36 @@ export function Sidebar({
                       onSceneChange(scene.id); 
                       if (isMobile && onClose) onClose(); 
                     }}
-                    className={`group flex items-center justify-between p-3 rounded-xl cursor-pointer transition-all border ${
+                    className={`group flex items-center justify-between p-2.5 rounded-xl cursor-pointer transition-all border ${
                       scene.id === currentSceneId
                         ? 'bg-gradient-to-r from-blue-500/10 to-blue-600/5 border-blue-300 shadow-sm'
                         : 'bg-white border-gray-200 hover:border-gray-300'
                     }`}
                   >
-                    <div className="flex items-center gap-3 min-w-0">
-                      <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${
                         scene.id === currentSceneId 
-                          ? 'bg-gradient-to-br from-blue-500 to-blue-600 shadow-lg shadow-blue-500/25' 
+                          ? 'bg-gradient-to-br from-blue-500 to-blue-600 shadow-md shadow-blue-500/25' 
                           : 'bg-gray-100'
                       }`}>
-                        <Home className="w-5 h-5 text-white" />
+                        <Home className="w-4 h-4 text-white" />
                       </div>
                       <div className="min-w-0">
-                        <p className={`text-sm font-semibold truncate ${
+                        <p className={`text-xs font-semibold truncate ${
                           scene.id === currentSceneId ? 'text-blue-700' : 'text-gray-700'
                         }`}>
                           {scene.name}
                         </p>
-                        <p className="text-xs text-gray-400">
+                        <p className="text-[10px] text-gray-400">
                           Andar {scene.level + 1} • {scene.height.toFixed(1)}m
                         </p>
                       </div>
                     </div>
                     <button 
                       onClick={(e) => { e.stopPropagation(); }}
-                      className="p-2 rounded-lg opacity-0 group-hover:opacity-100 transition-all flex-shrink-0 text-gray-400 hover:text-gray-600 hover:bg-gray-100"
+                      className="p-1.5 rounded-md opacity-0 group-hover:opacity-100 transition-all flex-shrink-0 text-gray-400 hover:text-gray-600 hover:bg-gray-100"
                     >
-                      <MoreVertical className="w-4 h-4" />
+                      <MoreVertical className="w-3.5 h-3.5" />
                     </button>
                   </motion.div>
                 ))}
@@ -352,14 +351,14 @@ export function Sidebar({
                     initial={{ opacity: 0, y: -10, height: 0 }}
                     animate={{ opacity: 1, y: 0, height: 'auto' }}
                     exit={{ opacity: 0, y: -10, height: 0 }}
-                    className="p-3 bg-gray-50 rounded-xl border border-gray-200"
+                    className="p-2.5 bg-gray-50 rounded-xl border border-gray-200"
                   >
                     <input
                       type="text"
                       value={newSceneName}
                       onChange={(e) => setNewSceneName(e.target.value)}
                       placeholder="Nome da cena"
-                      className="w-full h-10 px-3 bg-white border border-gray-200 rounded-lg text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-blue-500 mb-3"
+                      className="w-full h-9 px-2.5 bg-white border border-gray-200 rounded-lg text-xs text-gray-900 placeholder-gray-400 focus:outline-none focus:border-blue-500 mb-2"
                       autoFocus
                       onKeyDown={(e) => {
                         if (e.key === 'Enter') handleAddScene();
@@ -370,14 +369,14 @@ export function Sidebar({
                       <motion.button
                         whileTap={{ scale: 0.98 }}
                         onClick={handleAddScene}
-                        className="flex-1 py-2 bg-blue-500 hover:bg-blue-600 text-white text-sm font-medium rounded-lg transition-colors"
+                        className="flex-1 py-1.5 bg-blue-500 hover:bg-blue-600 text-white text-xs font-medium rounded-lg transition-colors"
                       >
                         Adicionar
                       </motion.button>
                       <motion.button
                         whileTap={{ scale: 0.98 }}
                         onClick={() => setShowAddScene(false)}
-                        className="flex-1 py-2 bg-gray-100 hover:bg-gray-200 text-gray-600 text-sm font-medium rounded-lg transition-colors"
+                        className="flex-1 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-600 text-xs font-medium rounded-lg transition-colors"
                       >
                         Cancelar
                       </motion.button>
@@ -387,50 +386,26 @@ export function Sidebar({
                   <motion.button
                     whileTap={{ scale: 0.98 }}
                     onClick={() => setShowAddScene(true)}
-                    className="w-full flex items-center justify-center gap-2 p-3 border-2 border-dashed border-gray-300 text-gray-500 hover:text-gray-700 hover:border-gray-400 hover:bg-gray-50 bg-white rounded-xl transition-all"
+                    className="w-full flex items-center justify-center gap-1.5 p-2 border-2 border-dashed border-gray-300 text-gray-500 hover:text-gray-700 hover:border-gray-400 hover:bg-gray-50 bg-white rounded-xl transition-all text-xs"
                   >
-                    <Plus className="w-4 h-4" />
-                    <span className="text-sm font-medium">Adicionar Andar</span>
+                    <Plus className="w-3.5 h-3.5" />
+                    <span className="font-medium">Adicionar Andar</span>
                   </motion.button>
                 )}
               </AnimatePresence>
 
-              {/* Ações rápidas do projeto (Salvar / Compartilhar) */}
-              <div className="grid grid-cols-2 gap-3 pt-1">
-                {onSave && (
-                  <motion.button
-                    whileTap={{ scale: 0.98 }}
-                    onClick={onSave}
-                    className="p-3 bg-blue-500 hover:bg-blue-600 text-white rounded-xl text-sm font-medium transition-colors shadow-sm flex items-center justify-center gap-2"
-                  >
-                    <Save className="w-4 h-4" />
-                    Salvar
-                  </motion.button>
-                )}
-                {onShare && (
-                  <motion.button
-                    whileTap={{ scale: 0.98 }}
-                    onClick={onShare}
-                    className="p-3 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl text-sm font-medium transition-colors shadow-sm flex items-center justify-center gap-2"
-                  >
-                    <Share2 className="w-4 h-4" />
-                    Compartilhar
-                  </motion.button>
-                )}
-              </div>
-
               {/* FERRAMENTAS - APENAS EM MOBILE (≤md) */}
               {isMobile && (
                 <>
-                  <div className="h-px bg-gray-200 my-2" />
+                  <div className="h-px bg-gray-200 my-1" />
                   
-                  <div className="space-y-3">
+                  <div className="space-y-2">
                     <button
                       onClick={() => setExpandedTools(!expandedTools)}
-                      className="w-full flex items-center justify-between p-2 text-xs font-semibold uppercase tracking-wider text-gray-500 hover:text-gray-700 transition-colors"
+                      className="w-full flex items-center justify-between p-1.5 text-[10px] font-semibold uppercase tracking-wider text-gray-500 hover:text-gray-700 transition-colors"
                     >
                       <span>Ferramentas de Desenho</span>
-                      {expandedTools ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+                      {expandedTools ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
                     </button>
 
                     <AnimatePresence>
@@ -440,14 +415,14 @@ export function Sidebar({
                           animate={{ height: 'auto', opacity: 1 }}
                           exit={{ height: 0, opacity: 0 }}
                           transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-                          className="space-y-4 overflow-hidden"
+                          className="space-y-3 overflow-hidden"
                         >
                           {toolGroups.map((group) => (
-                            <div key={group.label} className="space-y-2">
-                              <p className="text-[10px] uppercase tracking-wider font-semibold px-1 text-gray-400">
+                            <div key={group.label} className="space-y-1.5">
+                              <p className="text-[9px] uppercase tracking-wider font-semibold px-1 text-gray-400">
                                 {group.label}
                               </p>
-                              <div className="grid grid-cols-2 gap-2">
+                              <div className="grid grid-cols-2 gap-1.5">
                                 {group.tools.map((t) => (
                                   <MobileToolButton
                                     key={t.id}
@@ -465,13 +440,37 @@ export function Sidebar({
                   </div>
 
                   {/* Canvas Controls - Mobile */}
-                  <div className="h-px bg-gray-200 my-2" />
-                  <div className="space-y-3">
+                  <div className="h-px bg-gray-200 my-1" />
+                  <div className="space-y-2">
                     <p className="text-[10px] uppercase tracking-wider text-gray-400 font-semibold px-1">Canvas</p>
                     <MobileCanvasControls onOpenProperties={onOpenProperties} />
                   </div>
                 </>
               )}
+
+              {/* Ações do projeto (Salvar / Compartilhar) - estilo consistente com Propriedades */}
+              <div className="grid grid-cols-2 gap-2 pt-1">
+                {onSave && (
+                  <motion.button
+                    whileTap={{ scale: 0.98 }}
+                    onClick={onSave}
+                    className="py-2.5 px-2 rounded-lg font-medium text-xs transition-all border bg-gradient-to-r from-blue-50 to-indigo-50 text-blue-700 border-blue-200 hover:border-blue-300 flex items-center justify-center gap-1.5"
+                  >
+                    <Save className="w-3.5 h-3.5" />
+                    Salvar
+                  </motion.button>
+                )}
+                {onShare && (
+                  <motion.button
+                    whileTap={{ scale: 0.98 }}
+                    onClick={onShare}
+                    className="py-2.5 px-2 rounded-lg font-medium text-xs transition-all border bg-gradient-to-r from-emerald-50 to-teal-50 text-emerald-700 border-emerald-200 hover:border-emerald-300 flex items-center justify-center gap-1.5"
+                  >
+                    <Share2 className="w-3.5 h-3.5" />
+                    Compartilhar
+                  </motion.button>
+                )}
+              </div>
             </motion.div>
           )}
 
@@ -483,14 +482,14 @@ export function Sidebar({
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: -20 }}
               transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-              className="p-4 space-y-2"
+              className="p-3 space-y-1.5"
             >
               <button
                 onClick={() => setExpandedLayers(!expandedLayers)}
-                className="w-full flex items-center justify-between p-3 text-sm font-medium text-gray-700 hover:bg-gray-100 rounded-xl transition-colors"
+                className="w-full flex items-center justify-between p-2 text-xs font-medium text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
               >
                 <span>Camadas do Projeto</span>
-                {expandedLayers ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+                {expandedLayers ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
               </button>
 
               <AnimatePresence>
@@ -500,7 +499,7 @@ export function Sidebar({
                     animate={{ height: 'auto', opacity: 1 }}
                     exit={{ height: 0, opacity: 0 }}
                     transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-                    className="space-y-1 overflow-hidden"
+                    className="space-y-0.5 overflow-hidden"
                   >
                     <LayerItem
                       icon={Square}
@@ -561,43 +560,43 @@ export function Sidebar({
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: -20 }}
               transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-              className="p-4 space-y-4"
+              className="p-3 space-y-3"
             >
-              <div className="grid grid-cols-2 gap-3">
-                <div className="p-4 bg-gradient-to-br from-gray-50 to-white rounded-xl border border-gray-200">
-                  <p className="text-xs text-gray-500 mb-1">Área Total</p>
-                  <p className="text-2xl font-bold text-gray-900">{stats.area.toFixed(1)}</p>
-                  <p className="text-xs text-gray-400">m²</p>
+              <div className="grid grid-cols-2 gap-2">
+                <div className="p-3 bg-gradient-to-br from-gray-50 to-white rounded-xl border border-gray-200">
+                  <p className="text-[10px] text-gray-500 mb-0.5">Área Total</p>
+                  <p className="text-xl font-bold text-gray-900">{stats.area.toFixed(1)}</p>
+                  <p className="text-[10px] text-gray-400">m²</p>
                 </div>
-                <div className="p-4 bg-gradient-to-br from-gray-50 to-white rounded-xl border border-gray-200">
-                  <p className="text-xs text-gray-500 mb-1">Cômodos</p>
-                  <p className="text-2xl font-bold text-gray-900">{stats.rooms}</p>
-                  <p className="text-xs text-gray-400">unidades</p>
+                <div className="p-3 bg-gradient-to-br from-gray-50 to-white rounded-xl border border-gray-200">
+                  <p className="text-[10px] text-gray-500 mb-0.5">Cômodos</p>
+                  <p className="text-xl font-bold text-gray-900">{stats.rooms}</p>
+                  <p className="text-[10px] text-gray-400">unidades</p>
                 </div>
-                <div className="p-4 bg-gradient-to-br from-gray-50 to-white rounded-xl border border-gray-200">
-                  <p className="text-xs text-gray-500 mb-1">Paredes</p>
-                  <p className="text-2xl font-bold text-gray-900">{stats.walls}</p>
-                  <p className="text-xs text-gray-400">segmentos</p>
+                <div className="p-3 bg-gradient-to-br from-gray-50 to-white rounded-xl border border-gray-200">
+                  <p className="text-[10px] text-gray-500 mb-0.5">Paredes</p>
+                  <p className="text-xl font-bold text-gray-900">{stats.walls}</p>
+                  <p className="text-[10px] text-gray-400">segmentos</p>
                 </div>
-                <div className="p-4 bg-gradient-to-br from-gray-50 to-white rounded-xl border border-gray-200">
-                  <p className="text-xs text-gray-500 mb-1">Móveis</p>
-                  <p className="text-2xl font-bold text-gray-900">{stats.furniture}</p>
-                  <p className="text-xs text-gray-400">itens</p>
+                <div className="p-3 bg-gradient-to-br from-gray-50 to-white rounded-xl border border-gray-200">
+                  <p className="text-[10px] text-gray-500 mb-0.5">Móveis</p>
+                  <p className="text-xl font-bold text-gray-900">{stats.furniture}</p>
+                  <p className="text-[10px] text-gray-400">itens</p>
                 </div>
               </div>
 
-              <div className="p-4 bg-gradient-to-br from-gray-50 to-white rounded-xl border border-gray-200">
-                <h4 className="text-sm font-semibold text-gray-800 mb-4">Resumo do Projeto</h4>
-                <div className="space-y-3">
-                  <div className="flex justify-between items-center text-sm py-2 border-b border-gray-200">
+              <div className="p-3 bg-gradient-to-br from-gray-50 to-white rounded-xl border border-gray-200">
+                <h4 className="text-xs font-semibold text-gray-800 mb-3">Resumo do Projeto</h4>
+                <div className="space-y-2">
+                  <div className="flex justify-between items-center text-xs py-1.5 border-b border-gray-200">
                     <span className="text-gray-500">Portas</span>
                     <span className="text-gray-900 font-medium">{stats.doors}</span>
                   </div>
-                  <div className="flex justify-between items-center text-sm py-2 border-b border-gray-200">
+                  <div className="flex justify-between items-center text-xs py-1.5 border-b border-gray-200">
                     <span className="text-gray-500">Janelas</span>
                     <span className="text-gray-900 font-medium">{stats.windows}</span>
                   </div>
-                  <div className="flex justify-between items-center text-sm py-2">
+                  <div className="flex justify-between items-center text-xs py-1.5">
                     <span className="text-gray-500">Andares</span>
                     <span className="text-gray-900 font-medium">{scenes.length}</span>
                   </div>
