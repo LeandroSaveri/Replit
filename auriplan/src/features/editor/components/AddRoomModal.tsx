@@ -131,12 +131,6 @@ export function AddRoomModal({ onClose, onScan }: AddRoomModalProps) {
                       onClick={card.onClick}
                       className="relative flex flex-col items-center gap-2.5 p-4 rounded-2xl border border-blue-100 bg-blue-50 hover:bg-blue-100 transition-colors text-left group overflow-hidden"
                     >
-                      {/* LiDAR badge */}
-                      <span className="absolute top-2 right-2 flex items-center gap-0.5 text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-gradient-to-r from-blue-500 to-purple-500 text-white">
-                        <Layers className="w-2.5 h-2.5" />
-                        LiDAR
-                      </span>
-
                       {/* Icon illustration */}
                       <div className={`w-14 h-14 rounded-2xl bg-gradient-to-br ${card.color} flex items-center justify-center shadow-lg group-hover:scale-105 transition-transform`}>
                         <svg width="36" height="36" viewBox="0 0 36 36" fill="none">
