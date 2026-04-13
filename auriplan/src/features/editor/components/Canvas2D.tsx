@@ -10,13 +10,6 @@ import { Render2DEngine } from '@engine/render2d/Render2DEngine';
 import { ToolManager, ToolContext, ROOM_SHAPES, RoomToolHandler } from '../handlers';
 import type { Vec2 } from '@auriplan-types';
 
-interface CanvasInteractionEvent {
-  type: 'mousedown' | 'mousemove' | 'mouseup' | 'keydown' | 'dblclick';
-  position: Vec2;
-  modifiers: string[];
-  key?: string;
-}
-
 // Cursor por ferramenta
 const TOOL_CURSORS: Record<string, string> = {
   select: 'default',
@@ -692,26 +685,7 @@ export function Canvas2D() {
     }
   };
 
-  const zoomIn = () => setScale(s => Math.min(400, s * 1.25));
-  const zoomOut = () => setScale(s => Math.max(8, s / 1.25));
-  const resetView = () => { setScale(60); setPan([0, 0]); };
-
   const isMobile = typeof window !== 'undefined' && window.matchMedia('(max-width: 768px)').matches;
-  const toolHints: Record<string, string> = {
-    wall: isMobile
-      ? 'Toque para colocar parede • Esc para cancelar'
-      : 'Clique para iniciar • Clique para colocar segmento • Esc para cancelar',
-    room: isMobile
-      ? 'Toque para adicionar vértices • toque no início para fechar'
-      : 'Clique para adicionar vértices • Enter ou clique no início para fechar',
-    select: isMobile
-      ? 'Toque para selecionar • 2 dedos para navegar • Duplo toque = dividir parede'
-      : 'Clique para selecionar • Shift para múltiplos • Duplo clique = dividir parede/renomear cômodo',
-    door: 'Clique/toque em uma parede para adicionar porta',
-    window: 'Clique/toque em uma parede para adicionar janela',
-    measure: 'Clique/toque para iniciar medição',
-    pan: isMobile ? 'Arraste para navegar • 2 dedos para zoom' : 'Arraste para navegar',
-  };
 
   return (
     <ToolContext.Provider value={{ previewState, setPreviewState, activeTool: tool }}>
@@ -745,27 +719,6 @@ export function Canvas2D() {
                 {shape.name}
               </button>
             ))}
-            <div className="border-t border-slate-100 mt-2 pt-2 px-2">
-              <p className="text-[10px] text-slate-400">Ou desenhe clicando no canvas</p>
-            </div>
-          </div>
-        )}
-
-        {toolHints[tool] && (
-          <div className="absolute top-3 left-1/2 -translate-x-1/2 bg-slate-900/85 backdrop-blur-sm text-white text-xs px-4 py-2 rounded-full pointer-events-none z-10 whitespace-nowrap">
-            {toolHints[tool]}
-          </div>
-        )}
-
-        {tool === 'room' && previewState?.type === 'polygon' && (
-          <div className="absolute top-12 left-1/2 -translate-x-1/2 bg-green-600/90 backdrop-blur px-3 py-1.5 rounded-full text-xs text-white pointer-events-none">
-            {previewState.vertices.length} vértice{previewState.vertices.length !== 1 ? 's' : ''} • Enter ou clique no início para fechar
-          </div>
-        )}
-
-        {tool === 'wall' && previewState?.type === 'wall' && (
-          <div className="absolute top-12 left-1/2 -translate-x-1/2 bg-blue-600/90 backdrop-blur px-3 py-1.5 rounded-full text-xs text-white pointer-events-none">
-            Segmento em andamento • Shift = ortogonal • Esc = cancelar
           </div>
         )}
 
