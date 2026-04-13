@@ -2,6 +2,7 @@
 // PROPERTIES PANEL - Responsivo (mobile drawer)
 // Controlado externamente via props isOpen/onClose
 // Botão flutuante removido (abertura apenas pelo menu lateral)
+// Adicionado botão Duplicar para cômodos
 // ============================================
 
 import { useState, useEffect } from 'react';
@@ -140,6 +141,7 @@ export function PropertiesPanel({ isOpen: externalIsOpen, onClose }: PropertiesP
     deleteWindow,
     deleteFurniture,
     duplicateFurniture,
+    duplicateRoom,
   } = useEditorStore();
   
   const selectedItems = useEditorStore(selectSelectedItems);
@@ -239,6 +241,19 @@ export function PropertiesPanel({ isOpen: externalIsOpen, onClose }: PropertiesP
             <InputField label="Cor das Paredes" value={(selectedItem as Room).wallColor ?? '#e2e8f0'} onChange={(v) => updateRoom(selectedItem.id, { wallColor: v })} type="color" />
             <InputField label="Cor do Piso" value={(selectedItem as Room).floorColor ?? '#e5e7eb'} onChange={(v) => updateRoom(selectedItem.id, { floorColor: v })} type="color" />
             <InputField label="Cor do Teto" value={(selectedItem as Room).ceilingColor ?? '#f9fafb'} onChange={(v) => updateRoom(selectedItem.id, { ceilingColor: v })} type="color" />
+          </Section>
+          <Section title="Ações" icon={Layers}>
+            <div className="flex gap-2">
+              <button
+                onClick={() => {
+                  duplicateRoom(selectedItem.id);
+                  onClose?.();
+                }}
+                className="flex-1 flex items-center justify-center gap-2 py-2 bg-slate-800 hover:bg-slate-700 rounded text-sm text-white transition-colors"
+              >
+                <Copy className="w-4 h-4" /> Duplicar
+              </button>
+            </div>
           </Section>
         </>
       )}
