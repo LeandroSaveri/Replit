@@ -3,7 +3,6 @@
 // TEMA CLARO em todos os dispositivos
 // Ferramentas: Apenas MOBILE (≤md) no menu lateral
 // Desktop: Ferramentas ficam na Toolbar (barra superior escura)
-// Adicionado: botão Propriedades e controles de zoom no mobile
 // ============================================
 
 import { useState } from 'react';
@@ -34,6 +33,8 @@ import {
   Maximize2,
   Calculator,
   SlidersHorizontal,
+  Save,
+  Share2,
 } from 'lucide-react';
 import { useEditorStore } from '@store/editorStore';
 import type { Scene, Tool } from '@auriplan-types';
@@ -394,6 +395,30 @@ export function Sidebar({
                 )}
               </AnimatePresence>
 
+              {/* Ações rápidas do projeto (Salvar / Compartilhar) */}
+              <div className="grid grid-cols-2 gap-3 pt-1">
+                {onSave && (
+                  <motion.button
+                    whileTap={{ scale: 0.98 }}
+                    onClick={onSave}
+                    className="p-3 bg-blue-500 hover:bg-blue-600 text-white rounded-xl text-sm font-medium transition-colors shadow-sm flex items-center justify-center gap-2"
+                  >
+                    <Save className="w-4 h-4" />
+                    Salvar
+                  </motion.button>
+                )}
+                {onShare && (
+                  <motion.button
+                    whileTap={{ scale: 0.98 }}
+                    onClick={onShare}
+                    className="p-3 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl text-sm font-medium transition-colors shadow-sm flex items-center justify-center gap-2"
+                  >
+                    <Share2 className="w-4 h-4" />
+                    Compartilhar
+                  </motion.button>
+                )}
+              </div>
+
               {/* FERRAMENTAS - APENAS EM MOBILE (≤md) */}
               {isMobile && (
                 <>
@@ -577,28 +602,6 @@ export function Sidebar({
                     <span className="text-gray-900 font-medium">{scenes.length}</span>
                   </div>
                 </div>
-              </div>
-
-              {/* Ações rápidas */}
-              <div className="grid grid-cols-2 gap-3">
-                {onSave && (
-                  <motion.button
-                    whileTap={{ scale: 0.98 }}
-                    onClick={onSave}
-                    className="p-3 bg-blue-500 hover:bg-blue-600 text-white rounded-xl text-sm font-medium transition-colors shadow-sm"
-                  >
-                    Salvar Projeto
-                  </motion.button>
-                )}
-                {onShare && (
-                  <motion.button
-                    whileTap={{ scale: 0.98 }}
-                    onClick={onShare}
-                    className="p-3 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl text-sm font-medium transition-colors shadow-sm"
-                  >
-                    Compartilhar
-                  </motion.button>
-                )}
               </div>
             </motion.div>
           )}
