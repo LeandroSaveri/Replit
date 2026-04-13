@@ -3,11 +3,9 @@
  * React wrapper for the 3D rendering engine (public API)
  */
 
-import React, { useEffect, useRef, useCallback, useState } from 'react';
+import React, { useEffect, useRef, useCallback, useState, useMemo } from 'react';
 import * as THREE from 'three';
 import Render3DEngine from './Render3DEngine';
-
-const DEBUG = true; // Temporário para diagnóstico
 
 export interface Render3DProps {
   width: number;
@@ -48,12 +46,19 @@ export const Render3D: React.FC<Render3DProps> = ({
   const [isLoaded, setIsLoaded] = useState(false);
   const [fps, setFps] = useState(0);
 
+  // Memoiza sceneData para evitar re-sincronizações desnecessárias
+  const memoizedSceneData = useMemo(() => sceneData, [
+    sceneData?.walls.length,
+    sceneData?.rooms.length,
+    sceneData?.doors.length,
+    sceneData?.windows.length,
+    sceneData?.furniture.length,
+  ]);
+
   useEffect(() => {
     if (!canvasRef.current) return;
 
     try {
-      if (DEBUG) console.log('[Render3D] Inicializando engine com dimensões:', width, height);
-
       const engine = new Render3DEngine({
         canvas: canvasRef.current,
         width: width || 800,
@@ -73,21 +78,18 @@ export const Render3D: React.FC<Render3DProps> = ({
       setIsLoaded(true);
       onLoad?.();
 
-      if (DEBUG) console.log('[Render3D] Engine iniciada com sucesso.');
-
       return () => {
         clearInterval(fpsInterval);
         engine.dispose();
         engineRef.current = null;
-        if (DEBUG) console.log('[Render3D] Engine desmontada.');
       };
     } catch (error) {
-      console.error('[Render3D] Erro na inicialização:', error);
+      console.error('[Render3D] Initialization error:', error);
       onError?.(error as Error);
     }
   }, [width, height, antialias, shadows, backgroundColor, onLoad, onError]);
 
-  // Observa redimensionamento do container
+  // Observa redimensionamento
   useEffect(() => {
     if (!containerRef.current) return;
 
@@ -95,7 +97,6 @@ export const Render3D: React.FC<Render3DProps> = ({
       for (const entry of entries) {
         const { width: w, height: h } = entry.contentRect;
         if (engineRef.current && w > 0 && h > 0) {
-          if (DEBUG) console.log('[Render3D] Container redimensionado para:', w, h);
           engineRef.current.resize(w, h);
         }
       }
@@ -105,17 +106,12 @@ export const Render3D: React.FC<Render3DProps> = ({
     return () => resizeObserver.disconnect();
   }, []);
 
-  // Sincroniza dados da cena
+  // Sincroniza a cena apenas quando os dados realmente mudam
   useEffect(() => {
-    if (engineRef.current) {
-      if (sceneData) {
-        if (DEBUG) console.log('[Render3D] sceneData recebido, sincronizando...');
-        engineRef.current.syncScene(sceneData);
-      } else {
-        if (DEBUG) console.log('[Render3D] sceneData é undefined. Aguardando dados do editor...');
-      }
+    if (engineRef.current && memoizedSceneData) {
+      engineRef.current.syncScene(memoizedSceneData);
     }
-  }, [sceneData]);
+  }, [memoizedSceneData]);
 
   const handleClick = useCallback((event: React.MouseEvent<HTMLCanvasElement>) => {
     if (!engineRef.current) return;
