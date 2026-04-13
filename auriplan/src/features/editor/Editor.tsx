@@ -1,6 +1,7 @@
 // ============================================================
 // CAMINHO: src/features/editor/Editor.tsx
-// FUNÇÃO: Componente raiz do editor; agora com painel de propriedades controlado manualmente
+// FUNÇÃO: Componente raiz do editor – sem botões de zoom flutuantes,
+//         propriedades no mobile via Sidebar, botão + azul claro
 // ============================================================
 
 import { useState, useCallback, useEffect, useRef } from 'react';
@@ -30,8 +31,7 @@ import {
   ChevronLeft, Sparkles, Camera, Box, Save, Settings,
   LayoutTemplate, Calculator, View, Share2, FolderOpen,
   Undo, Redo, MoreHorizontal, X, Plus,
-  Menu, ZoomIn, ZoomOut, Maximize,
-  SlidersHorizontal, // ← ícone para propriedades
+  Menu, SlidersHorizontal,
 } from 'lucide-react';
 
 // ── Overflow menu (top bar) ─────────────────────────────────
@@ -88,7 +88,7 @@ interface EditorProps {
 // ─────────────────────────────────────────────────────────────
 export function Editor({ onBack, openScanOnMount }: EditorProps) {
   const [viewMode, setViewMode] = useState<ViewMode>('2d');
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false); // ← inicia fechado
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isCatalogOpen, setIsCatalogOpen] = useState(false);
   const [showAIAssistant, setShowAIAssistant] = useState(false);
   const [showProjectManager, setShowProjectManager] = useState(false);
@@ -101,7 +101,7 @@ export function Editor({ onBack, openScanOnMount }: EditorProps) {
   const [showScan, setShowScan] = useState(false);
   const [showAddRoom, setShowAddRoom] = useState(false);
   const [showOverflow, setShowOverflow] = useState(false);
-  const [showProperties, setShowProperties] = useState(false); // ← controle manual do painel de propriedades
+  const [showProperties, setShowProperties] = useState(false);
   const overflowRef = useRef<HTMLDivElement>(null);
   const toast = useToastSimple();
 
@@ -175,16 +175,6 @@ export function Editor({ onBack, openScanOnMount }: EditorProps) {
   }, [canUndo, canRedo, undo, redo, saveProject, setTool]);
 
   const currentScene = scenes.find(s => s.id === currentSceneId);
-
-  // Handlers para zoom / centralizar / girar (eventos customizados)
-  const handleZoom = (delta: number) => {
-    window.dispatchEvent(new CustomEvent('editor:zoom', { detail: delta }));
-    toast.info('Zoom', `Zoom ${delta > 0 ? '+' : '-'} disparado.`);
-  };
-  const handleCenter = () => {
-    window.dispatchEvent(new CustomEvent('editor:center'));
-    toast.info('Centralizar', 'Evento de centralização enviado.');
-  };
 
   return (
     <ToolProvider store={useEditorStore}>
@@ -318,10 +308,10 @@ export function Editor({ onBack, openScanOnMount }: EditorProps) {
               <span className="text-xs font-medium">Catálogo</span>
             </button>
 
-            {/* Botão Propriedades (abre/fecha painel) */}
+            {/* Botão Propriedades – apenas desktop */}
             <button
               onClick={() => setShowProperties(v => !v)}
-              className={`p-1.5 sm:p-2 rounded-lg transition-colors ${
+              className={`hidden md:flex p-1.5 sm:p-2 rounded-lg transition-colors ${
                 showProperties
                   ? 'bg-blue-100 text-blue-700 dark:bg-slate-700 dark:text-white'
                   : 'text-gray-500 dark:text-slate-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-slate-800'
@@ -394,6 +384,8 @@ export function Editor({ onBack, openScanOnMount }: EditorProps) {
                     onSave={() => { saveProject(); toast.success('Projeto salvo', 'Salvo com sucesso.'); }}
                     viewMode={viewMode}
                     onViewModeChange={setViewMode}
+                    onOpenProperties={() => setShowProperties(true)}
+                    isMobile={false}
                   />
                 </motion.div>
               )}
@@ -437,6 +429,7 @@ export function Editor({ onBack, openScanOnMount }: EditorProps) {
                     onClose={() => setIsSidebarOpen(false)}
                     viewMode={viewMode}
                     onViewModeChange={setViewMode}
+                    onOpenProperties={() => setShowProperties(true)}
                   />
                 </motion.div>
               </motion.div>
@@ -454,36 +447,10 @@ export function Editor({ onBack, openScanOnMount }: EditorProps) {
               </div>
             )}
 
-            {/* ── BOTÕES FLUTUANTES REPOSICIONADOS ── */}
-            {/* Zoom controls - canto inferior esquerdo (acima do botão + em mobile) */}
-            <div className="fixed bottom-20 left-4 z-20 flex flex-col gap-2 md:bottom-6">
-              <button
-                onClick={() => handleZoom(1)}
-                className="w-11 h-11 rounded-full bg-white/95 dark:bg-slate-800/95 backdrop-blur-md border border-gray-200 dark:border-slate-700 text-gray-700 dark:text-white flex items-center justify-center shadow-lg hover:bg-gray-50 dark:hover:bg-slate-700 transition-all active:scale-95"
-                title="Aproximar (+)"
-              >
-                <ZoomIn className="w-5 h-5" />
-              </button>
-              <button
-                onClick={() => handleZoom(-1)}
-                className="w-11 h-11 rounded-full bg-white/95 dark:bg-slate-800/95 backdrop-blur-md border border-gray-200 dark:border-slate-700 text-gray-700 dark:text-white flex items-center justify-center shadow-lg hover:bg-gray-50 dark:hover:bg-slate-700 transition-all active:scale-95"
-                title="Afastar (-)"
-              >
-                <ZoomOut className="w-5 h-5" />
-              </button>
-              <button
-                onClick={handleCenter}
-                className="w-11 h-11 rounded-full bg-white/95 dark:bg-slate-800/95 backdrop-blur-md border border-gray-200 dark:border-slate-700 text-gray-700 dark:text-white flex items-center justify-center shadow-lg hover:bg-gray-50 dark:hover:bg-slate-700 transition-all active:scale-95"
-                title="Centralizar visualização"
-              >
-                <Maximize className="w-5 h-5" />
-              </button>
-            </div>
-
-            {/* ── BOTÃO FLUTUANTE "+" - APENAS MOBILE ── */}
+            {/* ── BOTÃO FLUTUANTE "+" - APENAS MOBILE, AZUL CLARO ── */}
             <button
               onClick={() => setShowAddRoom(true)}
-              className="fixed bottom-6 right-4 z-20 w-14 h-14 rounded-full bg-gradient-to-r from-emerald-500 to-teal-600 text-white shadow-xl hover:shadow-2xl transition-all active:scale-95 flex items-center justify-center md:hidden"
+              className="fixed bottom-6 right-4 z-20 w-14 h-14 rounded-full bg-gradient-to-r from-blue-400 to-cyan-500 text-white shadow-xl hover:shadow-2xl transition-all active:scale-95 flex items-center justify-center md:hidden"
               title="Adicionar cômodo"
             >
               <Plus className="w-7 h-7" />
