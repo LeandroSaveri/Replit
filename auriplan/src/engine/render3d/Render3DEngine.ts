@@ -89,9 +89,9 @@ class Render3DEngine {
       this.controls.enableRotate = true;
       this.controls.enableZoom = true;
       this.controls.enablePan = true;
-      this.controls.maxPolarAngle = Math.PI / 1.8;
+      this.controls.maxPolarAngle = Math.PI; // ← permite rotação completa (360°)
       this.controls.minDistance = 1;
-      this.controls.maxDistance = 300; // ← aumentado para zoom out maior
+      this.controls.maxDistance = 400; // ← aumentado para plantas grandes
       this.controls.target.set(0, 1, 0);
       this.controls.update();
     } catch (error) {
@@ -118,7 +118,7 @@ class Render3DEngine {
 
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 1.2; // ← leve aumento de exposição
+    renderer.toneMappingExposure = 1.3; // ← exposição ligeiramente maior
 
     return renderer;
   }
@@ -126,8 +126,8 @@ class Render3DEngine {
   private createScene(): THREE.Scene {
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(0xf5f5f5);
-    // Fog ajustado para maior alcance visual
-    scene.fog = new THREE.Fog(0xf5f5f5, 50, 200);
+    // Fog com alcance estendido para evitar branqueamento precoce
+    scene.fog = new THREE.Fog(0xf5f5f5, 80, 300);
     return scene;
   }
 
@@ -144,8 +144,7 @@ class Render3DEngine {
   }
 
   private setupLighting(): void {
-    // Luz ambiente ligeiramente mais forte
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.65);
     this.scene.add(ambientLight);
 
     const sunLight = new THREE.DirectionalLight(0xffffff, 1.2);
@@ -442,10 +441,8 @@ class Render3DEngine {
     const center = box.getCenter(new THREE.Vector3());
 
     const maxDim = Math.max(size.x, size.y, size.z);
-    // Reduz fator de distância para não afastar tanto
-    const distance = maxDim * 1.5;
+    const distance = maxDim * 1.2; // ← reduzi ainda mais para aproximar a câmera
 
-    // Posiciona câmera com ângulo isométrico mais confortável
     this.camera.position.set(
       center.x + distance * 0.8,
       center.y + distance * 0.5,
