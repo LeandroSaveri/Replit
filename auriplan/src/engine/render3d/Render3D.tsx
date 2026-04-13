@@ -46,7 +46,6 @@ export const Render3D: React.FC<Render3DProps> = ({
   const [isLoaded, setIsLoaded] = useState(false);
   const [fps, setFps] = useState(0);
 
-  // Memoiza sceneData para evitar re-sincronizações desnecessárias
   const memoizedSceneData = useMemo(() => sceneData, [
     sceneData?.walls.length,
     sceneData?.rooms.length,
@@ -89,7 +88,6 @@ export const Render3D: React.FC<Render3DProps> = ({
     }
   }, [width, height, antialias, shadows, backgroundColor, onLoad, onError]);
 
-  // Observa redimensionamento
   useEffect(() => {
     if (!containerRef.current) return;
 
@@ -106,12 +104,15 @@ export const Render3D: React.FC<Render3DProps> = ({
     return () => resizeObserver.disconnect();
   }, []);
 
-  // Sincroniza a cena apenas quando os dados realmente mudam
   useEffect(() => {
     if (engineRef.current && memoizedSceneData) {
       engineRef.current.syncScene(memoizedSceneData);
     }
   }, [memoizedSceneData]);
+
+  const handleMouseDown = useCallback((e: React.MouseEvent) => {
+    e.preventDefault(); // evita seleção de texto
+  }, []);
 
   const handleClick = useCallback((event: React.MouseEvent<HTMLCanvasElement>) => {
     if (!engineRef.current) return;
@@ -144,6 +145,8 @@ export const Render3D: React.FC<Render3DProps> = ({
       <canvas
         ref={canvasRef}
         className="w-full h-full cursor-grab active:cursor-grabbing"
+        style={{ userSelect: 'none' }}
+        onMouseDown={handleMouseDown}
         onClick={handleClick}
       />
       {isLoaded && (
