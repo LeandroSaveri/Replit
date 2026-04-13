@@ -1,6 +1,6 @@
 // ============================================================
 // CAMINHO: src/features/editor/Editor.tsx
-// FUNÇÃO: Componente raiz do editor; agora envolve com ToolProvider
+// FUNÇÃO: Componente raiz do editor; agora com painel de propriedades controlado manualmente
 // ============================================================
 
 import { useState, useCallback, useEffect, useRef } from 'react';
@@ -31,6 +31,7 @@ import {
   LayoutTemplate, Calculator, View, Share2, FolderOpen,
   Undo, Redo, MoreHorizontal, X, Plus,
   Menu, ZoomIn, ZoomOut, Maximize,
+  SlidersHorizontal, // ← ícone para propriedades
 } from 'lucide-react';
 
 // ── Overflow menu (top bar) ─────────────────────────────────
@@ -87,7 +88,7 @@ interface EditorProps {
 // ─────────────────────────────────────────────────────────────
 export function Editor({ onBack, openScanOnMount }: EditorProps) {
   const [viewMode, setViewMode] = useState<ViewMode>('2d');
-  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false); // ← inicia fechado
   const [isCatalogOpen, setIsCatalogOpen] = useState(false);
   const [showAIAssistant, setShowAIAssistant] = useState(false);
   const [showProjectManager, setShowProjectManager] = useState(false);
@@ -100,6 +101,7 @@ export function Editor({ onBack, openScanOnMount }: EditorProps) {
   const [showScan, setShowScan] = useState(false);
   const [showAddRoom, setShowAddRoom] = useState(false);
   const [showOverflow, setShowOverflow] = useState(false);
+  const [showProperties, setShowProperties] = useState(false); // ← controle manual do painel de propriedades
   const overflowRef = useRef<HTMLDivElement>(null);
   const toast = useToastSimple();
 
@@ -316,6 +318,19 @@ export function Editor({ onBack, openScanOnMount }: EditorProps) {
               <span className="text-xs font-medium">Catálogo</span>
             </button>
 
+            {/* Botão Propriedades (abre/fecha painel) */}
+            <button
+              onClick={() => setShowProperties(v => !v)}
+              className={`p-1.5 sm:p-2 rounded-lg transition-colors ${
+                showProperties
+                  ? 'bg-blue-100 text-blue-700 dark:bg-slate-700 dark:text-white'
+                  : 'text-gray-500 dark:text-slate-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-slate-800'
+              }`}
+              title="Propriedades"
+            >
+              <SlidersHorizontal className="w-4 h-4" />
+            </button>
+
             {/* Overflow menu */}
             <div ref={overflowRef} className="relative flex-shrink-0">
               <button
@@ -475,10 +490,8 @@ export function Editor({ onBack, openScanOnMount }: EditorProps) {
             </button>
           </div>
 
-          {/* Properties Panel */}
-          <AnimatePresence initial={false}>
-            {selectedIds.length > 0 && <PropertiesPanel />}
-          </AnimatePresence>
+          {/* Properties Panel – controlado manualmente */}
+          <PropertiesPanel isOpen={showProperties} onClose={() => setShowProperties(false)} />
         </div>
 
         {/* ── STATUS BAR (apenas desktop) ── */}
