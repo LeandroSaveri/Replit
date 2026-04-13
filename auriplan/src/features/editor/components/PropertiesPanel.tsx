@@ -1,6 +1,7 @@
 // ============================================
 // PROPERTIES PANEL - Responsivo (mobile drawer)
-// Agora controlado externamente via props isOpen/onClose no desktop
+// Controlado externamente via props isOpen/onClose
+// Botão flutuante removido (abertura apenas pelo menu lateral)
 // ============================================
 
 import { useState, useEffect } from 'react';
@@ -19,13 +20,8 @@ import {
   Trash2,
   Copy,
   Maximize2,
-  Settings
 } from 'lucide-react';
 import type { Wall, Room, Door, Window, Furniture } from '@auriplan-types';
-
-// ─────────────────────────────────────────────────────────────
-// Componentes auxiliares (sem alterações)
-// ─────────────────────────────────────────────────────────────
 
 interface SectionProps {
   title: string;
@@ -121,13 +117,9 @@ function Vector3Input({ label, values, onChange }: { label: string; values: [num
   );
 }
 
-// ─────────────────────────────────────────────────────────────
-// Componente principal responsivo
-// ─────────────────────────────────────────────────────────────
-
 interface PropertiesPanelProps {
-  isOpen?: boolean;      // controle externo no desktop
-  onClose?: () => void;  // para fechar quando clicar no X (desktop)
+  isOpen?: boolean;
+  onClose?: () => void;
 }
 
 export function PropertiesPanel({ isOpen: externalIsOpen, onClose }: PropertiesPanelProps) {
@@ -158,24 +150,20 @@ export function PropertiesPanel({ isOpen: externalIsOpen, onClose }: PropertiesP
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  // Sincroniza com a prop externa no desktop
   useEffect(() => {
     if (!isMobile) {
       setInternalIsOpen(!!externalIsOpen);
     }
   }, [externalIsOpen, isMobile]);
 
-  // No mobile, fecha o drawer se não houver seleção
   useEffect(() => {
     if (isMobile && selectedIds.length === 0 && internalIsOpen) {
       setInternalIsOpen(false);
     }
   }, [selectedIds, isMobile, internalIsOpen]);
 
-  // Se não houver seleção e não estiver aberto (mobile), não renderiza nada
   if (selectedIds.length === 0) {
     if (!isMobile) {
-      // Desktop: renderiza painel vazio se estiver aberto
       return externalIsOpen ? (
         <aside className="w-80 bg-slate-900 border-l border-slate-800 flex flex-col">
           <div className="h-12 border-b border-slate-800 flex items-center justify-between px-4">
@@ -213,7 +201,6 @@ export function PropertiesPanel({ isOpen: externalIsOpen, onClose }: PropertiesP
     if (isMobile) setInternalIsOpen(false);
   };
 
-  // Componente interno que contém o conteúdo do painel (sem o header do drawer)
   const PanelContent = () => (
     <div className="flex-1 overflow-y-auto">
       {isWall && (
@@ -334,9 +321,7 @@ export function PropertiesPanel({ isOpen: externalIsOpen, onClose }: PropertiesP
     </div>
   );
 
-  // ─────────────── RENDER RESPONSIVO ───────────────
   if (!isMobile) {
-    // Desktop: só renderiza se externalIsOpen for true
     if (!externalIsOpen) return null;
     return (
       <motion.div
@@ -359,47 +344,34 @@ export function PropertiesPanel({ isOpen: externalIsOpen, onClose }: PropertiesP
     );
   }
 
-  // Mobile: drawer inferior + botão flutuante
   return (
-    <>
-      {!internalIsOpen && selectedIds.length > 0 && (
-        <button
-          onClick={() => setInternalIsOpen(true)}
-          className="fixed bottom-36 right-4 z-30 w-12 h-12 rounded-full bg-slate-800 border border-slate-700 text-white shadow-xl flex items-center justify-center hover:bg-slate-700 transition-all active:scale-95 md:hidden"
-          title="Editar propriedades"
-        >
-          <Settings className="w-5 h-5" />
-        </button>
+    <AnimatePresence>
+      {internalIsOpen && (
+        <>
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/60 z-40 md:hidden"
+            onClick={() => setInternalIsOpen(false)}
+          />
+          <motion.div
+            initial={{ y: '100%' }}
+            animate={{ y: 0 }}
+            exit={{ y: '100%' }}
+            transition={{ type: 'spring', damping: 25, stiffness: 300 }}
+            className="fixed bottom-0 left-0 right-0 z-50 max-h-[70vh] bg-slate-900 border-t border-slate-800 rounded-t-2xl overflow-hidden flex flex-col md:hidden"
+          >
+            <div className="flex items-center justify-between px-4 py-3 border-b border-slate-800">
+              <span className="text-sm font-medium text-slate-300">Propriedades</span>
+              <button onClick={() => setInternalIsOpen(false)} className="p-1 text-slate-500 hover:text-white">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <PanelContent />
+          </motion.div>
+        </>
       )}
-
-      <AnimatePresence>
-        {internalIsOpen && (
-          <>
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="fixed inset-0 bg-black/60 z-40 md:hidden"
-              onClick={() => setInternalIsOpen(false)}
-            />
-            <motion.div
-              initial={{ y: '100%' }}
-              animate={{ y: 0 }}
-              exit={{ y: '100%' }}
-              transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-              className="fixed bottom-0 left-0 right-0 z-50 max-h-[70vh] bg-slate-900 border-t border-slate-800 rounded-t-2xl overflow-hidden flex flex-col md:hidden"
-            >
-              <div className="flex items-center justify-between px-4 py-3 border-b border-slate-800">
-                <span className="text-sm font-medium text-slate-300">Propriedades</span>
-                <button onClick={() => setInternalIsOpen(false)} className="p-1 text-slate-500 hover:text-white">
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
-              <PanelContent />
-            </motion.div>
-          </>
-        )}
-      </AnimatePresence>
-    </>
+    </AnimatePresence>
   );
 }
