@@ -1,10 +1,9 @@
 // ============================================
 // SIDEBAR - Painel Lateral Premium
-// TEMA CLARO em todos os dispositivos
-// Larguras ajustadas: 224px mobile / 256px desktop
+// TEMA CLARO – Cores azuis, persistência de estado
 // ============================================
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Layers, 
@@ -236,16 +235,30 @@ export function Sidebar({
   onOpenProperties,
 }: SidebarProps) {
   const [activeTab, setActiveTab] = useState<'scenes' | 'layers' | 'stats'>('scenes');
-  const [expandedLayers, setExpandedLayers] = useState(true);
-  const [expandedTools, setExpandedTools] = useState(true);
+  // Persistência do estado das seções
+  const [expandedLayers, setExpandedLayers] = useState(() => {
+    const saved = localStorage.getItem('sidebar_expandedLayers');
+    return saved !== null ? JSON.parse(saved) : true;
+  });
+  const [expandedTools, setExpandedTools] = useState(() => {
+    const saved = localStorage.getItem('sidebar_expandedTools');
+    return saved !== null ? JSON.parse(saved) : true;
+  });
   const [newSceneName, setNewSceneName] = useState('');
   const [showAddScene, setShowAddScene] = useState(false);
+
+  useEffect(() => {
+    localStorage.setItem('sidebar_expandedLayers', JSON.stringify(expandedLayers));
+  }, [expandedLayers]);
+
+  useEffect(() => {
+    localStorage.setItem('sidebar_expandedTools', JSON.stringify(expandedTools));
+  }, [expandedTools]);
 
   const currentScene = scenes.find(s => s.id === currentSceneId);
   const tool = useEditorStore(state => state.tool);
   const setTool = useEditorStore(state => state.setTool);
 
-  // Tabs definition - apenas 3 abas
   const tabs = [
     { id: 'scenes' as const, label: 'Cenas', icon: Layers },
     { id: 'layers' as const, label: 'Camadas', icon: Box },
@@ -266,7 +279,6 @@ export function Sidebar({
 
   return (
     <div className="h-full flex flex-col bg-gray-50" style={{ overscrollBehavior: 'contain' }}>
-      {/* Header com tabs - TEMA CLARO */}
       <div className="flex border-b bg-white/95 backdrop-blur-sm border-gray-200">
         {tabs.map(tab => (
           <button
@@ -285,11 +297,9 @@ export function Sidebar({
         ))}
       </div>
 
-      {/* Content Area */}
       <div className="flex-1 overflow-y-auto" style={{ overscrollBehavior: 'contain' }}>
         <AnimatePresence mode="wait">
           
-          {/* SCENES TAB - Com ferramentas apenas em MOBILE */}
           {activeTab === 'scenes' && (
             <motion.div
               key="scenes"
@@ -299,7 +309,6 @@ export function Sidebar({
               transition={{ type: 'spring', damping: 25, stiffness: 200 }}
               className="p-3 space-y-3"
             >
-              {/* Lista de Cenas */}
               <div className="space-y-1.5">
                 {scenes.map((scene) => (
                   <motion.div
@@ -344,7 +353,6 @@ export function Sidebar({
                 ))}
               </div>
 
-              {/* Adicionar Andar */}
               <AnimatePresence>
                 {showAddScene ? (
                   <motion.div 
@@ -394,7 +402,6 @@ export function Sidebar({
                 )}
               </AnimatePresence>
 
-              {/* FERRAMENTAS - APENAS EM MOBILE (≤md) */}
               {isMobile && (
                 <>
                   <div className="h-px bg-gray-200 my-1" />
@@ -439,7 +446,6 @@ export function Sidebar({
                     </AnimatePresence>
                   </div>
 
-                  {/* Canvas Controls - Mobile */}
                   <div className="h-px bg-gray-200 my-1" />
                   <div className="space-y-2">
                     <p className="text-[10px] uppercase tracking-wider text-gray-400 font-semibold px-1">Canvas</p>
@@ -448,7 +454,6 @@ export function Sidebar({
                 </>
               )}
 
-              {/* Ações do projeto (Salvar / Compartilhar) - estilo consistente com Propriedades */}
               <div className="grid grid-cols-2 gap-2 pt-1">
                 {onSave && (
                   <motion.button
@@ -464,7 +469,7 @@ export function Sidebar({
                   <motion.button
                     whileTap={{ scale: 0.98 }}
                     onClick={onShare}
-                    className="py-2 px-2 rounded-lg font-medium text-xs transition-all border bg-gradient-to-r from-emerald-50 to-teal-50 text-emerald-700 border-emerald-200 hover:border-emerald-300 flex items-center justify-center gap-1.5"
+                    className="py-2 px-2 rounded-lg font-medium text-xs transition-all border bg-gradient-to-r from-blue-50 to-indigo-50 text-blue-700 border-blue-200 hover:border-blue-300 flex items-center justify-center gap-1.5"
                   >
                     <Share2 className="w-3.5 h-3.5" />
                     Compartilhar
@@ -474,7 +479,6 @@ export function Sidebar({
             </motion.div>
           )}
 
-          {/* LAYERS TAB */}
           {activeTab === 'layers' && currentScene && (
             <motion.div
               key="layers"
@@ -552,7 +556,6 @@ export function Sidebar({
             </motion.div>
           )}
 
-          {/* STATS TAB */}
           {activeTab === 'stats' && (
             <motion.div
               key="stats"
