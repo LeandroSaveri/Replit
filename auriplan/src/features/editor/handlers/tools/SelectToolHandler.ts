@@ -262,7 +262,7 @@ export class SelectToolHandler implements ToolHandler {
   }
 
   // --------------------------------------------------------------
-  // Pointer handlers (já existentes, mantidos)
+  // Pointer handlers
   // --------------------------------------------------------------
   private onPointerDown(event: InteractionEvent): void {
     const pos = event.position;
