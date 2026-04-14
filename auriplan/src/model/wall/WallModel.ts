@@ -12,7 +12,7 @@ import {
 } from '@core/math/vector';
 
 // ============================================
-// WALL MODEL - Gerenciamento de Paredes
+// WALL MODEL - Gerenciamento de Paredes (Opcional)
 // ============================================
 
 export interface WallCreateOptions {
@@ -160,15 +160,14 @@ export class WallModel {
     this.updateConnections();
   }
 
-  // Split wall at a point
+  // Split wall at a point (mantido para compatibilidade, mas o sistema usa WallSplitEngine)
   splitAt(point: Vec2): WallSplitResult | null {
     const projected = this.projectPoint(point);
     if (!projected) return null;
 
     const t = this.getParameterAtPoint(projected);
-    if (t <= 0.01 || t >= 0.99) return null; // Too close to endpoints
+    if (t <= 0.01 || t >= 0.99) return null;
 
-    // Create two new walls
     const wall1 = new WallModel({
       start: this.wall.start,
       end: projected,
@@ -187,13 +186,11 @@ export class WallModel {
       material: this.wall.material,
     });
 
-    // Copy connections (initialize connectedWalls if absent)
     if (!wall1.wall.connectedWalls) wall1.wall.connectedWalls = { start: [], end: [] };
     if (!wall2.wall.connectedWalls) wall2.wall.connectedWalls = { start: [], end: [] };
     wall1.wall.connectedWalls.start = [...(this.wall.connectedWalls?.start ?? [])];
     wall2.wall.connectedWalls.end = [...(this.wall.connectedWalls?.end ?? [])];
 
-    // Connect the two new walls
     wall1.wall.connectedWalls.end.push(wall2.getId());
     wall2.wall.connectedWalls.start.push(wall1.getId());
 
@@ -296,158 +293,8 @@ export class WallModel {
     return { ...this.wall };
   }
 
-  // Private methods
   private updateConnections(): void {
     // Notify connected walls about position change
     // This would be handled by the WallManager
-  }
-}
-
-// Wall Manager - Gerencia todas as paredes de um andar
-export class WallManager {
-  private walls: Map<string, WallModel> = new Map();
-
-  addWall(options: WallCreateOptions): Wall {
-    const wall = new WallModel(options);
-    this.walls.set(wall.getId(), wall);
-    return wall.getWall();
-  }
-
-  addWallFromData(data: Wall): void {
-    const wall = WallModel.fromData(data);
-    this.walls.set(wall.getId(), wall);
-  }
-
-  getWall(id: string): WallModel | undefined {
-    return this.walls.get(id);
-  }
-
-  getAllWalls(): Wall[] {
-    return Array.from(this.walls.values()).map(w => w.getWall());
-  }
-
-  deleteWall(id: string): boolean {
-    const wall = this.walls.get(id);
-    if (!wall) return false;
-
-    // Disconnect from other walls
-    const wallData = wall.getWall();
-    wallData.connectedWalls?.start.forEach(otherId => {
-      const other = this.walls.get(otherId);
-      if (other) other.disconnect(id);
-    });
-    wallData.connectedWalls?.end.forEach(otherId => {
-      const other = this.walls.get(otherId);
-      if (other) other.disconnect(id);
-    });
-
-    return this.walls.delete(id);
-  }
-
-  updateWall(id: string, updates: Partial<Wall>): boolean {
-    const wall = this.walls.get(id);
-    if (!wall) return false;
-
-    if (updates.start) wall.setStart(updates.start);
-    if (updates.end) wall.setEnd(updates.end);
-    if (updates.height) wall.setHeight(updates.height);
-    if (updates.thickness) wall.setThickness(updates.thickness);
-    if (updates.color) wall.setColor(updates.color);
-    if (updates.material) wall.setMaterial(updates.material);
-    if (updates.visible !== undefined) wall.setVisible(updates.visible);
-    if (updates.locked !== undefined) wall.setLocked(updates.locked);
-
-    return true;
-  }
-
-  // Auto-connect walls that are close to each other
-  autoConnect(tolerance: number = 0.1): void {
-    const walls = Array.from(this.walls.values());
-    
-    for (let i = 0; i < walls.length; i++) {
-      for (let j = i + 1; j < walls.length; j++) {
-        const w1 = walls[i];
-        const w2 = walls[j];
-
-        const start1 = w1.getStart();
-        const end1 = w1.getEnd();
-        const start2 = w2.getStart();
-        const end2 = w2.getEnd();
-
-        // Check all endpoint combinations
-        if (distance(start1, start2) < tolerance) {
-          w1.connectAtStart(w2.getId());
-          w2.connectAtStart(w1.getId());
-        }
-        if (distance(start1, end2) < tolerance) {
-          w1.connectAtStart(w2.getId());
-          w2.connectAtEnd(w1.getId());
-        }
-        if (distance(end1, start2) < tolerance) {
-          w1.connectAtEnd(w2.getId());
-          w2.connectAtStart(w1.getId());
-        }
-        if (distance(end1, end2) < tolerance) {
-          w1.connectAtEnd(w2.getId());
-          w2.connectAtEnd(w1.getId());
-        }
-      }
-    }
-  }
-
-  // Find walls that form a room
-  findRooms(): string[][] {
-    const walls = this.getAllWalls();
-    const rooms: string[][] = [];
-    const visited = new Set<string>();
-
-    // This is a simplified room detection algorithm
-    // A more robust algorithm would use graph traversal
-    for (const wall of walls) {
-      if (visited.has(wall.id)) continue;
-
-      const room = this.traceRoom(wall.id, visited);
-      if (room && room.length >= 3) {
-        rooms.push(room);
-      }
-    }
-
-    return rooms;
-  }
-
-  private traceRoom(startWallId: string, visited: Set<string>): string[] | null {
-    const room: string[] = [];
-    let currentWallId = startWallId;
-    let startPoint: Vec2 | null = null;
-
-    while (currentWallId) {
-      if (room.includes(currentWallId)) {
-        // Completed a loop
-        if (currentWallId === startWallId && room.length > 2) {
-          return room;
-        }
-        return null;
-      }
-
-      const wall = this.walls.get(currentWallId);
-      if (!wall) return null;
-
-      room.push(currentWallId);
-      visited.add(currentWallId);
-
-      const wallData = wall.getWall();
-      
-      // Find next connected wall
-      const connected = [...(wallData.connectedWalls?.end ?? [])];
-      if (connected.length === 0) return null;
-
-      currentWallId = connected[0];
-    }
-
-    return null;
-  }
-
-  clear(): void {
-    this.walls.clear();
   }
 }
