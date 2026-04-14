@@ -74,7 +74,9 @@ export interface EditorState {
   setCurrentScene: (id: string) => void;
 
   // Actions - Walls
+  /** Cria uma parede e aplica o pipeline geométrico (uso interno preferencial via createWall). */
   addWall: (start: Vec2, end: Vec2) => void;
+  /** Ponto de entrada canônico para criação de paredes. */
   createWall: (start: Vec2, end: Vec2) => void;
   updateWall: (id: string, updates: Partial<Wall>) => void;
   deleteWall: (id: string) => void;
@@ -143,6 +145,7 @@ export interface EditorState {
   canRedo: () => boolean;
 
   // ========== NOVA AÇÃO PÚBLICA ==========
+  /** Reconstroi a geometria da cena atual (paredes e cômodos) usando o pipeline geométrico. */
   rebuildCurrentSceneGeometry: () => void;
 }
 
@@ -199,6 +202,8 @@ function updateTopologyForScene(state: EditorState, sceneId: string) {
 
 // ==================== APLICA O PIPELINE GEOMÉTRICO EM UMA CENA (uso interno) ====================
 function applyGeometryToScene(scene: Scene): void {
+  // NOTA: Esta função só é chamada DENTRO de um `set` do Zustand,
+  // portanto o objeto `scene` é um draft do Immer e pode ser mutado.
   applyGeometryPipeline(scene);
 }
 
@@ -207,14 +212,7 @@ function getCurrentScene(state: EditorState): Scene | undefined {
   return state.scenes.find(s => s.id === state.currentSceneId);
 }
 
-// ==================== FUNÇÃO AUXILIAR PARA REASSOCIAÇÃO DE ABERTURAS (REFATORADA) ====================
-/**
- * Reassocia portas e janelas aos segmentos resultantes de um split.
- * Atualiza `openingIds` nas novas paredes e remove referências à parede original.
- * 
- * @param scene - Cena atual (mutada)
- * @param splitResult - Resultado do split contendo segmentos e IDs removidos
- */
+// ==================== FUNÇÃO AUXILIAR PARA REASSOCIAÇÃO DE ABERTURAS ====================
 function reassignOpeningsAfterSplit(
   scene: Scene,
   splitResult: SplitResult
@@ -222,17 +220,8 @@ function reassignOpeningsAfterSplit(
   const { originalWallId, segments } = splitResult;
   if (segments.length === 0) return;
 
-  // Calcula o comprimento total da parede original (soma dos segmentos)
-  const totalLength = segments.reduce(
-    (sum, seg) => sum + Math.hypot(seg.end[0] - seg.start[0], seg.end[1] - seg.start[1]),
-    0
-  );
-  if (totalLength === 0) return;
-
-  /**
-   * Encontra o segmento que contém uma posição normalizada `t` (0 a 1).
-   */
-  const findSegmentForT = (t: number): SplitSegment | null => {
+  const findSegmentForPosition = (positionOnWall: number): SplitSegment | null => {
+    const t = positionOnWall;
     for (const seg of segments) {
       if (t >= seg.tStart - 1e-6 && t <= seg.tEnd + 1e-6) {
         return seg;
@@ -241,67 +230,61 @@ function reassignOpeningsAfterSplit(
     return null;
   };
 
-  // 1. Reassociar portas
+  // Atualizar portas
   for (const door of scene.doors) {
-    if (door.wallId !== originalWallId) continue;
-
-    const t = door.position / totalLength;
-    const targetSeg = findSegmentForT(t);
-    if (!targetSeg) continue;
-
-    door.wallId = targetSeg.wallId;
-    // Ajusta a posição para ser relativa ao novo segmento
-    const segLength = Math.hypot(
-      targetSeg.end[0] - targetSeg.start[0],
-      targetSeg.end[1] - targetSeg.start[1]
-    );
-    const localT = (t - targetSeg.tStart) / (targetSeg.tEnd - targetSeg.tStart);
-    door.position = localT * segLength;
+    if (door.wallId === originalWallId) {
+      let totalLength = 0;
+      for (const seg of segments) {
+        totalLength += Math.hypot(seg.end[0] - seg.start[0], seg.end[1] - seg.start[1]);
+      }
+      const t = totalLength > 0 ? door.position / totalLength : 0;
+      const targetSeg = findSegmentForPosition(t);
+      if (targetSeg) {
+        door.wallId = targetSeg.wallId;
+        const segLength = Math.hypot(targetSeg.end[0] - targetSeg.start[0], targetSeg.end[1] - targetSeg.start[1]);
+        const localT = (t - targetSeg.tStart) / (targetSeg.tEnd - targetSeg.tStart);
+        door.position = localT * segLength;
+      }
+    }
   }
 
-  // 2. Reassociar janelas
+  // Atualizar janelas
   for (const win of scene.windows) {
-    if (win.wallId !== originalWallId) continue;
-
-    const t = win.position / totalLength;
-    const targetSeg = findSegmentForT(t);
-    if (!targetSeg) continue;
-
-    win.wallId = targetSeg.wallId;
-    const segLength = Math.hypot(
-      targetSeg.end[0] - targetSeg.start[0],
-      targetSeg.end[1] - targetSeg.start[1]
-    );
-    const localT = (t - targetSeg.tStart) / (targetSeg.tEnd - targetSeg.tStart);
-    win.position = localT * segLength;
+    if (win.wallId === originalWallId) {
+      let totalLength = 0;
+      for (const seg of segments) {
+        totalLength += Math.hypot(seg.end[0] - seg.start[0], seg.end[1] - seg.start[1]);
+      }
+      const t = totalLength > 0 ? win.position / totalLength : 0;
+      const targetSeg = findSegmentForPosition(t);
+      if (targetSeg) {
+        win.wallId = targetSeg.wallId;
+        const segLength = Math.hypot(targetSeg.end[0] - targetSeg.start[0], targetSeg.end[1] - targetSeg.start[1]);
+        const localT = (t - targetSeg.tStart) / (targetSeg.tEnd - targetSeg.tStart);
+        win.position = localT * segLength;
+      }
+    }
   }
 
-  // 3. Limpar e reconstruir openingIds das novas paredes
-  //    (a parede original será removida, então não precisa limpar)
+  // Atualizar openingIds nas novas paredes
   for (const seg of segments) {
     const newWall = scene.walls.find(w => w.id === seg.wallId);
     if (newWall) {
       newWall.openingIds = [];
     }
   }
-
-  // 4. Adicionar openingIds nas novas paredes baseado nas portas/janelas reassociadas
   for (const door of scene.doors) {
     const wall = scene.walls.find(w => w.id === door.wallId);
-    if (wall) {
+    if (wall && !wall.openingIds?.includes(door.id)) {
       wall.openingIds = wall.openingIds || [];
-      if (!wall.openingIds.includes(door.id)) {
-        wall.openingIds.push(door.id);
-      }
+      wall.openingIds.push(door.id);
     }
   }
   for (const win of scene.windows) {
     const wall = scene.walls.find(w => w.id === win.wallId);
-    if (wall) {
+    if (wall && !wall.openingIds?.includes(win.id)) {
       wall.openingIds = wall.openingIds || [];
-      if (!wall.openingIds.includes(win.id)) {
-        wall.openingIds.push(win.id);
-      }
+      wall.openingIds.push(win.id);
     }
   }
 }
@@ -540,6 +523,7 @@ export const useEditorStore = create<EditorState>()(
         const scene = getCurrentScene(state);
         if (!scene) return;
 
+        // 1. Cria nova parede (objeto imutável)
         const newWall: Wall = {
           id: uuidv4(),
           start: [...start] as Vec2,
@@ -556,14 +540,19 @@ export const useEditorStore = create<EditorState>()(
           metadata: {},
         };
 
+        // 2. Constrói lista imutável de paredes (estado atual + nova)
         const wallsWithNew = [...scene.walls, newWall];
+
+        // 3. Cria uma cópia da cena para processamento isolado
         const sceneCopy: Scene = {
           ...scene,
           walls: wallsWithNew,
         };
 
+        // 4. Executa o pipeline geométrico sobre a cópia (modifica sceneCopy in-place)
         applyGeometryPipeline(sceneCopy);
 
+        // 5. Atualiza o estado global apenas com o resultado processado
         set(state => {
           const targetScene = state.scenes.find(s => s.id === state.currentSceneId);
           if (targetScene) {
@@ -574,10 +563,12 @@ export const useEditorStore = create<EditorState>()(
           updateTopologyForScene(state, scene.id);
         });
 
+        // 6. Salva no histórico
         get().saveToHistory();
       },
 
       createWall: (start: Vec2, end: Vec2) => {
+        // Fachada canônica – simplesmente chama addWall que já aplica pipeline
         get().addWall(start, end);
       },
 
@@ -648,6 +639,7 @@ export const useEditorStore = create<EditorState>()(
         if (first[0] !== last[0] || first[1] !== last[1]) {
           closedPoints = [...points, first];
         }
+        // Agora todas as chamadas passam pelo pipeline via addWall
         for (let i = 0; i < closedPoints.length - 1; i++) {
           const start = closedPoints[i];
           const end = closedPoints[i + 1];
@@ -838,6 +830,7 @@ export const useEditorStore = create<EditorState>()(
           points: newPoints,
           name: `${original.name} (cópia)`,
         };
+        // Criar paredes sem bypass (pipeline será aplicado em cada addWall)
         for (let i = 0; i < newPoints.length; i++) {
           const start = newPoints[i];
           const end = newPoints[(i + 1) % newPoints.length];
