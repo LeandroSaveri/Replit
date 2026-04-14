@@ -60,7 +60,7 @@ export interface EditorState {
 
   // Internal cache
   _junctionsCache: Record<string, any>;
-  _topologyCache: Record<string, IGraphTopology>; // NOVO: cache de topologia unificada
+  _topologyCache: Record<string, IGraphTopology>;
 
   // Actions - Project
   createProject: (name: string, owner: User, description?: string) => void;
@@ -184,7 +184,7 @@ function updateJunctionsForScene(state: EditorState, sceneId: string) {
   state._junctionsCache[sceneId] = computeJunctionsIndex(scene);
 }
 
-// ========== NOVA FUNÇÃO PARA ATUALIZAR A TOPOLOGIA ==========
+// ========== ATUALIZAR TOPOLOGIA ==========
 function updateTopologyForScene(state: EditorState, sceneId: string) {
   const scene = state.scenes.find(s => s.id === sceneId);
   if (!scene) return;
@@ -315,7 +315,7 @@ const initialState = {
   history: [],
   historyIndex: -1,
   _junctionsCache: {} as Record<string, any>,
-  _topologyCache: {} as Record<string, IGraphTopology>, // NOVO
+  _topologyCache: {} as Record<string, IGraphTopology>,
 };
 
 // ==================== STORE PRINCIPAL ====================
@@ -359,7 +359,7 @@ export const useEditorStore = create<EditorState>()(
           state.historyIndex = -1;
           state.selectedIds = [];
           updateJunctionsForScene(state, sceneId);
-          updateTopologyForScene(state, sceneId); // NOVO
+          updateTopologyForScene(state, sceneId);
         });
         get().saveToHistory();
       },
@@ -412,7 +412,7 @@ export const useEditorStore = create<EditorState>()(
           state.historyIndex = -1;
           state.selectedIds = [];
           updateJunctionsForScene(state, sceneId);
-          updateTopologyForScene(state, sceneId); // NOVO
+          updateTopologyForScene(state, sceneId);
         });
         get().saveToHistory();
       },
@@ -443,10 +443,10 @@ export const useEditorStore = create<EditorState>()(
             state.historyIndex = -1;
             state.selectedIds = [];
             state._junctionsCache = {};
-            state._topologyCache = {}; // NOVO
+            state._topologyCache = {};
             for (const scene of state.scenes) {
               updateJunctionsForScene(state, scene.id);
-              updateTopologyForScene(state, scene.id); // NOVO
+              updateTopologyForScene(state, scene.id);
             }
           });
           get().saveToHistory();
@@ -472,7 +472,7 @@ export const useEditorStore = create<EditorState>()(
         set(state => {
           state.scenes.push(newScene);
           updateJunctionsForScene(state, newScene.id);
-          updateTopologyForScene(state, newScene.id); // NOVO
+          updateTopologyForScene(state, newScene.id);
         });
         get().saveToHistory();
       },
@@ -484,7 +484,7 @@ export const useEditorStore = create<EditorState>()(
             state.currentSceneId = state.scenes[0]?.id || null;
           }
           if (state._junctionsCache) delete state._junctionsCache[id];
-          if (state._topologyCache) delete state._topologyCache[id]; // NOVO
+          if (state._topologyCache) delete state._topologyCache[id];
         });
         get().saveToHistory();
       },
@@ -495,7 +495,7 @@ export const useEditorStore = create<EditorState>()(
           if (!state._junctionsCache?.[id] && state.scenes.find(s => s.id === id)) {
             updateJunctionsForScene(state, id);
           }
-          if (!state._topologyCache?.[id] && state.scenes.find(s => s.id === id)) { // NOVO
+          if (!state._topologyCache?.[id] && state.scenes.find(s => s.id === id)) {
             updateTopologyForScene(state, id);
           }
         });
@@ -532,7 +532,7 @@ export const useEditorStore = create<EditorState>()(
             applyGeometryToScene(scene);
           }
           updateJunctionsForScene(state, scene.id);
-          updateTopologyForScene(state, scene.id); // NOVO
+          updateTopologyForScene(state, scene.id);
         });
         get().saveToHistory();
       },
@@ -546,7 +546,7 @@ export const useEditorStore = create<EditorState>()(
           Object.assign(wall, updates);
           applyGeometryToScene(scene);
           updateJunctionsForScene(state, scene.id);
-          updateTopologyForScene(state, scene.id); // NOVO
+          updateTopologyForScene(state, scene.id);
         });
         get().saveToHistory();
       },
@@ -558,7 +558,7 @@ export const useEditorStore = create<EditorState>()(
           scene.walls = scene.walls.filter(w => w.id !== id);
           applyGeometryToScene(scene);
           updateJunctionsForScene(state, scene.id);
-          updateTopologyForScene(state, scene.id); // NOVO
+          updateTopologyForScene(state, scene.id);
         });
         get().saveToHistory();
       },
@@ -576,7 +576,7 @@ export const useEditorStore = create<EditorState>()(
           }
           applyGeometryToScene(scene);
           updateJunctionsForScene(state, scene.id);
-          updateTopologyForScene(state, scene.id); // NOVO
+          updateTopologyForScene(state, scene.id);
         });
         get().saveToHistory();
       },
@@ -591,7 +591,7 @@ export const useEditorStore = create<EditorState>()(
           wall.end = [wall.end[0] + delta[0], wall.end[1] + delta[1]];
           applyGeometryToScene(scene);
           updateJunctionsForScene(state, scene.id);
-          updateTopologyForScene(state, scene.id); // NOVO
+          updateTopologyForScene(state, scene.id);
         });
         get().saveToHistory();
       },
@@ -624,27 +624,41 @@ export const useEditorStore = create<EditorState>()(
           scene.walls = result.updatedWalls;
           applyGeometryToScene(scene);
           updateJunctionsForScene(state, scene.id);
-          updateTopologyForScene(state, scene.id); // NOVO
+          updateTopologyForScene(state, scene.id);
         });
         get().saveToHistory();
       },
 
+      // --------------------------------------------------------------
+      // updateWallsBatch COM OTIMIZAÇÃO (changed)
+      // --------------------------------------------------------------
       updateWallsBatch: (updates: Array<{ id: string; start: Vec2; end: Vec2 }>) => {
         set(state => {
           const scene = getCurrentScene(state);
           if (!scene) return;
+          let changed = false;
           for (const upd of updates) {
             const wall = scene.walls.find(w => w.id === upd.id);
             if (wall) {
-              wall.start = [...upd.start] as Vec2;
-              wall.end = [...upd.end] as Vec2;
+              const startChanged = wall.start[0] !== upd.start[0] || wall.start[1] !== upd.start[1];
+              const endChanged = wall.end[0] !== upd.end[0] || wall.end[1] !== upd.end[1];
+              if (startChanged || endChanged) {
+                wall.start = [...upd.start] as Vec2;
+                wall.end = [...upd.end] as Vec2;
+                changed = true;
+              }
             }
           }
-          applyGeometryToScene(scene);
-          updateJunctionsForScene(state, scene.id);
-          updateTopologyForScene(state, scene.id); // NOVO
+          if (changed) {
+            applyGeometryToScene(scene);
+            updateJunctionsForScene(state, scene.id);
+            updateTopologyForScene(state, scene.id);
+          }
         });
-        get().saveToHistory();
+        // Salva no histórico apenas se a cena ainda existir (evita erro se a cena foi deletada)
+        if (get().scenes.some(s => s.id === get().currentSceneId)) {
+          get().saveToHistory();
+        }
       },
 
       // Live updates — no history, no geometry pipeline (for smooth drag)
@@ -657,9 +671,6 @@ export const useEditorStore = create<EditorState>()(
           wall.start = [...start] as Vec2;
           wall.end = [...end] as Vec2;
           updateJunctionsForScene(state, scene.id);
-          // ATENÇÃO: não atualizamos a topologia aqui para não perder performance,
-          // mas durante o drag a topologia pode ficar dessincronizada. 
-          // O commit final (mouse up) atualizará via updateWallsBatch.
         });
       },
 
@@ -707,7 +718,6 @@ export const useEditorStore = create<EditorState>()(
             }
           }
           updateJunctionsForScene(state, scene.id);
-          // Durante o drag não atualizamos topologia completa para performance
         });
       },
 
@@ -985,9 +995,9 @@ export const useEditorStore = create<EditorState>()(
           const original = scene.furniture.find(f => f.id === id);
           if (!original) return;
           const origPos = original.position;
-          const px = Array.isArray(origPos) ? origPos[0] : (origPos as {x:number;y:number;z:number}).x;
-          const py = Array.isArray(origPos) ? origPos[1] : (origPos as {x:number;y:number;z:number}).y;
-          const pz = Array.isArray(origPos) ? origPos[2] : (origPos as {x:number;y:number;z:number}).z;
+          const px = Array.isArray(origPos) ? origPos[0] : (origPos as any).x ?? 0;
+          const py = Array.isArray(origPos) ? origPos[1] : (origPos as any).y ?? 0;
+          const pz = Array.isArray(origPos) ? origPos[2] : (origPos as any).z ?? 0;
           const cloned: Furniture = {
             ...original,
             id: uuidv4(),
@@ -1131,10 +1141,10 @@ export const useEditorStore = create<EditorState>()(
           s.historyIndex = newIndex;
           s.selectedIds = [];
           s._junctionsCache = {};
-          s._topologyCache = {}; // NOVO
+          s._topologyCache = {};
           for (const scene of s.scenes) {
             updateJunctionsForScene(s, scene.id);
-            updateTopologyForScene(s, scene.id); // NOVO
+            updateTopologyForScene(s, scene.id);
           }
         });
       },
@@ -1150,10 +1160,10 @@ export const useEditorStore = create<EditorState>()(
           s.historyIndex = newIndex;
           s.selectedIds = [];
           s._junctionsCache = {};
-          s._topologyCache = {}; // NOVO
+          s._topologyCache = {};
           for (const scene of s.scenes) {
             updateJunctionsForScene(s, scene.id);
-            updateTopologyForScene(s, scene.id); // NOVO
+            updateTopologyForScene(s, scene.id);
           }
         });
       },
@@ -1209,7 +1219,6 @@ export const selectCurrentJunctions = (state: EditorState) => {
   return state._junctionsCache[sceneId];
 };
 
-// ========== NOVO SELECTOR PARA TOPOLOGIA ==========
 export const selectCurrentTopology = (state: EditorState): IGraphTopology | undefined => {
   const sceneId = state.currentSceneId;
   if (!sceneId) return undefined;
