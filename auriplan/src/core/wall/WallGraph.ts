@@ -1,10 +1,9 @@
 // ============================================
-// FILE: src/core/wall/WallGraph.ts
-// ============================================
-// Implementa WallTopology para consulta de conexões entre paredes
+// WallGraph.ts – implementação concreta de IGraphTopology
 // ============================================
 
 import type { Vec2, Wall } from '@auriplan-types';
+import type { IGraphTopology } from '@core/topology/IGraphTopology';
 import {
   GEOM_TOL,
   EPS,
@@ -294,8 +293,8 @@ export function computeCornerAdjustments(
   return adjustments;
 }
 
-// ==================== CLASSE WALL TOPOLOGY (para injeção) ====================
-export class WallGraphTopology {
+// ==================== CLASSE WALL TOPOLOGY (com IGraphTopology) ====================
+export class WallGraphTopology implements IGraphTopology {
   private walls: Wall[] = [];
 
   constructor(walls: Wall[]) {
@@ -306,10 +305,6 @@ export class WallGraphTopology {
     this.walls = walls;
   }
 
-  /**
-   * Retorna todas as paredes que possuem um vértice exatamente igual a `vertex`
-   * (com tolerância GEOM_TOL), excluindo opcionalmente uma parede.
-   */
   getWallsConnectedToVertex(vertex: Vec2, excludeWallId?: string): Array<{ id: string; start: Vec2; end: Vec2 }> {
     const result: Array<{ id: string; start: Vec2; end: Vec2 }> = [];
     const tol = GEOM_TOL;
@@ -324,9 +319,6 @@ export class WallGraphTopology {
     return result;
   }
 
-  /**
-   * Retorna todas as paredes conectadas a uma parede (compartilham algum vértice).
-   */
   getWallsConnectedToWall(wallId: string): Array<{ id: string; start: Vec2; end: Vec2 }> {
     const wall = this.walls.find(w => w.id === wallId);
     if (!wall) return [];
@@ -339,15 +331,24 @@ export class WallGraphTopology {
     return this.walls.filter(w => connectedIds.has(w.id)).map(w => ({ id: w.id, start: [...w.start], end: [...w.end] }));
   }
 
-  /**
-   * Atualiza a geometria de uma parede. Nota: esta classe apenas mantém uma referência,
-   * a atualização real deve ser feita via store. Este método é usado para sincronizar o cache.
-   */
   updateWallGeometry(wallId: string, newStart: Vec2, newEnd: Vec2): void {
     const wall = this.walls.find(w => w.id === wallId);
     if (wall) {
       wall.start = [...newStart] as Vec2;
       wall.end = [...newEnd] as Vec2;
     }
+  }
+
+  getJunctionTypeAtVertex(vertex: Vec2): 'L' | 'T' | 'X' | 'none' {
+    const graph = buildGraph(this.walls);
+    const tol = GEOM_TOL;
+    for (const [idx, node] of graph.nodes.entries()) {
+      if (Math.hypot(node.position[0] - vertex[0], node.position[1] - vertex[1]) < tol) {
+        const junction = graph.junctions.get(idx);
+        if (junction) return junction.type;
+        break;
+      }
+    }
+    return 'none';
   }
 }
