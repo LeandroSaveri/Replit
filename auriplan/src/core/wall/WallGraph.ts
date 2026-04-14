@@ -48,6 +48,11 @@ export function createEmptyWallGraph(): WallGraph {
   return { nodes: [], junctions: new Map() };
 }
 
+// ==================== NOVA FÁBRICA DE TOPOLOGIA VAZIA ====================
+export function createEmptyWallGraphTopology(): IGraphTopology {
+  return new WallGraphTopology([]);
+}
+
 const computeWallOffsets = (wall: Wall) => {
   const dx = wall.end[0] - wall.start[0];
   const dy = wall.end[1] - wall.start[1];
