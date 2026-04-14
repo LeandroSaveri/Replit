@@ -1,3 +1,4 @@
+// src/store/editorStore.ts
 // ============================================
 // EDITOR STORE - Estado Global do Editor (com pipeline geométrico e cache de topologia)
 // ============================================
@@ -73,7 +74,8 @@ export interface EditorState {
   setCurrentScene: (id: string) => void;
 
   // Actions - Walls
-  addWall: (start: Vec2, end: Vec2, options?: { skipPipeline?: boolean }) => void;
+  addWall: (start: Vec2, end: Vec2) => void;
+  createWall: (start: Vec2, end: Vec2) => void;
   updateWall: (id: string, updates: Partial<Wall>) => void;
   deleteWall: (id: string) => void;
   moveWallVertex: (wallId: string, vertex: 'start' | 'end', newPosition: Vec2) => void;
@@ -89,7 +91,7 @@ export interface EditorState {
   _liveUpdateWallsBatch: (updates: Array<{ id: string; start: Vec2; end: Vec2 }>) => void;
 
   // Actions - Rooms
-  addRoom: (points: Vec2[], options?: { name?: string; type?: Room['type']; floorColor?: string; wallColor?: string; ceilingColor?: string; skipPipeline?: boolean }) => void;
+  addRoom: (points: Vec2[], options?: { name?: string; type?: Room['type']; floorColor?: string; wallColor?: string; ceilingColor?: string }) => void;
   updateRoom: (id: string, updates: Partial<Room>) => void;
   deleteRoom: (id: string) => void;
   duplicateRoom: (id: string) => void;
@@ -141,7 +143,6 @@ export interface EditorState {
   canRedo: () => boolean;
 
   // ========== NOVA AÇÃO PÚBLICA ==========
-  /** Reconstroi a geometria da cena atual (paredes e cômodos) usando o pipeline geométrico. */
   rebuildCurrentSceneGeometry: () => void;
 }
 
@@ -198,8 +199,6 @@ function updateTopologyForScene(state: EditorState, sceneId: string) {
 
 // ==================== APLICA O PIPELINE GEOMÉTRICO EM UMA CENA (uso interno) ====================
 function applyGeometryToScene(scene: Scene): void {
-  // NOTA: Esta função só é chamada DENTRO de um `set` do Zustand,
-  // portanto o objeto `scene` é um draft do Immer e pode ser mutado.
   applyGeometryPipeline(scene);
 }
 
@@ -508,39 +507,56 @@ export const useEditorStore = create<EditorState>()(
       },
 
       // --------------------------------------------------------------
-      // AÇÕES DE PAREDES (COM PIPELINE AUTOMÁTICO E ATUALIZAÇÃO DE TOPOLOGIA)
+      // AÇÕES DE PAREDES (COM PIPELINE OBRIGATÓRIO E IMUTABILIDADE)
       // --------------------------------------------------------------
-      addWall: (start: Vec2, end: Vec2, options = {}) => {
+      addWall: (start: Vec2, end: Vec2) => {
         const dx = end[0] - start[0];
         const dy = end[1] - start[1];
         if (Math.hypot(dx, dy) < 1e-6) return;
 
+        const state = get();
+        const scene = getCurrentScene(state);
+        if (!scene) return;
+
+        const newWall: Wall = {
+          id: uuidv4(),
+          start: [...start] as Vec2,
+          end: [...end] as Vec2,
+          thickness: 0.15,
+          height: 2.8,
+          color: '#8B4513',
+          material: 'paint-white',
+          visible: true,
+          locked: false,
+          connections: { start: [], end: [] },
+          roomIds: [],
+          openingIds: [],
+          metadata: {},
+        };
+
+        const wallsWithNew = [...scene.walls, newWall];
+        const sceneCopy: Scene = {
+          ...scene,
+          walls: wallsWithNew,
+        };
+
+        applyGeometryPipeline(sceneCopy);
+
         set(state => {
-          const scene = getCurrentScene(state);
-          if (!scene) return;
-          const newWall: Wall = {
-            id: uuidv4(),
-            start: [...start] as Vec2,
-            end: [...end] as Vec2,
-            thickness: 0.15,
-            height: 2.8,
-            color: '#8B4513',
-            material: 'paint-white',
-            visible: true,
-            locked: false,
-            connections: { start: [], end: [] },
-            roomIds: [],
-            openingIds: [],
-            metadata: {},
-          };
-          scene.walls.push(newWall);
-          if (!options.skipPipeline) {
-            applyGeometryToScene(scene);
+          const targetScene = state.scenes.find(s => s.id === state.currentSceneId);
+          if (targetScene) {
+            targetScene.walls = sceneCopy.walls;
+            targetScene.rooms = sceneCopy.rooms;
           }
           updateJunctionsForScene(state, scene.id);
           updateTopologyForScene(state, scene.id);
         });
+
         get().saveToHistory();
+      },
+
+      createWall: (start: Vec2, end: Vec2) => {
+        get().addWall(start, end);
       },
 
       updateWall: (id: string, updates: Partial<Wall>) => {
@@ -763,9 +779,7 @@ export const useEditorStore = create<EditorState>()(
           const sc = state.scenes.find(s => s.id === state.currentSceneId);
           if (sc) {
             sc.rooms.push(newRoom);
-            if (!options.skipPipeline) {
-              applyGeometryToScene(sc);
-            }
+            applyGeometryToScene(sc);
           }
         });
         get().saveToHistory();
@@ -805,7 +819,7 @@ export const useEditorStore = create<EditorState>()(
         for (let i = 0; i < newPoints.length; i++) {
           const start = newPoints[i];
           const end = newPoints[(i + 1) % newPoints.length];
-          get().addWall(start, end, { skipPipeline: true });
+          get().addWall(start, end);
         }
         set(state => {
           const sc = state.scenes.find(s => s.id === state.currentSceneId);
