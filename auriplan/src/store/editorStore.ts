@@ -207,7 +207,14 @@ function getCurrentScene(state: EditorState): Scene | undefined {
   return state.scenes.find(s => s.id === state.currentSceneId);
 }
 
-// ==================== FUNÇÃO AUXILIAR PARA REASSOCIAÇÃO DE ABERTURAS ====================
+// ==================== FUNÇÃO AUXILIAR PARA REASSOCIAÇÃO DE ABERTURAS (REFATORADA) ====================
+/**
+ * Reassocia portas e janelas aos segmentos resultantes de um split.
+ * Atualiza `openingIds` nas novas paredes e remove referências à parede original.
+ * 
+ * @param scene - Cena atual (mutada)
+ * @param splitResult - Resultado do split contendo segmentos e IDs removidos
+ */
 function reassignOpeningsAfterSplit(
   scene: Scene,
   splitResult: SplitResult
@@ -215,8 +222,17 @@ function reassignOpeningsAfterSplit(
   const { originalWallId, segments } = splitResult;
   if (segments.length === 0) return;
 
-  const findSegmentForPosition = (positionOnWall: number): SplitSegment | null => {
-    const t = positionOnWall;
+  // Calcula o comprimento total da parede original (soma dos segmentos)
+  const totalLength = segments.reduce(
+    (sum, seg) => sum + Math.hypot(seg.end[0] - seg.start[0], seg.end[1] - seg.start[1]),
+    0
+  );
+  if (totalLength === 0) return;
+
+  /**
+   * Encontra o segmento que contém uma posição normalizada `t` (0 a 1).
+   */
+  const findSegmentForT = (t: number): SplitSegment | null => {
     for (const seg of segments) {
       if (t >= seg.tStart - 1e-6 && t <= seg.tEnd + 1e-6) {
         return seg;
@@ -225,61 +241,67 @@ function reassignOpeningsAfterSplit(
     return null;
   };
 
-  // Atualizar portas
+  // 1. Reassociar portas
   for (const door of scene.doors) {
-    if (door.wallId === originalWallId) {
-      let totalLength = 0;
-      for (const seg of segments) {
-        totalLength += Math.hypot(seg.end[0] - seg.start[0], seg.end[1] - seg.start[1]);
-      }
-      const t = totalLength > 0 ? door.position / totalLength : 0;
-      const targetSeg = findSegmentForPosition(t);
-      if (targetSeg) {
-        door.wallId = targetSeg.wallId;
-        const segLength = Math.hypot(targetSeg.end[0] - targetSeg.start[0], targetSeg.end[1] - targetSeg.start[1]);
-        const localT = (t - targetSeg.tStart) / (targetSeg.tEnd - targetSeg.tStart);
-        door.position = localT * segLength;
-      }
-    }
+    if (door.wallId !== originalWallId) continue;
+
+    const t = door.position / totalLength;
+    const targetSeg = findSegmentForT(t);
+    if (!targetSeg) continue;
+
+    door.wallId = targetSeg.wallId;
+    // Ajusta a posição para ser relativa ao novo segmento
+    const segLength = Math.hypot(
+      targetSeg.end[0] - targetSeg.start[0],
+      targetSeg.end[1] - targetSeg.start[1]
+    );
+    const localT = (t - targetSeg.tStart) / (targetSeg.tEnd - targetSeg.tStart);
+    door.position = localT * segLength;
   }
 
-  // Atualizar janelas
+  // 2. Reassociar janelas
   for (const win of scene.windows) {
-    if (win.wallId === originalWallId) {
-      let totalLength = 0;
-      for (const seg of segments) {
-        totalLength += Math.hypot(seg.end[0] - seg.start[0], seg.end[1] - seg.start[1]);
-      }
-      const t = totalLength > 0 ? win.position / totalLength : 0;
-      const targetSeg = findSegmentForPosition(t);
-      if (targetSeg) {
-        win.wallId = targetSeg.wallId;
-        const segLength = Math.hypot(targetSeg.end[0] - targetSeg.start[0], targetSeg.end[1] - targetSeg.start[1]);
-        const localT = (t - targetSeg.tStart) / (targetSeg.tEnd - targetSeg.tStart);
-        win.position = localT * segLength;
-      }
-    }
+    if (win.wallId !== originalWallId) continue;
+
+    const t = win.position / totalLength;
+    const targetSeg = findSegmentForT(t);
+    if (!targetSeg) continue;
+
+    win.wallId = targetSeg.wallId;
+    const segLength = Math.hypot(
+      targetSeg.end[0] - targetSeg.start[0],
+      targetSeg.end[1] - targetSeg.start[1]
+    );
+    const localT = (t - targetSeg.tStart) / (targetSeg.tEnd - targetSeg.tStart);
+    win.position = localT * segLength;
   }
 
-  // Atualizar openingIds nas novas paredes
+  // 3. Limpar e reconstruir openingIds das novas paredes
+  //    (a parede original será removida, então não precisa limpar)
   for (const seg of segments) {
     const newWall = scene.walls.find(w => w.id === seg.wallId);
     if (newWall) {
       newWall.openingIds = [];
     }
   }
+
+  // 4. Adicionar openingIds nas novas paredes baseado nas portas/janelas reassociadas
   for (const door of scene.doors) {
     const wall = scene.walls.find(w => w.id === door.wallId);
-    if (wall && !wall.openingIds?.includes(door.id)) {
+    if (wall) {
       wall.openingIds = wall.openingIds || [];
-      wall.openingIds.push(door.id);
+      if (!wall.openingIds.includes(door.id)) {
+        wall.openingIds.push(door.id);
+      }
     }
   }
   for (const win of scene.windows) {
     const wall = scene.walls.find(w => w.id === win.wallId);
-    if (wall && !wall.openingIds?.includes(win.id)) {
+    if (wall) {
       wall.openingIds = wall.openingIds || [];
-      wall.openingIds.push(win.id);
+      if (!wall.openingIds.includes(win.id)) {
+        wall.openingIds.push(win.id);
+      }
     }
   }
 }
