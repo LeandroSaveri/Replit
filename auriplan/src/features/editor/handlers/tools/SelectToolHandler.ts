@@ -9,9 +9,10 @@ import type { InteractionEvent } from '@core/interaction/InteractionEngine';
 import type { ToolHandler } from '../ToolHandler';
 import type { PreviewState } from '../ToolContext';
 import type { EditorStore } from '@store/editorStore';
-import type { Vec2 } from '@auriplan-types';
+import type { Vec2, Wall, Room, Furniture } from '@auriplan-types';
 import { SnapSolver } from '@core/snap/SnapSolver';
 import type { SnapType } from '@core/snap/SnapSolver';
+import { applyGeometryPipeline } from '@core/pipeline/applyGeometryPipeline';
 
 const VERTEX_R = 0.18;
 const EDGE_MID_R = 0.15;
@@ -88,6 +89,181 @@ export class SelectToolHandler implements ToolHandler {
 
   getPreviewState(): PreviewState | null { return null; }
 
+  // --------------------------------------------------------------
+  // HIT TEST (detecção do que está sob o cursor)
+  // --------------------------------------------------------------
+  private hitTest(pos: Vec2): HitResult {
+    const state = this.store.getState();
+    const scene = state.scenes.find(s => s.id === state.currentSceneId);
+    if (!scene) return { type: 'none' };
+
+    // 1. Furniture (prioridade mais alta)
+    for (const furn of scene.furniture) {
+      const [fx, fz] = Array.isArray(furn.position) ? furn.position : [furn.position.x, furn.position.z];
+      const size = furn.size || [0.6, 0.6];
+      const halfX = (size[0] || 0.6) / 2;
+      const halfZ = (size[1] || 0.6) / 2;
+      if (pos[0] >= fx - halfX && pos[0] <= fx + halfX &&
+          pos[1] >= fz - halfZ && pos[1] <= fz + halfZ) {
+        return { type: 'furniture', id: furn.id };
+      }
+    }
+
+    // 2. Rooms (vértices, arestas, interior)
+    for (const room of scene.rooms) {
+      const pts = room.points;
+      if (pts.length < 3) continue;
+
+      // Vértices
+      for (let i = 0; i < pts.length; i++) {
+        const v = pts[i];
+        const dist = Math.hypot(v[0] - pos[0], v[1] - pos[1]);
+        if (dist < VERTEX_R) {
+          return { type: 'room-vertex', roomId: room.id, vtxIdx: i };
+        }
+      }
+
+      // Arestas (midpoint)
+      for (let i = 0; i < pts.length; i++) {
+        const a = pts[i];
+        const b = pts[(i + 1) % pts.length];
+        const mid = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+        const dist = Math.hypot(mid[0] - pos[0], mid[1] - pos[1]);
+        if (dist < EDGE_MID_R) {
+          return { type: 'room-edge', roomId: room.id, edgeIdx: i };
+        }
+      }
+
+      // Interior (point-in-polygon)
+      if (this.isPointInPolygon(pos, pts)) {
+        return { type: 'room', id: room.id };
+      }
+    }
+
+    // 3. Walls
+    for (const wall of scene.walls) {
+      // Vértices
+      const distStart = Math.hypot(wall.start[0] - pos[0], wall.start[1] - pos[1]);
+      const distEnd = Math.hypot(wall.end[0] - pos[0], wall.end[1] - pos[1]);
+      if (distStart < VERTEX_R) {
+        return { type: 'wall-vertex', wallId: wall.id, vertex: 'start' };
+      }
+      if (distEnd < VERTEX_R) {
+        return { type: 'wall-vertex', wallId: wall.id, vertex: 'end' };
+      }
+
+      // Midpoint
+      const mid = [(wall.start[0] + wall.end[0]) / 2, (wall.start[1] + wall.end[1]) / 2];
+      const distMid = Math.hypot(mid[0] - pos[0], mid[1] - pos[1]);
+      if (distMid < EDGE_MID_R) {
+        return { type: 'wall-midpoint', wallId: wall.id };
+      }
+
+      // Parede (projeção)
+      const proj = this.projectPointOnLineSegment(pos, wall.start, wall.end);
+      if (proj) {
+        const dist = Math.hypot(proj[0] - pos[0], proj[1] - pos[1]);
+        if (dist < WALL_HIT_TOL) {
+          return { type: 'wall', id: wall.id };
+        }
+      }
+    }
+
+    return { type: 'none' };
+  }
+
+  private hitToId(hit: HitResult): string | null {
+    switch (hit.type) {
+      case 'furniture': return hit.id;
+      case 'room-vertex': return hit.roomId;
+      case 'room-edge': return hit.roomId;
+      case 'room': return hit.id;
+      case 'wall-vertex': return hit.wallId;
+      case 'wall-midpoint': return hit.wallId;
+      case 'wall': return hit.id;
+      default: return null;
+    }
+  }
+
+  private cursorForHit(hit: HitResult): string {
+    switch (hit.type) {
+      case 'furniture': return 'grab';
+      case 'room-vertex': return 'move';
+      case 'room-edge': return 'move';
+      case 'room': return 'grab';
+      case 'wall-vertex': return 'move';
+      case 'wall-midpoint': return 'ns-resize';
+      case 'wall': return 'move';
+      default: return 'default';
+    }
+  }
+
+  // --------------------------------------------------------------
+  // Utilitários geométricos
+  // --------------------------------------------------------------
+  private isPointInPolygon(p: Vec2, polygon: Vec2[]): boolean {
+    let inside = false;
+    for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+      const xi = polygon[i][0], yi = polygon[i][1];
+      const xj = polygon[j][0], yj = polygon[j][1];
+      const intersect = ((yi > p[1]) !== (yj > p[1])) &&
+        (p[0] < (xj - xi) * (p[1] - yi) / (yj - yi) + xi);
+      if (intersect) inside = !inside;
+    }
+    return inside;
+  }
+
+  private projectPointOnLineSegment(p: Vec2, a: Vec2, b: Vec2): Vec2 | null {
+    const abx = b[0] - a[0];
+    const aby = b[1] - a[1];
+    const apx = p[0] - a[0];
+    const apy = p[1] - a[1];
+    const dot = apx * abx + apy * aby;
+    const len2 = abx * abx + aby * aby;
+    if (len2 === 0) return null;
+    let t = dot / len2;
+    t = Math.max(0, Math.min(1, t));
+    return [a[0] + t * abx, a[1] + t * aby];
+  }
+
+  private arePointsEqual(p1: Vec2, p2: Vec2, tol: number = 1e-6): boolean {
+    return Math.abs(p1[0] - p2[0]) < tol && Math.abs(p1[1] - p2[1]) < tol;
+  }
+
+  // --------------------------------------------------------------
+  // Eventos de teclado e duplo clique
+  // --------------------------------------------------------------
+  private onKeyDown(event: InteractionEvent): void {
+    if (event.key === 'Delete' || event.key === 'Backspace') {
+      const state = this.store.getState();
+      for (const id of state.selectedIds) {
+        state.deleteWall(id);
+        state.deleteRoom(id);
+        state.deleteDoor(id);
+        state.deleteWindow(id);
+        state.deleteFurniture(id);
+      }
+      state.deselectAll();
+    }
+    if (event.key === 'Escape') {
+      this.store.getState().deselectAll();
+      this.reset();
+    }
+  }
+
+  private onDoubleClick(event: InteractionEvent): void {
+    const state = this.store.getState();
+    const scene = state.scenes.find(s => s.id === state.currentSceneId);
+    if (!scene) return;
+    const hit = this.hitTest(event.position);
+    if (hit.type === 'room') {
+      state.zoomToRoom(hit.id);
+    }
+  }
+
+  // --------------------------------------------------------------
+  // Pointer handlers (já existentes, mantidos)
+  // --------------------------------------------------------------
   private onPointerDown(event: InteractionEvent): void {
     const pos = event.position;
     this.downPos = pos;
@@ -100,7 +276,6 @@ export class SelectToolHandler implements ToolHandler {
 
     const addToSel = event.modifiers.includes('shift') || event.modifiers.includes('ctrl') || event.modifiers.includes('meta');
 
-    // Zoom ao selecionar cômodo (clique simples)
     if (hit.type === 'room' && !addToSel) {
       state.zoomToRoom(hit.id);
     }
@@ -135,7 +310,6 @@ export class SelectToolHandler implements ToolHandler {
         if (!room) return;
         state.select(hit.id, addToSel);
         if (state.assembleMode) {
-          // Modo montagem: permite arrastar o cômodo inteiro
           this.drag = { kind: 'room', id: hit.id, origPts: room.points.map(p => [...p] as Vec2), ds: pos };
         } else {
           this.drag = null;
@@ -197,7 +371,6 @@ export class SelectToolHandler implements ToolHandler {
     const dx = pos[0] - this.drag.ds[0];
     const dy = pos[1] - this.drag.ds[1];
 
-    // Calcular snap se for arrasto de parede ou vértice
     let snappedPos = pos;
     let snapType: SnapType | null = null;
     if (this.drag.kind === 'wall-vertex' || this.drag.kind === 'wall-move' || this.drag.kind === 'wall-push') {
@@ -241,10 +414,8 @@ export class SelectToolHandler implements ToolHandler {
         break;
       }
       case 'room': {
-        // Arrasto de cômodo completo
         const newPts = this.drag.origPts.map(p => [p[0] + dx, p[1] + dy] as Vec2);
         state._liveUpdateRoomPoints(this.drag.id, newPts);
-        // Atualiza também as paredes associadas (se houver room.wallIds)
         const scene = state.scenes.find(s => s.id === state.currentSceneId);
         const room = scene?.rooms.find(r => r.id === this.drag.id);
         if (room && room.wallIds) {
@@ -331,7 +502,6 @@ export class SelectToolHandler implements ToolHandler {
       }
     }
 
-    // Emite snap visual durante o arrasto
     if (snapType && (this.drag.kind === 'wall-vertex' || this.drag.kind === 'wall-move' || this.drag.kind === 'wall-push')) {
       this.onPreviewChange({ type: 'edit', wall: { start: [0,0], end: [0,0] }, snapPoint: snappedPos, snapType } as any);
     } else {
@@ -411,8 +581,7 @@ export class SelectToolHandler implements ToolHandler {
         const room = scene.rooms.find(r => r.id === (this.drag.kind === 'room' ? this.drag.id : this.drag.roomId));
         if (room) {
           state.updateRoom(room.id, { points: room.points });
-          // Após mover cômodo, executa pipeline para atualizar junções
-          applyGeometryToScene(scene);
+          applyGeometryPipeline(scene);
         }
         break;
       }
@@ -443,8 +612,4 @@ export class SelectToolHandler implements ToolHandler {
     this.isDragging = false;
     this.downPos = null;
   }
-
-  // ... (restante dos métodos existentes permanecem inalterados)
-  // Para brevidade, incluí apenas as partes novas. Os métodos onKeyDown, onDoubleClick, hitTest, etc., 
-  // são os mesmos da versão anterior que você já possui.
 }
