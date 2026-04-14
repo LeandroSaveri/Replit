@@ -139,6 +139,10 @@ export interface EditorState {
   redo: () => void;
   canUndo: () => boolean;
   canRedo: () => boolean;
+
+  // ========== NOVA AÇÃO PÚBLICA ==========
+  /** Reconstroi a geometria da cena atual (paredes e cômodos) usando o pipeline geométrico. */
+  rebuildCurrentSceneGeometry: () => void;
 }
 
 const safeClone = <T>(obj: T): T => JSON.parse(JSON.stringify(obj));
@@ -192,8 +196,10 @@ function updateTopologyForScene(state: EditorState, sceneId: string) {
   state._topologyCache[sceneId] = new WallGraphTopology(scene.walls);
 }
 
-// ==================== APLICA O PIPELINE GEOMÉTRICO EM UMA CENA ====================
+// ==================== APLICA O PIPELINE GEOMÉTRICO EM UMA CENA (uso interno) ====================
 function applyGeometryToScene(scene: Scene): void {
+  // NOTA: Esta função só é chamada DENTRO de um `set` do Zustand,
+  // portanto o objeto `scene` é um draft do Immer e pode ser mutado.
   applyGeometryPipeline(scene);
 }
 
@@ -655,7 +661,6 @@ export const useEditorStore = create<EditorState>()(
             updateTopologyForScene(state, scene.id);
           }
         });
-        // Salva no histórico apenas se a cena ainda existir (evita erro se a cena foi deletada)
         if (get().scenes.some(s => s.id === get().currentSceneId)) {
           get().saveToHistory();
         }
@@ -1170,6 +1175,18 @@ export const useEditorStore = create<EditorState>()(
 
       canUndo: () => get().historyIndex > 0,
       canRedo: () => get().historyIndex < get().history.length - 1,
+
+      // ========== NOVA AÇÃO PÚBLICA ==========
+      rebuildCurrentSceneGeometry: () => {
+        set(state => {
+          const scene = getCurrentScene(state);
+          if (!scene) return;
+          applyGeometryToScene(scene);
+          updateJunctionsForScene(state, scene.id);
+          updateTopologyForScene(state, scene.id);
+        });
+        get().saveToHistory();
+      },
     }))
   )
 );
