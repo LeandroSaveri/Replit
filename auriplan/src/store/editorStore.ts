@@ -1,5 +1,5 @@
 // ============================================
-// EDITOR STORE - Estado Global do Editor (com pipeline geométrico)
+// EDITOR STORE - Estado Global do Editor (com pipeline geométrico e cache de topologia)
 // ============================================
 
 import { create } from 'zustand';
@@ -31,6 +31,10 @@ import type {
 
 import { splitWallAtPoint, type SplitResult, type SplitSegment } from '@core/wall/WallSplitEngine';
 
+// ========== NOVOS IMPORTS PARA TOPOLOGIA ==========
+import type { IGraphTopology } from '@core/topology/IGraphTopology';
+import { WallGraphTopology } from '@core/wall/WallGraph';
+
 // ==================== EDITOR STATE INTERFACE ====================
 export interface EditorState {
   // Data
@@ -43,7 +47,7 @@ export interface EditorState {
   tool: Tool;
   selectedIds: string[];
   hoveredId: string | null;
-  assembleMode: boolean; // Modo montagem para arrastar cômodos inteiros
+  assembleMode: boolean;
 
   // Settings
   grid: GridSettings;
@@ -56,6 +60,7 @@ export interface EditorState {
 
   // Internal cache
   _junctionsCache: Record<string, any>;
+  _topologyCache: Record<string, IGraphTopology>; // NOVO: cache de topologia unificada
 
   // Actions - Project
   createProject: (name: string, owner: User, description?: string) => void;
@@ -179,6 +184,14 @@ function updateJunctionsForScene(state: EditorState, sceneId: string) {
   state._junctionsCache[sceneId] = computeJunctionsIndex(scene);
 }
 
+// ========== NOVA FUNÇÃO PARA ATUALIZAR A TOPOLOGIA ==========
+function updateTopologyForScene(state: EditorState, sceneId: string) {
+  const scene = state.scenes.find(s => s.id === sceneId);
+  if (!scene) return;
+  if (!state._topologyCache) state._topologyCache = {};
+  state._topologyCache[sceneId] = new WallGraphTopology(scene.walls);
+}
+
 // ==================== APLICA O PIPELINE GEOMÉTRICO EM UMA CENA ====================
 function applyGeometryToScene(scene: Scene): void {
   applyGeometryPipeline(scene);
@@ -189,7 +202,7 @@ function getCurrentScene(state: EditorState): Scene | undefined {
   return state.scenes.find(s => s.id === state.currentSceneId);
 }
 
-// ==================== NOVA FUNÇÃO AUXILIAR PARA REASSOCIAÇÃO DE ABERTURAS ====================
+// ==================== FUNÇÃO AUXILIAR PARA REASSOCIAÇÃO DE ABERTURAS ====================
 function reassignOpeningsAfterSplit(
   scene: Scene,
   splitResult: SplitResult
@@ -197,13 +210,8 @@ function reassignOpeningsAfterSplit(
   const { originalWallId, segments } = splitResult;
   if (segments.length === 0) return;
 
-  // Função para projetar a posição de uma abertura na parede original e encontrar o segmento
   const findSegmentForPosition = (positionOnWall: number): SplitSegment | null => {
-    // positionOnWall é a distância ao longo da parede original (0..wallLength)
-    // Precisamos do comprimento da parede original (calculado a partir dos segmentos)
-    const originalLength = segments[segments.length - 1].tEnd; // tEnd do último segmento é 1, mas precisamos do comprimento real
-    // Como tStart/tEnd são paramétricos (0..1), usamos o t diretamente
-    const t = positionOnWall; // Assumimos que positionOnWall já está normalizado (0..1)
+    const t = positionOnWall;
     for (const seg of segments) {
       if (t >= seg.tStart - 1e-6 && t <= seg.tEnd + 1e-6) {
         return seg;
@@ -215,12 +223,6 @@ function reassignOpeningsAfterSplit(
   // Atualizar portas
   for (const door of scene.doors) {
     if (door.wallId === originalWallId) {
-      // A posição da porta é um valor absoluto (metros) a partir do início da parede.
-      // Precisamos normalizar para o comprimento total da parede original.
-      // Como não temos o comprimento total aqui, usamos o fato de que os segmentos cobrem [0,1].
-      // A posição da porta em termos paramétricos: t = position / originalWallLength
-      // Mas não temos originalWallLength. No entanto, a posição já está em metros e a parede original
-      // pode ser reconstruída a partir dos segmentos (soma dos comprimentos).
       let totalLength = 0;
       for (const seg of segments) {
         totalLength += Math.hypot(seg.end[0] - seg.start[0], seg.end[1] - seg.start[1]);
@@ -229,7 +231,6 @@ function reassignOpeningsAfterSplit(
       const targetSeg = findSegmentForPosition(t);
       if (targetSeg) {
         door.wallId = targetSeg.wallId;
-        // Ajustar a posição da porta para o novo segmento (manter a distância relativa)
         const segLength = Math.hypot(targetSeg.end[0] - targetSeg.start[0], targetSeg.end[1] - targetSeg.start[1]);
         const localT = (t - targetSeg.tStart) / (targetSeg.tEnd - targetSeg.tStart);
         door.position = localT * segLength;
@@ -237,7 +238,7 @@ function reassignOpeningsAfterSplit(
     }
   }
 
-  // Atualizar janelas (mesma lógica)
+  // Atualizar janelas
   for (const win of scene.windows) {
     if (win.wallId === originalWallId) {
       let totalLength = 0;
@@ -255,14 +256,13 @@ function reassignOpeningsAfterSplit(
     }
   }
 
-  // Atualizar openingIds nas novas paredes e remover da parede original
+  // Atualizar openingIds nas novas paredes
   for (const seg of segments) {
     const newWall = scene.walls.find(w => w.id === seg.wallId);
     if (newWall) {
       newWall.openingIds = [];
     }
   }
-  // Coletar todas as aberturas que agora pertencem a cada nova parede
   for (const door of scene.doors) {
     const wall = scene.walls.find(w => w.id === door.wallId);
     if (wall && !wall.openingIds?.includes(door.id)) {
@@ -315,16 +315,10 @@ const initialState = {
   history: [],
   historyIndex: -1,
   _junctionsCache: {} as Record<string, any>,
+  _topologyCache: {} as Record<string, IGraphTopology>, // NOVO
 };
 
 // ==================== STORE PRINCIPAL ====================
-export type EditorStore = {
-  getState: () => EditorState;
-  setState: (state: Partial<EditorState> | ((s: EditorState) => Partial<EditorState>)) => void;
-  subscribe: (listener: () => void) => () => void;
-  destroy: () => void;
-} & EditorState;
-
 export const useEditorStore = create<EditorState>()(
   devtools(
     immer((set, get) => ({
@@ -365,6 +359,7 @@ export const useEditorStore = create<EditorState>()(
           state.historyIndex = -1;
           state.selectedIds = [];
           updateJunctionsForScene(state, sceneId);
+          updateTopologyForScene(state, sceneId); // NOVO
         });
         get().saveToHistory();
       },
@@ -417,6 +412,7 @@ export const useEditorStore = create<EditorState>()(
           state.historyIndex = -1;
           state.selectedIds = [];
           updateJunctionsForScene(state, sceneId);
+          updateTopologyForScene(state, sceneId); // NOVO
         });
         get().saveToHistory();
       },
@@ -447,8 +443,10 @@ export const useEditorStore = create<EditorState>()(
             state.historyIndex = -1;
             state.selectedIds = [];
             state._junctionsCache = {};
+            state._topologyCache = {}; // NOVO
             for (const scene of state.scenes) {
               updateJunctionsForScene(state, scene.id);
+              updateTopologyForScene(state, scene.id); // NOVO
             }
           });
           get().saveToHistory();
@@ -474,6 +472,7 @@ export const useEditorStore = create<EditorState>()(
         set(state => {
           state.scenes.push(newScene);
           updateJunctionsForScene(state, newScene.id);
+          updateTopologyForScene(state, newScene.id); // NOVO
         });
         get().saveToHistory();
       },
@@ -485,6 +484,7 @@ export const useEditorStore = create<EditorState>()(
             state.currentSceneId = state.scenes[0]?.id || null;
           }
           if (state._junctionsCache) delete state._junctionsCache[id];
+          if (state._topologyCache) delete state._topologyCache[id]; // NOVO
         });
         get().saveToHistory();
       },
@@ -495,11 +495,14 @@ export const useEditorStore = create<EditorState>()(
           if (!state._junctionsCache?.[id] && state.scenes.find(s => s.id === id)) {
             updateJunctionsForScene(state, id);
           }
+          if (!state._topologyCache?.[id] && state.scenes.find(s => s.id === id)) { // NOVO
+            updateTopologyForScene(state, id);
+          }
         });
       },
 
       // --------------------------------------------------------------
-      // AÇÕES DE PAREDES (COM PIPELINE AUTOMÁTICO)
+      // AÇÕES DE PAREDES (COM PIPELINE AUTOMÁTICO E ATUALIZAÇÃO DE TOPOLOGIA)
       // --------------------------------------------------------------
       addWall: (start: Vec2, end: Vec2, options = {}) => {
         const dx = end[0] - start[0];
@@ -529,6 +532,7 @@ export const useEditorStore = create<EditorState>()(
             applyGeometryToScene(scene);
           }
           updateJunctionsForScene(state, scene.id);
+          updateTopologyForScene(state, scene.id); // NOVO
         });
         get().saveToHistory();
       },
@@ -542,6 +546,7 @@ export const useEditorStore = create<EditorState>()(
           Object.assign(wall, updates);
           applyGeometryToScene(scene);
           updateJunctionsForScene(state, scene.id);
+          updateTopologyForScene(state, scene.id); // NOVO
         });
         get().saveToHistory();
       },
@@ -553,6 +558,7 @@ export const useEditorStore = create<EditorState>()(
           scene.walls = scene.walls.filter(w => w.id !== id);
           applyGeometryToScene(scene);
           updateJunctionsForScene(state, scene.id);
+          updateTopologyForScene(state, scene.id); // NOVO
         });
         get().saveToHistory();
       },
@@ -570,6 +576,7 @@ export const useEditorStore = create<EditorState>()(
           }
           applyGeometryToScene(scene);
           updateJunctionsForScene(state, scene.id);
+          updateTopologyForScene(state, scene.id); // NOVO
         });
         get().saveToHistory();
       },
@@ -584,6 +591,7 @@ export const useEditorStore = create<EditorState>()(
           wall.end = [wall.end[0] + delta[0], wall.end[1] + delta[1]];
           applyGeometryToScene(scene);
           updateJunctionsForScene(state, scene.id);
+          updateTopologyForScene(state, scene.id); // NOVO
         });
         get().saveToHistory();
       },
@@ -612,12 +620,11 @@ export const useEditorStore = create<EditorState>()(
           const result = splitWallAtPoint(scene.walls, wallId, point);
           if (result.removedWallIds.length === 0) return;
 
-          // Aplica a reassociação de portas/janelas antes de substituir as paredes
           reassignOpeningsAfterSplit(scene, result);
-
           scene.walls = result.updatedWalls;
           applyGeometryToScene(scene);
           updateJunctionsForScene(state, scene.id);
+          updateTopologyForScene(state, scene.id); // NOVO
         });
         get().saveToHistory();
       },
@@ -635,6 +642,7 @@ export const useEditorStore = create<EditorState>()(
           }
           applyGeometryToScene(scene);
           updateJunctionsForScene(state, scene.id);
+          updateTopologyForScene(state, scene.id); // NOVO
         });
         get().saveToHistory();
       },
@@ -649,6 +657,9 @@ export const useEditorStore = create<EditorState>()(
           wall.start = [...start] as Vec2;
           wall.end = [...end] as Vec2;
           updateJunctionsForScene(state, scene.id);
+          // ATENÇÃO: não atualizamos a topologia aqui para não perder performance,
+          // mas durante o drag a topologia pode ficar dessincronizada. 
+          // O commit final (mouse up) atualizará via updateWallsBatch.
         });
       },
 
@@ -696,6 +707,7 @@ export const useEditorStore = create<EditorState>()(
             }
           }
           updateJunctionsForScene(state, scene.id);
+          // Durante o drag não atualizamos topologia completa para performance
         });
       },
 
@@ -767,7 +779,7 @@ export const useEditorStore = create<EditorState>()(
         if (!scene) return;
         const original = scene.rooms.find(r => r.id === id);
         if (!original) return;
-        const offset = 2.0; // desloca 2 metros para direita
+        const offset = 2.0;
         const newPoints = original.points.map(p => [p[0] + offset, p[1]] as Vec2);
         const newRoom: Room = {
           ...original,
@@ -775,7 +787,6 @@ export const useEditorStore = create<EditorState>()(
           points: newPoints,
           name: `${original.name} (cópia)`,
         };
-        // Adiciona paredes correspondentes
         for (let i = 0; i < newPoints.length; i++) {
           const start = newPoints[i];
           const end = newPoints[(i + 1) % newPoints.length];
@@ -809,7 +820,6 @@ export const useEditorStore = create<EditorState>()(
         const centerY = (minY + maxY) / 2;
         const width = maxX - minX;
         const height = maxY - minY;
-        const padding = 1.5;
         const newZoom = Math.min(10, 5 / Math.max(width, height));
         set(state => {
           state.camera.target = [centerX, centerY, 0];
@@ -820,10 +830,6 @@ export const useEditorStore = create<EditorState>()(
       setAssembleMode: (enabled: boolean) => {
         set(state => {
           state.assembleMode = enabled;
-          // Se sair do modo montagem, garante que ferramenta volte para select
-          if (!enabled && state.tool === 'select') {
-            // nada
-          }
         });
       },
 
@@ -1125,8 +1131,10 @@ export const useEditorStore = create<EditorState>()(
           s.historyIndex = newIndex;
           s.selectedIds = [];
           s._junctionsCache = {};
+          s._topologyCache = {}; // NOVO
           for (const scene of s.scenes) {
             updateJunctionsForScene(s, scene.id);
+            updateTopologyForScene(s, scene.id); // NOVO
           }
         });
       },
@@ -1142,8 +1150,10 @@ export const useEditorStore = create<EditorState>()(
           s.historyIndex = newIndex;
           s.selectedIds = [];
           s._junctionsCache = {};
+          s._topologyCache = {}; // NOVO
           for (const scene of s.scenes) {
             updateJunctionsForScene(s, scene.id);
+            updateTopologyForScene(s, scene.id); // NOVO
           }
         });
       },
@@ -1197,4 +1207,11 @@ export const selectCurrentJunctions = (state: EditorState) => {
   const sceneId = state.currentSceneId;
   if (!sceneId) return undefined;
   return state._junctionsCache[sceneId];
+};
+
+// ========== NOVO SELECTOR PARA TOPOLOGIA ==========
+export const selectCurrentTopology = (state: EditorState): IGraphTopology | undefined => {
+  const sceneId = state.currentSceneId;
+  if (!sceneId) return undefined;
+  return state._topologyCache[sceneId];
 };
