@@ -1,3 +1,4 @@
+// src/features/editor/components/ScanModal.tsx
 // ============================================================
 // ScanModal — Auto-Scan (câmera) + Desenho Manual estilo MagicPlan
 // ============================================================
@@ -563,14 +564,13 @@ interface ScanModalProps {
 export function ScanModal({ onClose }: ScanModalProps) {
   const [mode, setMode] = useState<Mode>('select');
   const [done, setDone] = useState<{ rooms: number; walls: number } | null>(null);
-  /* Apply camera scan result */
+
   const applyCameraScan = (pts: Vec2[]) => {
     const store = useEditorStore.getState();
     const palette = ROOM_PALETTE[0];
     const sceneId = store.currentSceneId;
 
     store.addRoom(pts);
-    // Get the newly added room (last one)
     const scene = useEditorStore.getState().scenes.find(s => s.id === sceneId);
     const newRoom = scene?.rooms[scene.rooms.length - 1];
     if (newRoom) {
@@ -584,14 +584,13 @@ export function ScanModal({ onClose }: ScanModalProps) {
 
     let walls = 0;
     for (let i = 0; i < pts.length; i++) {
-      store.addWall(pts[i], pts[(i + 1) % pts.length]);
+      store.createWall(pts[i], pts[(i + 1) % pts.length]);
       walls++;
     }
     setDone({ rooms: 1, walls });
     setTimeout(onClose, 2000);
   };
 
-  /* Apply manual rooms */
   const applyManualRooms = (rooms: ManualRoom[]) => {
     const store = useEditorStore.getState();
     const sceneId = store.currentSceneId;
@@ -628,7 +627,7 @@ export function ScanModal({ onClose }: ScanModalProps) {
       }
 
       for (let i = 0; i < pts.length; i++) {
-        store.addWall(pts[i], pts[(i + 1) % pts.length]);
+        store.createWall(pts[i], pts[(i + 1) % pts.length]);
         totalWalls++;
       }
 
@@ -656,7 +655,6 @@ export function ScanModal({ onClose }: ScanModalProps) {
         style={{ maxHeight: '90vh', height: mode === 'camera' ? '90vh' : 'auto' }}
         onClick={e => e.stopPropagation()}
       >
-        {/* Close button */}
         {!done && (
           <button
             onClick={onClose}
