@@ -22,6 +22,19 @@ export interface GeometryPipelineOptions {
 }
 
 /**
+ * Calcula um fingerprint simples das paredes para detecção de mudanças.
+ * Não é criptográfico – apenas para comparar se a geometria mudou.
+ * Ordena por ID para garantir consistência independente da ordem do array.
+ */
+export function computeWallsFingerprint(walls: Wall[]): string {
+  const sorted = [...walls].sort((a, b) => a.id.localeCompare(b.id));
+  const parts = sorted.map(w =>
+    `${w.id}:${w.start[0].toFixed(6)},${w.start[1].toFixed(6)}-${w.end[0].toFixed(6)},${w.end[1].toFixed(6)}:${w.thickness.toFixed(6)}`
+  );
+  return parts.join('|');
+}
+
+/**
  * Clona profundamente uma parede para evitar mutação de objetos congelados.
  */
 function cloneWall(wall: Wall): Wall {
