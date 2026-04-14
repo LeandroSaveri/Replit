@@ -1,3 +1,4 @@
+// src/features/editor/handlers/tools/WallToolHandler.ts
 // ============================================================
 // WallToolHandler — click-to-click (MagicPlan style)
 // Flow: click(1) = set start → move = preview → click(2) = commit + new start
@@ -69,7 +70,7 @@ export class WallToolHandler implements ToolHandler {
     const length = Math.hypot(end[0] - this.startPoint[0], end[1] - this.startPoint[1]);
 
     if (length >= MIN_WALL_LENGTH) {
-      this.store.getState().addWall(this.startPoint, end);
+      this.store.getState().createWall(this.startPoint, end);
       this.segmentStartHistory.push(end);
       this.startPoint = end;
       this.currentPoint = end;
