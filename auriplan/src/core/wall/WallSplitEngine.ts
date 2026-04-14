@@ -7,7 +7,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { EPS, GEOM_TOL, MIN_WALL_LENGTH } from '@core/geometry/geometryConstants';
 
 // ============================================
-// TIPOS (NOVO)
+// TIPOS
 // ============================================
 
 export interface SplitSegment {
@@ -95,9 +95,17 @@ function createWallFromSegment(original: Wall, start: Vec2, end: Vec2): Wall {
 }
 
 // ============================================
-// FUNÇÃO PRINCIPAL: splitWallAtPoint (MODIFICADA)
+// FUNÇÃO PRINCIPAL: splitWallAtPoint
 // ============================================
 
+/**
+ * Divide uma parede em um ponto específico, gerando dois novos segmentos.
+ * 
+ * @param walls - Lista atual de paredes (não modificada)
+ * @param wallId - ID da parede a ser dividida
+ * @param point - Ponto de divisão (deve estar sobre a parede)
+ * @returns Resultado contendo as novas paredes, segmentos e IDs removidos.
+ */
 export function splitWallAtPoint(
   walls: Wall[],
   wallId: string,
@@ -164,9 +172,13 @@ export function splitWallAtPoint(
 }
 
 // ============================================
-// FUNÇÃO AVANÇADA: splitWallsAtIntersections (atualizada para usar nova assinatura)
+// FUNÇÃO AVANÇADA: splitWallsAtIntersections
 // ============================================
 
+/**
+ * Divide todas as paredes que se intersectam, garantindo que interseções sejam vértices.
+ * Utilizada no pipeline geométrico.
+ */
 export function splitWallsAtIntersections(walls: Wall[]): Wall[] {
   let currentWalls = [...walls];
   let anySplit = true;
