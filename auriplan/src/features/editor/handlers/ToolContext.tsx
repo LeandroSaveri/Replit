@@ -7,7 +7,8 @@ import React, { createContext, useContext, ReactNode, useMemo, useRef, useEffect
 import type { Vec2, Tool } from '@auriplan-types';
 import type { EditorStore } from '@store/editorStore';
 import { ToolManager } from './ToolManager';
-import { WallGraphTopology } from '@core/wall/WallGraph';
+import { createEmptyWallGraphTopology } from '@core/wall/WallGraph'; // nova exportação
+import { selectCurrentTopology } from '@store/editorStore';
 import type { SnapType } from '@core/snap/SnapSolver';
 
 export type PreviewType = 'wall' | 'polygon' | 'edit' | 'none';
@@ -62,22 +63,32 @@ export function ToolProvider({ store, children }: ToolProviderProps) {
 
   const toolManagerRef = useRef<ToolManager | null>(null);
 
-  if (!toolManagerRef.current) {
-    const onPreviewChange = (state: PreviewState) => setPreviewState(state);
+  const createToolManager = (): ToolManager => {
+    const state = store.getState();
+    // Garante que SEMPRE haja uma topologia (fallback vazio)
+    const topology = selectCurrentTopology(state) ?? createEmptyWallGraphTopology();
+
+    const onPreviewChange = (s: PreviewState) => setPreviewState(s);
     const onHoverChange = (id: string | null) => {};
     const onCursorChange = (cursor: string) => {};
-    const currentScene = store.getState().scenes.find(s => s.id === store.getState().currentSceneId);
-    const topology = new WallGraphTopology(currentScene?.walls || []);
-    toolManagerRef.current = new ToolManager(store, onPreviewChange, onHoverChange, onCursorChange, topology);
+    return new ToolManager(store, onPreviewChange, onHoverChange, onCursorChange, topology);
+  };
+
+  // Inicialização única
+  if (!toolManagerRef.current) {
+    toolManagerRef.current = createToolManager();
   }
 
+  // useEffect apenas para sincronizar a ferramenta ativa (sem recriação)
   useEffect(() => {
     const unsubscribe = store.subscribe(() => {
-      const newTool = store.getState().tool;
+      const state = store.getState();
+      const newTool = state.tool;
       if (newTool !== activeTool) {
         setActiveTool(newTool);
         toolManagerRef.current?.setTool(newTool);
       }
+      // A topologia é atualizada internamente no ToolManager via subscribe próprio
     });
     return unsubscribe;
   }, [store, activeTool]);
