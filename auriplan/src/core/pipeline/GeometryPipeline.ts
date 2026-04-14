@@ -1,5 +1,5 @@
 // ============================================
-// GeometryPipeline.ts – corrigido (mutação segura)
+// GeometryPipeline.ts – ordem corrigida (split → graph → topology → corners → rooms)
 // ============================================
 
 import type { Wall, Vec2 } from '@auriplan-types';
@@ -62,30 +62,31 @@ export function runGeometryPipeline(
   const log = (msg: string) => { if (debug) console.log(`[GeometryPipeline] ${msg}`); };
 
   try {
-    log('Iniciando pipeline geométrico');
-    
-    // Etapa 1: Topologia
-    log('Etapa 1: resolveTopology');
-    const topo = resolveTopology(walls);
-    log(`  - Paredes após topologia: ${topo.walls.length}`);
+    log('Iniciando pipeline geométrico (ordem corrigida)');
 
-    // Etapa 2: Split de interseções
-    log('Etapa 2: splitWallsAtIntersections');
-    let split = splitWallsAtIntersections(topo.walls);
+    // Etapa 1: Split de interseções (agora primeiro)
+    log('Etapa 1: splitWallsAtIntersections');
+    let split = splitWallsAtIntersections(walls);
     log(`  - Paredes após divisão: ${split.length}`);
 
-    // Etapa 3: Primeiro grafo
-    log('Etapa 3: buildGraph (primeira passagem)');
+    // Etapa 2: Construção do grafo
+    log('Etapa 2: buildGraph');
     let graph = buildGraph(split);
     log(`  - Nós: ${graph.nodes.length}, junções: ${graph.junctions.size}`);
 
-    // Etapa 4: Corner adjustments (se ativado e houver junções)
+    // Etapa 3: Resolução de topologia (após grafo)
+    log('Etapa 3: resolveTopology');
+    const topo = resolveTopology(split);
+    split = topo.walls;
+    log(`  - Paredes após topologia: ${split.length}`);
+
+    // Etapa 4: Corner adjustments (se ativado)
     if (applyCornerAdjustments && graph.junctions.size > 0) {
       log('Etapa 4: computeCornerAdjustments');
       try {
         const adjustments = computeCornerAdjustments(graph, split);
         if (adjustments && adjustments.size > 0) {
-          log(`  - Ajustes para ${adjustments.size} paredes. Aplicando (criando novas paredes)...`);
+          log(`  - Ajustes para ${adjustments.size} paredes. Aplicando...`);
           split = applyAdjustmentsToWalls(split, adjustments);
           log('  - Reconstruindo grafo após ajustes');
           graph = buildGraph(split);
@@ -105,7 +106,7 @@ export function runGeometryPipeline(
 
     return { walls: split, rooms, graph };
   } catch (err) {
-    console.error('Geometry pipeline error (detalhado):', err);
+    console.error('Geometry pipeline error:', err);
     return { walls: walls, rooms: [], graph: createEmptyWallGraph() };
   }
 }
