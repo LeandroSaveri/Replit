@@ -34,7 +34,7 @@ type DragState =
   | { kind: 'room-vertex'; roomId: string; vtxIdx: number; origPts: Vec2[]; ds: Vec2 }
   | { kind: 'room-edge'; roomId: string; edgeIdx: number; origPts: Vec2[]; ds: Vec2 }
   | { kind: 'room'; id: string; origPts: Vec2[]; ds: Vec2 }
-  | { kind: 'wall-vertex'; wallId: string; vertex: 'start' | 'end'; origPos: Vec2; ds: Vec2; affectedWallIds: string[]; currentPos?: Vec2 }
+  | { kind: 'wall-vertex'; wallId: string; vertex: 'start' | 'end'; origPos: Vec2; ds: Vec2; affectedWallIds: string[] }
   | { kind: 'wall-push'; wallId: string; origStart: Vec2; origEnd: Vec2; ds: Vec2; affectedWallIds: string[] }
   | { kind: 'wall-move'; wallId: string; origStart: Vec2; origEnd: Vec2; ds: Vec2; affectedWallIds: string[] };
 
@@ -312,24 +312,26 @@ export class SelectToolHandler implements ToolHandler {
         if (!wall) return;
         state.select(hit.wallId, addToSel);
         const origPos: Vec2 = hit.vertex === 'start' ? [...wall.start] as Vec2 : [...wall.end] as Vec2;
-
+        
         const topology = this.getTopology();
-        const connectedWallIds: string[] = [];
+        const affectedIds: string[] = [hit.wallId];
+        
         if (topology) {
           const connected = topology.getWallsConnectedToVertex(origPos, hit.wallId);
           for (const conn of connected) {
-            connectedWallIds.push(conn.id);
+            if (!affectedIds.includes(conn.id)) {
+              affectedIds.push(conn.id);
+            }
           }
         }
-
+        
         this.drag = {
           kind: 'wall-vertex',
           wallId: hit.wallId,
           vertex: hit.vertex,
           origPos,
           ds: pos,
-          affectedWallIds: [hit.wallId, ...connectedWallIds],
-          currentPos: origPos,
+          affectedWallIds: affectedIds,
         };
         break;
       }
@@ -461,20 +463,20 @@ export class SelectToolHandler implements ToolHandler {
 
         for (const wid of drag.affectedWallIds) {
           const w = scene.walls.find(wall => wall.id === wid);
-          if (w) {
-            const isStartAtOrig = this.arePointsEqual(w.start, drag.origPos);
-            const isEndAtOrig = this.arePointsEqual(w.end, drag.origPos);
-
+          if (!w) continue;
+          
+          const isStartAtOrig = this.arePointsEqual(w.start, drag.origPos);
+          const isEndAtOrig = this.arePointsEqual(w.end, drag.origPos);
+          
+          if (isStartAtOrig || isEndAtOrig) {
             const newStart = isStartAtOrig ? newPos : [...w.start] as Vec2;
             const newEnd = isEndAtOrig ? newPos : [...w.end] as Vec2;
-
             updates.push({ id: wid, start: newStart, end: newEnd });
           }
         }
 
         if (updates.length > 0) {
           state._liveUpdateWallsBatch(updates);
-          drag.affectedWallIds = updates.map(u => u.id);
         }
         break;
       }
@@ -532,8 +534,10 @@ export class SelectToolHandler implements ToolHandler {
         const isStart = this.arePointsEqual(conn.start, wall.start);
         const newConnStart = isStart ? newStart : conn.start;
         const newConnEnd = (!isStart && this.arePointsEqual(conn.end, wall.start)) ? newStart : conn.end;
-        updates.push({ id: conn.id, start: newConnStart, end: newConnEnd });
-        affectedIds.push(conn.id);
+        if (!updates.some(u => u.id === conn.id)) {
+          updates.push({ id: conn.id, start: newConnStart, end: newConnEnd });
+          affectedIds.push(conn.id);
+        }
       }
       for (const conn of connectedAtEnd) {
         if (updates.some(u => u.id === conn.id)) continue;
@@ -546,7 +550,6 @@ export class SelectToolHandler implements ToolHandler {
       state._liveUpdateWallsBatch(updates);
     } else {
       state._liveUpdateWall(wallId, newStart, newEnd);
-      updates.push({ id: wallId, start: newStart, end: newEnd });
     }
 
     return affectedIds;
@@ -600,6 +603,7 @@ export class SelectToolHandler implements ToolHandler {
         }
         if (updates.length > 0) {
           state.updateWallsBatch(updates);
+          applyGeometryPipeline(scene);
         }
         break;
       }
