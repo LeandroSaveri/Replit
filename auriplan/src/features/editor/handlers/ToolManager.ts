@@ -85,6 +85,14 @@ export class ToolManager {
     this.currentHandler?.handleEvent(event);
   }
 
+  /**
+   * Retorna o handler atualmente ativo.
+   * Útil para ações específicas da ferramenta que não são acionadas por eventos de interação.
+   */
+  getCurrentHandler(): ToolHandler | null {
+    return this.currentHandler;
+  }
+
   destroy(): void {
     this.unsubscribe?.();
     this.currentHandler?.reset();
