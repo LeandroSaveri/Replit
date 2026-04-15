@@ -375,15 +375,17 @@ export class SelectToolHandler implements ToolHandler {
     let snapType: SnapType | null = null;
     if (this.drag.kind === 'wall-vertex' || this.drag.kind === 'wall-move' || this.drag.kind === 'wall-push') {
       const walls = state.scenes.find(s => s.id === state.currentSceneId)?.walls ?? [];
+      // Obtém o zoom da viewport a partir do evento
+      const zoom = event.viewportZoom ?? 1;
       const snapResult = SnapSolver.computeSnap(pos, walls, undefined, {
         enableVertex: true,
         enableGrid: state.snap.grid,
         enableMidpoint: state.snap.midpoints,
         enableWall: state.snap.perpendicular,
         enableAngle: false,
-        zoom: 60,
+        zoom,                       // zoom dinâmico
         gridSize: state.grid.size,
-        snapTol: state.snap.distance / 60,
+        snapTol: state.snap.distance, // tolerância base em metros
       });
       snappedPos = snapResult.point;
       snapType = snapResult.type;
