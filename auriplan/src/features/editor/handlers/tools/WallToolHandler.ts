@@ -1,4 +1,3 @@
-// src/features/editor/handlers/tools/WallToolHandler.ts
 // ============================================================
 // WallToolHandler — click-to-click (MagicPlan style)
 // Flow: click(1) = set start → move = preview → click(2) = commit + new start
@@ -54,7 +53,7 @@ export class WallToolHandler implements ToolHandler {
   }
 
   private onDown(event: InteractionEvent): void {
-    const snapped = this.snap(event.position);
+    const snapped = this.snap(event);
 
     if (this.mode === 'idle') {
       this.startPoint = snapped;
@@ -66,7 +65,7 @@ export class WallToolHandler implements ToolHandler {
     }
 
     if (!this.startPoint) { this.reset(); return; }
-    const end = this.snap(event.position, this.startPoint);
+    const end = this.snap(event, this.startPoint);
     const length = Math.hypot(end[0] - this.startPoint[0], end[1] - this.startPoint[1]);
 
     if (length >= MIN_WALL_LENGTH) {
@@ -90,7 +89,7 @@ export class WallToolHandler implements ToolHandler {
         pos = [this.startPoint[0], this.startPoint[1] + dy];
       }
     }
-    const snapResult = this.snapWithDetails(pos, this.startPoint);
+    const snapResult = this.snapWithDetails(event, this.startPoint);
     this.currentPoint = snapResult.point;
     this.updatePreview(snapResult.point, snapResult.type);
   }
@@ -127,29 +126,31 @@ export class WallToolHandler implements ToolHandler {
     this.onPreviewChange(preview);
   }
 
-  private snap(point: Vec2, startPoint?: Vec2): Vec2 {
-    return this.snapWithDetails(point, startPoint).point;
+  private snap(event: InteractionEvent, startPoint?: Vec2): Vec2 {
+    return this.snapWithDetails(event, startPoint).point;
   }
 
-  private snapWithDetails(point: Vec2, startPoint?: Vec2): { point: Vec2; type: any } {
+  private snapWithDetails(event: InteractionEvent, startPoint?: Vec2): { point: Vec2; type: any } {
     const state = this.store.getState();
     const scene = state.scenes.find(s => s.id === state.currentSceneId);
     const walls = scene?.walls ?? [];
     const snapConfig = state.snap;
     const gridSize = state.grid.size;
-    const scale = 60;
+    // Utiliza o zoom da viewport vindo do evento, com fallback para 1 (evita divisão por zero)
+    const zoom = event.viewportZoom ?? 1;
+
     const options = {
       gridSize,
-      snapTol: snapConfig.distance / scale,
+      snapTol: snapConfig.distance, // a tolerância base (em metros)
       enableGrid: snapConfig.grid,
       enableVertex: snapConfig.endpoints,
       enableMidpoint: snapConfig.midpoints,
       enableIntersection: snapConfig.edges,
       enableWall: snapConfig.perpendicular,
       enableAngle: snapConfig.angle,
-      zoom: scale,
+      zoom, // zoom real da viewport
     };
-    const result = SnapSolver.computeSnap(point, walls, startPoint, options);
+    const result = SnapSolver.computeSnap(event.position, walls, startPoint, options);
     return { point: result.point, type: result.type };
   }
 }
