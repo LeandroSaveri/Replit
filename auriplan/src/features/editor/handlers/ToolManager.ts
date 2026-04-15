@@ -60,13 +60,12 @@ export class ToolManager {
         this.currentHandler = new WallToolHandler(this.store, this.onPreviewChange);
         break;
       case 'select':
-        // ✅ CORREÇÃO: passar uma FUNÇÃO que retorna a topologia atualizada
         this.currentHandler = new SelectToolHandler(
           this.store,
           this.onPreviewChange,
           this.onHoverChange,
           this.onCursorChange,
-          () => this.wallTopology || undefined,   // callback para obter topologia viva
+          () => this.wallTopology || undefined,
         );
         break;
       case 'room':
