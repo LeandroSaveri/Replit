@@ -1,9 +1,11 @@
 // ============================================
-// Render2D Engine - 2D Canvas rendering (POLYGON-BASED WALLS)
+// Render2D Engine - 2D Canvas rendering (UNIFIED POLYGON-BASED WALLS)
 // ============================================
 
 import type { Vec2, Wall, Room, Door, Window, Furniture, Measurement } from '@auriplan-types';
+import type { IGraphTopology } from '@core/topology/IGraphTopology';
 import { vec2, geometry } from '@core/math/vector';
+import { GEOM_TOL } from '@core/geometry/geometryConstants';
 
 export interface Render2DConfig {
   antialias: boolean;
@@ -14,7 +16,7 @@ export interface Render2DConfig {
   hoverColor: string;
   wallColor: string;
   roomFillOpacity: number;
-  defaultWallThickness: number; // espessura padrão para preview
+  defaultWallThickness: number;
 }
 
 export const DEFAULT_RENDER2D_CONFIG: Render2DConfig = {
@@ -24,9 +26,9 @@ export const DEFAULT_RENDER2D_CONFIG: Render2DConfig = {
   showDimensions: true,
   selectionColor: '#3b82f6',
   hoverColor: '#60a5fa',
-  wallColor: '#cbd5e1',     // cinza mais suave para paredes
+  wallColor: '#cbd5e1',
   roomFillOpacity: 0.2,
-  defaultWallThickness: 0.15, // 15cm padrão
+  defaultWallThickness: 0.15,
 };
 
 export interface ViewTransform {
@@ -40,63 +42,51 @@ export class Render2DEngine {
   private ctx: CanvasRenderingContext2D | null = null;
   private config: Render2DConfig;
   private transform: ViewTransform;
+  private topology?: IGraphTopology;
 
-  constructor(config: Partial<Render2DConfig> = {}) {
+  constructor(config: Partial<Render2DConfig> = {}, topology?: IGraphTopology) {
     this.config = { ...DEFAULT_RENDER2D_CONFIG, ...config };
-    this.transform = {
-      scale: 20,
-      offset: [0, 0],
-      rotation: 0,
-    };
+    this.transform = { scale: 20, offset: [0, 0], rotation: 0 };
+    this.topology = topology;
   }
 
-  // Initialize canvas
+  setTopology(topology: IGraphTopology) {
+    this.topology = topology;
+  }
+
   initialize(canvas: HTMLCanvasElement): boolean {
     this.canvas = canvas;
-    const ctx = canvas.getContext('2d', {
-      alpha: false,
-      antialias: this.config.antialias,
-    });
-
+    const ctx = canvas.getContext('2d', { alpha: false, antialias: this.config.antialias });
     if (!ctx) return false;
-
     this.ctx = ctx as CanvasRenderingContext2D;
     this.resize(canvas.width, canvas.height);
     return true;
   }
 
-  // Resize canvas - resets context transform
   resize(width: number, height: number): void {
     if (!this.canvas) return;
-    
     this.canvas.width = width;
     this.canvas.height = height;
-    
     if (this.ctx) {
       this.ctx.imageSmoothingEnabled = this.config.antialias;
       this.ctx.setTransform(1, 0, 0, 1, 0, 0);
     }
   }
 
-  // Set view transform
   setTransform(transform: Partial<ViewTransform>): void {
     this.transform = { ...this.transform, ...transform };
   }
 
-  // Get view transform
   getTransform(): ViewTransform {
     return { ...this.transform };
   }
 
-  // Clear canvas with professional CAD-like background
   clear(color: string = '#f8fafc'): void {
     if (!this.ctx || !this.canvas) return;
-    
     this.ctx.fillStyle = color;
     this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
   }
 
-  // Main render method (with per-layer try/catch protection)
   render(params: {
     walls: Wall[];
     rooms: Room[];
@@ -109,89 +99,31 @@ export class Render2DEngine {
     previewLine?: { start: Vec2; end: Vec2; thickness?: number } | null;
   }): void {
     if (!this.ctx || !this.canvas) return;
-
-    // Reset transform before starting
     this.ctx.setTransform(1, 0, 0, 1, 0, 0);
-
     this.clear();
     this.ctx.save();
-
-    // Apply view transform
     this.applyTransform();
-
-    // Set miter limit for clean corners (when stroking, but fill doesn't need)
     this.ctx.lineJoin = 'miter';
     this.ctx.lineCap = 'butt';
     this.ctx.miterLimit = 2;
 
-    // Render grid (behind everything)
-    if (this.config.showGrid) {
-      try {
-        this.renderGrid();
-      } catch (e) {
-        console.error("RenderGrid error", e);
-      }
-    }
-
-    // Render layers (back to front) with individual protection
-    try {
-      this.renderRooms(params.rooms, params.selectedIds, params.hoveredId);
-    } catch (e) {
-      console.error("RenderRooms error", e);
-    }
-
-    try {
-      this.renderWalls(params.walls, params.selectedIds, params.hoveredId);
-    } catch (e) {
-      console.error("RenderWalls error", e);
-    }
-
-    try {
-      this.renderDoors(params.doors, params.walls);
-    } catch (e) {
-      console.error("RenderDoors error", e);
-    }
-
-    try {
-      this.renderWindows(params.windows, params.walls);
-    } catch (e) {
-      console.error("RenderWindows error", e);
-    }
-
-    try {
-      this.renderFurniture(params.furniture, params.selectedIds, params.hoveredId);
-    } catch (e) {
-      console.error("RenderFurniture error", e);
-    }
-
-    try {
-      this.renderMeasurements(params.measurements);
-    } catch (e) {
-      console.error("RenderMeasurements error", e);
-    }
-
-    try {
-      this.renderPreviewLine(params.previewLine);
-    } catch (e) {
-      console.error("RenderPreviewLine error", e);
-    }
-
-    try {
-      this.renderSelectionHandles(params.walls, params.rooms, params.furniture, params.selectedIds);
-    } catch (e) {
-      console.error("RenderHandles error", e);
-    }
+    if (this.config.showGrid) this.renderGrid();
+    this.renderRooms(params.rooms, params.selectedIds, params.hoveredId);
+    this.renderUnifiedWalls(params.walls, params.selectedIds, params.hoveredId);
+    this.renderDoors(params.doors, params.walls);
+    this.renderWindows(params.windows, params.walls);
+    this.renderFurniture(params.furniture, params.selectedIds, params.hoveredId);
+    this.renderMeasurements(params.measurements);
+    this.renderPreviewLine(params.previewLine);
+    this.renderSelectionHandles(params.walls, params.rooms, params.furniture, params.selectedIds);
 
     this.ctx.restore();
   }
 
-  // Apply view transformation
   private applyTransform(): void {
     if (!this.ctx || !this.canvas) return;
-
     const centerX = this.canvas.width / 2;
     const centerY = this.canvas.height / 2;
-
     this.ctx.translate(centerX + this.transform.offset[0], centerY + this.transform.offset[1]);
     this.ctx.scale(this.transform.scale, -this.transform.scale);
     this.ctx.rotate(this.transform.rotation);
@@ -202,16 +134,14 @@ export class Render2DEngine {
     if (!this.ctx) return;
 
     const viewRect = this.getViewBounds();
-    const stepMajor = 1.0;      // 1 meter major grid
-    const stepMinor = 0.5;      // 0.5 meter minor grid
+    const stepMajor = 1.0;
+    const stepMinor = 0.5;
 
-    // Calculate start and end in world coordinates
     const startX = Math.floor(viewRect.minX / stepMajor) * stepMajor;
     const startY = Math.floor(viewRect.minY / stepMajor) * stepMajor;
     const endX = viewRect.maxX;
     const endY = viewRect.maxY;
 
-    // Draw minor grid (lighter)
     this.ctx.beginPath();
     this.ctx.strokeStyle = '#e2e8f0';
     this.ctx.lineWidth = 0.008;
@@ -230,7 +160,6 @@ export class Render2DEngine {
       this.ctx.stroke();
     }
 
-    // Draw major grid (darker)
     this.ctx.beginPath();
     this.ctx.strokeStyle = '#cbd5e1';
     this.ctx.lineWidth = 0.015;
@@ -249,7 +178,6 @@ export class Render2DEngine {
       this.ctx.stroke();
     }
 
-    // Draw axes if enabled
     if (this.config.showAxes) {
       this.ctx.beginPath();
       this.ctx.strokeStyle = '#94a3b8';
@@ -262,13 +190,10 @@ export class Render2DEngine {
     }
   }
 
-  // Helper: get visible world bounds
   private getViewBounds(): { minX: number; minY: number; maxX: number; maxY: number } {
     if (!this.canvas) return { minX: -10, minY: -10, maxX: 10, maxY: 10 };
-    
     const topLeft = this.screenToWorld(0, 0);
     const bottomRight = this.screenToWorld(this.canvas.width, this.canvas.height);
-    
     return {
       minX: Math.min(topLeft[0], bottomRight[0]),
       minY: Math.min(topLeft[1], bottomRight[1]),
@@ -277,66 +202,135 @@ export class Render2DEngine {
     };
   }
 
-  // ==================== POLYGON CENTROID ====================
-  private polygonCentroid(points: Vec2[]): Vec2 {
-    if (points.length === 0) return [0, 0];
-
-    let twiceArea = 0;
-    let cx = 0;
-    let cy = 0;
-
-    for (let i = 0, j = points.length - 1; i < points.length; j = i++) {
-      const p1 = points[j];
-      const p2 = points[i];
-
-      const f = p1[0] * p2[1] - p2[0] * p1[1];
-      twiceArea += f;
-      cx += (p1[0] + p2[0]) * f;
-      cy += (p1[1] + p2[1]) * f;
-    }
-
-    if (Math.abs(twiceArea) < 1e-9) {
-      const sum = points.reduce(
-        (acc, p) => [acc[0] + p[0], acc[1] + p[1]] as Vec2,
-        [0, 0] as Vec2
-      );
-      return [sum[0] / points.length, sum[1] / points.length];
-    }
-
-    const factor = 1 / (3 * twiceArea);
-    return [cx * factor, cy * factor];
-  }
-
-  // ==================== WALL RENDERING (POLYGON-BASED) ====================
-  private renderWalls(
+  // ==================== UNIFIED WALL RENDERING ====================
+  private renderUnifiedWalls(
     walls: Wall[],
     selectedIds: string[],
     hoveredId: string | null
   ): void {
     if (!this.ctx) return;
 
-    for (const wall of walls) {
-      if (!wall.visible) continue;
+    if (!this.topology || walls.length < 2) {
+      this.renderWallsLegacy(walls, selectedIds, hoveredId);
+      return;
+    }
 
+    const visited = new Set<string>();
+    const components: Wall[][] = [];
+
+    for (const wall of walls) {
+      if (visited.has(wall.id)) continue;
+      const component = this.getConnectedComponent(wall.id, walls);
+      component.forEach(w => visited.add(w.id));
+      components.push(component);
+    }
+
+    for (const comp of components) {
+      this.renderWallComponent(comp, selectedIds, hoveredId);
+    }
+  }
+
+  private getConnectedComponent(startId: string, walls: Wall[]): Wall[] {
+    if (!this.topology) return walls.filter(w => w.id === startId);
+    const result: Wall[] = [];
+    const queue = [startId];
+    const visited = new Set<string>();
+    const wallMap = new Map(walls.map(w => [w.id, w]));
+
+    while (queue.length > 0) {
+      const id = queue.shift()!;
+      if (visited.has(id)) continue;
+      visited.add(id);
+      const wall = wallMap.get(id);
+      if (wall) result.push(wall);
+
+      const connected = this.topology.getWallsConnectedToWall(id);
+      for (const conn of connected) {
+        if (!visited.has(conn.id)) queue.push(conn.id);
+      }
+    }
+    return result;
+  }
+
+  private renderWallComponent(
+    walls: Wall[],
+    selectedIds: string[],
+    hoveredId: string | null
+  ): void {
+    if (!this.ctx || walls.length === 0) return;
+
+    if (walls.length === 1) {
+      this.renderSingleWall(walls[0], selectedIds.includes(walls[0].id), hoveredId === walls[0].id);
+      return;
+    }
+
+    const graph = this.buildLocalGraph(walls);
+    this.drawComponentContour(walls, graph, selectedIds, hoveredId);
+  }
+
+  private buildLocalGraph(walls: Wall[]): Map<string, { start: Set<string>; end: Set<string> }> {
+    const graph = new Map<string, { start: Set<string>; end: Set<string> }>();
+    const tol = GEOM_TOL;
+
+    for (const w of walls) {
+      if (!graph.has(w.id)) graph.set(w.id, { start: new Set(), end: new Set() });
+    }
+
+    for (let i = 0; i < walls.length; i++) {
+      for (let j = i + 1; j < walls.length; j++) {
+        const a = walls[i];
+        const b = walls[j];
+        if (vec2.distance(a.start, b.start) < tol) {
+          graph.get(a.id)!.start.add(b.id);
+          graph.get(b.id)!.start.add(a.id);
+        }
+        if (vec2.distance(a.start, b.end) < tol) {
+          graph.get(a.id)!.start.add(b.id);
+          graph.get(b.id)!.end.add(a.id);
+        }
+        if (vec2.distance(a.end, b.start) < tol) {
+          graph.get(a.id)!.end.add(b.id);
+          graph.get(b.id)!.start.add(a.id);
+        }
+        if (vec2.distance(a.end, b.end) < tol) {
+          graph.get(a.id)!.end.add(b.id);
+          graph.get(b.id)!.end.add(a.id);
+        }
+      }
+    }
+    return graph;
+  }
+
+  private drawComponentContour(
+    walls: Wall[],
+    graph: Map<string, { start: Set<string>; end: Set<string> }>,
+    selectedIds: string[],
+    hoveredId: string | null
+  ): void {
+    if (!this.ctx) return;
+
+    for (const wall of walls) {
       const isSelected = selectedIds.includes(wall.id);
       const isHovered = hoveredId === wall.id;
 
-      // Compute wall rectangle polygon
-      const polygon = this.getWallPolygon(wall.start, wall.end, wall.thickness);
-      if (!polygon) continue;
+      const connStart = graph.get(wall.id)!.start;
+      const connEnd = graph.get(wall.id)!.end;
 
-      // Fill wall body
+      const startLeftExt = this.getExtendedOffset(wall, 'start', 'left', walls, connStart);
+      const startRightExt = this.getExtendedOffset(wall, 'start', 'right', walls, connStart);
+      const endLeftExt = this.getExtendedOffset(wall, 'end', 'left', walls, connEnd);
+      const endRightExt = this.getExtendedOffset(wall, 'end', 'right', walls, connEnd);
+
       this.ctx.beginPath();
-      this.ctx.moveTo(polygon[0][0], polygon[0][1]);
-      for (let i = 1; i < polygon.length; i++) {
-        this.ctx.lineTo(polygon[i][0], polygon[i][1]);
-      }
+      this.ctx.moveTo(startLeftExt[0], startLeftExt[1]);
+      this.ctx.lineTo(endLeftExt[0], endLeftExt[1]);
+      this.ctx.lineTo(endRightExt[0], endRightExt[1]);
+      this.ctx.lineTo(startRightExt[0], startRightExt[1]);
       this.ctx.closePath();
 
       this.ctx.fillStyle = wall.color ?? this.config.wallColor;
       this.ctx.fill();
 
-      // Outline for selection/hover
       if (isSelected || isHovered) {
         this.ctx.strokeStyle = isSelected ? this.config.selectionColor : this.config.hoverColor;
         this.ctx.lineWidth = 0.02;
@@ -345,16 +339,13 @@ export class Render2DEngine {
         this.ctx.setLineDash([]);
       }
 
-      // Endpoint dots (small, always visible for reference)
       this.renderPoint(wall.start, 0.04, isSelected ? this.config.selectionColor : '#94a3b8');
       this.renderPoint(wall.end, 0.04, isSelected ? this.config.selectionColor : '#94a3b8');
 
-      // Wall length label (when zoomed in enough)
       if (this.config.showDimensions && this.transform.scale > 15) {
-        const length = Math.hypot(wall.end[0] - wall.start[0], wall.end[1] - wall.start[1]);
+        const length = vec2.distance(wall.start, wall.end);
         if (length >= 0.2) {
-          const mid: Vec2 = [(wall.start[0] + wall.end[0]) / 2, (wall.start[1] + wall.end[1]) / 2];
-          // Offset label perpendicular to wall direction
+          const mid = vec2.midpoint(wall.start, wall.end);
           const wdx = wall.end[0] - wall.start[0];
           const wdy = wall.end[1] - wall.start[1];
           const len = Math.hypot(wdx, wdy) || 1;
@@ -366,67 +357,128 @@ export class Render2DEngine {
     }
   }
 
-  // Helper: compute 4 vertices of a wall as a polygon
+  private getExtendedOffset(
+    wall: Wall,
+    side: 'start' | 'end',
+    leftRight: 'left' | 'right',
+    allWalls: Wall[],
+    connectedIds: Set<string>
+  ): Vec2 {
+    const thickness = wall.thickness;
+    const dir = vec2.normalize(vec2.sub(wall.end, wall.start));
+    const perp: Vec2 = leftRight === 'left' ? [-dir[1], dir[0]] : [dir[1], -dir[0]];
+    const half = thickness / 2;
+    const basePoint = side === 'start' ? wall.start : wall.end;
+    const offsetPoint: Vec2 = [basePoint[0] + perp[0] * half, basePoint[1] + perp[1] * half];
+
+    if (connectedIds.size === 0) return offsetPoint;
+
+    const connectedWalls = allWalls.filter(w => connectedIds.has(w.id));
+    for (const other of connectedWalls) {
+      const otherOffsets = this.getWallOffsets(other);
+      const lineDir = side === 'start' ? vec2.negate(dir) : dir;
+      const lineStart = offsetPoint;
+      const lineEnd: Vec2 = [lineStart[0] + lineDir[0] * 10, lineStart[1] + lineDir[1] * 10];
+
+      const otherLines = [
+        [otherOffsets.p1, otherOffsets.p2],
+        [otherOffsets.p2, otherOffsets.p3],
+        [otherOffsets.p3, otherOffsets.p4],
+        [otherOffsets.p4, otherOffsets.p1],
+      ];
+      for (const [a, b] of otherLines) {
+        const int = geometry.lineIntersection(lineStart, lineEnd, a, b);
+        if (int) {
+          const dist = vec2.distance(offsetPoint, int);
+          if (dist < thickness * 3) {
+            return int;
+          }
+        }
+      }
+    }
+    return offsetPoint;
+  }
+
+  private getWallOffsets(wall: Wall) {
+    const dx = wall.end[0] - wall.start[0];
+    const dy = wall.end[1] - wall.start[1];
+    const len = Math.hypot(dx, dy);
+    if (len < 1e-6) return { p1: wall.start, p2: wall.start, p3: wall.start, p4: wall.start };
+    const nx = -dy / len;
+    const ny = dx / len;
+    const half = wall.thickness / 2;
+    return {
+      p1: [wall.start[0] + nx * half, wall.start[1] + ny * half] as Vec2,
+      p2: [wall.start[0] - nx * half, wall.start[1] - ny * half] as Vec2,
+      p3: [wall.end[0] - nx * half, wall.end[1] - ny * half] as Vec2,
+      p4: [wall.end[0] + nx * half, wall.end[1] + ny * half] as Vec2,
+    };
+  }
+
+  private renderWallsLegacy(
+    walls: Wall[],
+    selectedIds: string[],
+    hoveredId: string | null
+  ): void {
+    for (const wall of walls) {
+      if (!wall.visible) continue;
+      this.renderSingleWall(wall, selectedIds.includes(wall.id), hoveredId === wall.id);
+    }
+  }
+
+  private renderSingleWall(wall: Wall, isSelected: boolean, isHovered: boolean): void {
+    if (!this.ctx) return;
+    const polygon = this.getWallPolygon(wall.start, wall.end, wall.thickness);
+    if (!polygon) return;
+
+    this.ctx.beginPath();
+    this.ctx.moveTo(polygon[0][0], polygon[0][1]);
+    for (let i = 1; i < polygon.length; i++) this.ctx.lineTo(polygon[i][0], polygon[i][1]);
+    this.ctx.closePath();
+    this.ctx.fillStyle = wall.color ?? this.config.wallColor;
+    this.ctx.fill();
+
+    if (isSelected || isHovered) {
+      this.ctx.strokeStyle = isSelected ? this.config.selectionColor : this.config.hoverColor;
+      this.ctx.lineWidth = 0.02;
+      this.ctx.setLineDash([0.05, 0.05]);
+      this.ctx.stroke();
+      this.ctx.setLineDash([]);
+    }
+
+    this.renderPoint(wall.start, 0.04, isSelected ? this.config.selectionColor : '#94a3b8');
+    this.renderPoint(wall.end, 0.04, isSelected ? this.config.selectionColor : '#94a3b8');
+
+    if (this.config.showDimensions && this.transform.scale > 15) {
+      const length = vec2.distance(wall.start, wall.end);
+      if (length >= 0.2) {
+        const mid = vec2.midpoint(wall.start, wall.end);
+        const wdx = wall.end[0] - wall.start[0];
+        const wdy = wall.end[1] - wall.start[1];
+        const len = Math.hypot(wdx, wdy) || 1;
+        const perp: Vec2 = [-wdy / len * 0.18, wdx / len * 0.18];
+        const labelPos: Vec2 = [mid[0] + perp[0], mid[1] + perp[1]];
+        this.renderDimensionLabel(labelPos, length, isSelected ? '#1d4ed8' : '#475569');
+      }
+    }
+  }
+
   private getWallPolygon(start: Vec2, end: Vec2, thickness: number): Vec2[] | null {
     const dx = end[0] - start[0];
     const dy = end[1] - start[1];
     const len = Math.hypot(dx, dy);
     if (len < 1e-6) return null;
-
-    // Unit direction and perpendicular normal
     const dirX = dx / len;
     const dirY = dy / len;
     const perpX = -dirY;
     const perpY = dirX;
-
     const offset = thickness / 2;
-    const offX = perpX * offset;
-    const offY = perpY * offset;
-
-    // Four corners
-    const p1: Vec2 = [start[0] + offX, start[1] + offY];
-    const p2: Vec2 = [end[0] + offX, end[1] + offY];
-    const p3: Vec2 = [end[0] - offX, end[1] - offY];
-    const p4: Vec2 = [start[0] - offX, start[1] - offY];
-
-    return [p1, p2, p3, p4];
-  }
-
-  // ==================== PREVIEW WALL (POLYGON-BASED) ====================
-  private renderPreviewLine(line: { start: Vec2; end: Vec2; thickness?: number } | null | undefined): void {
-    if (!this.ctx || !line) return;
-
-    const thickness = line.thickness ?? this.config.defaultWallThickness;
-    const polygon = this.getWallPolygon(line.start, line.end, thickness);
-    if (!polygon) return;
-
-    // Fill preview with semi-transparent blue
-    this.ctx.beginPath();
-    this.ctx.moveTo(polygon[0][0], polygon[0][1]);
-    for (let i = 1; i < polygon.length; i++) {
-      this.ctx.lineTo(polygon[i][0], polygon[i][1]);
-    }
-    this.ctx.closePath();
-
-    this.ctx.fillStyle = 'rgba(59, 130, 246, 0.4)'; // #3b82f6 with opacity
-    this.ctx.fill();
-
-    // Optional dashed outline
-    this.ctx.strokeStyle = '#3b82f6';
-    this.ctx.lineWidth = 0.015;
-    this.ctx.setLineDash([0.08, 0.06]);
-    this.ctx.stroke();
-    this.ctx.setLineDash([]);
-
-    // Length label
-    const length = vec2.distance(line.start, line.end);
-    const mid = vec2.midpoint(line.start, line.end);
-    this.renderText(`${length.toFixed(2)}m`, mid, {
-      color: '#3b82f6',
-      fontSize: 0.25,
-      align: 'center',
-      background: '#f8fafc',
-    });
+    return [
+      [start[0] + perpX * offset, start[1] + perpY * offset],
+      [end[0] + perpX * offset, end[1] + perpY * offset],
+      [end[0] - perpX * offset, end[1] - perpY * offset],
+      [start[0] - perpX * offset, start[1] - perpY * offset],
+    ];
   }
 
   // ==================== ROOMS ====================
@@ -445,35 +497,27 @@ export class Render2DEngine {
 
       this.ctx.beginPath();
       this.ctx.moveTo(room.points[0][0], room.points[0][1]);
-      
       for (let i = 1; i < room.points.length; i++) {
         this.ctx.lineTo(room.points[i][0], room.points[i][1]);
       }
-      
       this.ctx.closePath();
 
-      // Fill — use a stronger opacity for visual clarity
       this.ctx.fillStyle = this.hexToRgba(room.floorColor, isSelected ? 0.45 : 0.35);
       this.ctx.fill();
 
-      // Stroke
       this.ctx.strokeStyle = isSelected ? this.config.selectionColor : 
                             isHovered ? this.config.hoverColor : (room.wallColor ?? '#334155');
       this.ctx.lineWidth = isSelected ? 0.06 : 0.04;
       this.ctx.stroke();
 
-      // ── Room label (name + area) ──────────────────────────────
       const centroid = this.polygonCentroid(room.points);
       const area = this.polygonArea(room.points);
 
-      // Sempre exibe o label, independentemente da área
       this.ctx.save();
       const scale = this.transform.scale;
-      // Tamanho de fonte adaptativo, com mínimo legível
       const fontSize = Math.max(0.2, Math.min(0.5, 1.6 / scale));
       const smallFontSize = fontSize * 0.75;
 
-      // Name
       this.ctx.font = `600 ${fontSize}px system-ui, -apple-system, sans-serif`;
       this.ctx.textAlign = 'center';
       this.ctx.textBaseline = 'middle';
@@ -483,14 +527,12 @@ export class Render2DEngine {
       this.ctx.scale(1, -1);
       this.ctx.fillText(room.name || 'Cômodo', 0, -smallFontSize * 0.6);
 
-      // Area label
       this.ctx.font = `${smallFontSize}px system-ui, -apple-system, sans-serif`;
       this.ctx.fillStyle = '#64748b';
       this.ctx.fillText(`${area.toFixed(1)} m²`, 0, fontSize * 0.6);
       this.ctx.restore();
       this.ctx.restore();
 
-      // ── Edge dimension labels (always visible when scale is big enough) ──
       if (this.config.showDimensions && this.transform.scale > 12) {
         for (let i = 0; i < room.points.length; i++) {
           const a = room.points[i];
@@ -502,6 +544,26 @@ export class Render2DEngine {
         }
       }
     }
+  }
+
+  private polygonCentroid(points: Vec2[]): Vec2 {
+    if (points.length === 0) return [0, 0];
+    let twiceArea = 0;
+    let cx = 0, cy = 0;
+    for (let i = 0, j = points.length - 1; i < points.length; j = i++) {
+      const p1 = points[j];
+      const p2 = points[i];
+      const f = p1[0] * p2[1] - p2[0] * p1[1];
+      twiceArea += f;
+      cx += (p1[0] + p2[0]) * f;
+      cy += (p1[1] + p2[1]) * f;
+    }
+    if (Math.abs(twiceArea) < 1e-9) {
+      const sum = points.reduce((acc, p) => [acc[0] + p[0], acc[1] + p[1]] as Vec2, [0, 0]);
+      return [sum[0] / points.length, sum[1] / points.length];
+    }
+    const factor = 1 / (3 * twiceArea);
+    return [cx * factor, cy * factor];
   }
 
   private polygonArea(points: Vec2[]): number {
@@ -541,7 +603,7 @@ export class Render2DEngine {
     this.ctx.restore();
   }
 
-  // ==================== DOORS (unchanged logic, but render over walls) ====================
+  // ==================== DOORS ====================
   private renderDoors(doors: Door[], walls: Wall[]): void {
     if (!this.ctx) return;
 
@@ -552,10 +614,8 @@ export class Render2DEngine {
       if (!wall) continue;
 
       const wallDir = vec2.normalize(vec2.sub(wall.end, wall.start));
-      const wallNormal = vec2.perpendicular(wallDir);
       const doorCenter = vec2.lerp(wall.start, wall.end, door.position);
 
-      // Door frame
       const halfWidth = door.width / 2;
       const p1 = vec2.add(doorCenter, vec2.mul(wallDir, -halfWidth));
       const p2 = vec2.add(doorCenter, vec2.mul(wallDir, halfWidth));
@@ -567,7 +627,6 @@ export class Render2DEngine {
       this.ctx.lineWidth = door.depth ?? 0.05;
       this.ctx.stroke();
 
-      // Door swing arc
       const swingCenter = door.swing === 'left' ? p1 : p2;
       const swingRadius = door.width;
       const startAngle = Math.atan2(wallDir[1], wallDir[0]);
@@ -583,7 +642,7 @@ export class Render2DEngine {
     }
   }
 
-  // ==================== WINDOWS (unchanged) ====================
+  // ==================== WINDOWS ====================
   private renderWindows(windows: Window[], walls: Wall[]): void {
     if (!this.ctx) return;
 
@@ -600,7 +659,6 @@ export class Render2DEngine {
       const p1 = vec2.add(windowCenter, vec2.mul(wallDir, -halfWidth));
       const p2 = vec2.add(windowCenter, vec2.mul(wallDir, halfWidth));
 
-      // Window frame
       this.ctx.beginPath();
       this.ctx.moveTo(p1[0], p1[1]);
       this.ctx.lineTo(p2[0], p2[1]);
@@ -608,7 +666,6 @@ export class Render2DEngine {
       this.ctx.lineWidth = 0.08;
       this.ctx.stroke();
 
-      // Glass
       this.ctx.beginPath();
       this.ctx.moveTo(p1[0], p1[1]);
       this.ctx.lineTo(p2[0], p2[1]);
@@ -616,7 +673,6 @@ export class Render2DEngine {
       this.ctx.lineWidth = 0.04;
       this.ctx.stroke();
 
-      // Sash lines
       const mid = vec2.midpoint(p1, p2);
       const normal = vec2.perpendicular(wallDir);
       const sashStart = vec2.add(mid, vec2.mul(normal, -0.05));
@@ -631,7 +687,7 @@ export class Render2DEngine {
     }
   }
 
-  // ==================== FURNITURE (unchanged) ====================
+  // ==================== FURNITURE ====================
   private renderFurniture(
     furniture: Furniture[],
     selectedIds: string[],
@@ -659,17 +715,14 @@ export class Render2DEngine {
       this.ctx.translate(_ipx, _ipz);
       this.ctx.rotate(-_iry);
 
-      // Furniture body
       this.ctx.fillStyle = item.color;
       this.ctx.fillRect(-halfW, -halfD, halfW * 2, halfD * 2);
 
-      // Border
       this.ctx.strokeStyle = isSelected ? this.config.selectionColor : 
                             isHovered ? this.config.hoverColor : '#475569';
       this.ctx.lineWidth = isSelected ? 0.03 : 0.02;
       this.ctx.strokeRect(-halfW, -halfD, halfW * 2, halfD * 2);
 
-      // Selection highlight
       if (isSelected) {
         this.ctx.strokeStyle = this.config.selectionColor;
         this.ctx.lineWidth = 0.02;
@@ -678,7 +731,6 @@ export class Render2DEngine {
         this.ctx.setLineDash([]);
       }
 
-      // Direction indicator
       this.ctx.fillStyle = '#ffffff';
       this.ctx.beginPath();
       this.ctx.moveTo(0, -halfD + 0.1);
@@ -691,7 +743,7 @@ export class Render2DEngine {
     }
   }
 
-  // ==================== MEASUREMENTS (improved) ====================
+  // ==================== MEASUREMENTS ====================
   private renderMeasurements(measurements: Measurement[]): void {
     if (!this.ctx || !this.config.showDimensions) return;
 
@@ -704,7 +756,6 @@ export class Render2DEngine {
         measurement.end[0] - measurement.start[0]
       );
 
-      // Measurement line
       this.ctx.beginPath();
       this.ctx.moveTo(measurement.start[0], measurement.start[1]);
       this.ctx.lineTo(measurement.end[0], measurement.end[1]);
@@ -712,7 +763,6 @@ export class Render2DEngine {
       this.ctx.lineWidth = 0.02;
       this.ctx.stroke();
 
-      // Extension lines
       const normal = vec2.normalize([-Math.sin(angle), Math.cos(angle)]);
       const extLength = 0.2;
 
@@ -740,7 +790,6 @@ export class Render2DEngine {
 
       const displayValue = (measurement.value ?? vec2.distance(measurement.start, measurement.end)).toFixed(2);
       
-      // Label with background for readability
       this.renderText(`${displayValue} ${measurement.unit}`, mid, {
         color: '#1e40af',
         fontSize: 0.25,
@@ -750,93 +799,41 @@ export class Render2DEngine {
     }
   }
 
-  // ==================== UTILITIES ====================
-  private renderPoint(position: Vec2, radius: number, color: string): void {
-    if (!this.ctx) return;
+  // ==================== PREVIEW WALL ====================
+  private renderPreviewLine(line: { start: Vec2; end: Vec2; thickness?: number } | null | undefined): void {
+    if (!this.ctx || !line) return;
 
-    this.ctx.fillStyle = color;
+    const thickness = line.thickness ?? this.config.defaultWallThickness;
+    const polygon = this.getWallPolygon(line.start, line.end, thickness);
+    if (!polygon) return;
+
     this.ctx.beginPath();
-    this.ctx.arc(position[0], position[1], radius, 0, Math.PI * 2);
-    this.ctx.fill();
-  }
-
-  private renderText(
-    text: string,
-    position: Vec2,
-    options: {
-      color?: string;
-      fontSize?: number;
-      align?: 'left' | 'center' | 'right';
-      background?: string;
-    } = {}
-  ): void {
-    if (!this.ctx) return;
-
-    const { color = '#1e293b', fontSize = 0.2, align = 'center', background } = options;
-
-    this.ctx.save();
-    this.ctx.scale(1, -1);
-    this.ctx.font = `${fontSize * 10}px Inter, system-ui, sans-serif`;
-    this.ctx.fillStyle = color;
-    this.ctx.textAlign = align;
-    this.ctx.textBaseline = 'middle';
-
-    const y = -position[1];
-
-    if (background) {
-      const metrics = this.ctx.measureText(text);
-      const padding = fontSize * 0.2;
-      
-      this.ctx.fillStyle = background;
-      this.ctx.fillRect(
-        position[0] - metrics.width / 2 - padding,
-        y - fontSize / 2 - padding,
-        metrics.width + padding * 2,
-        fontSize + padding * 2
-      );
-      
-      this.ctx.fillStyle = color;
+    this.ctx.moveTo(polygon[0][0], polygon[0][1]);
+    for (let i = 1; i < polygon.length; i++) {
+      this.ctx.lineTo(polygon[i][0], polygon[i][1]);
     }
+    this.ctx.closePath();
 
-    this.ctx.fillText(text, position[0], y);
-    this.ctx.restore();
+    this.ctx.fillStyle = 'rgba(59, 130, 246, 0.4)';
+    this.ctx.fill();
+
+    this.ctx.strokeStyle = '#3b82f6';
+    this.ctx.lineWidth = 0.015;
+    this.ctx.setLineDash([0.08, 0.06]);
+    this.ctx.stroke();
+    this.ctx.setLineDash([]);
+
+    const length = vec2.distance(line.start, line.end);
+    const mid = vec2.midpoint(line.start, line.end);
+    this.renderText(`${length.toFixed(2)}m`, mid, {
+      color: '#3b82f6',
+      fontSize: 0.25,
+      align: 'center',
+      background: '#f8fafc',
+    });
   }
 
-  // Screen to world coordinate conversion
-  screenToWorld(screenX: number, screenY: number): Vec2 {
-    if (!this.canvas) return [0, 0];
-
-    const centerX = this.canvas.width / 2;
-    const centerY = this.canvas.height / 2;
-
-    return [
-      (screenX - centerX - this.transform.offset[0]) / this.transform.scale,
-      -(screenY - centerY - this.transform.offset[1]) / this.transform.scale,
-    ];
-  }
-
-  // World to screen coordinate conversion
-  worldToScreen(worldX: number, worldY: number): Vec2 {
-    if (!this.canvas) return [0, 0];
-
-    const centerX = this.canvas.width / 2;
-    const centerY = this.canvas.height / 2;
-
-    return [
-      worldX * this.transform.scale + centerX + this.transform.offset[0],
-      -worldY * this.transform.scale + centerY + this.transform.offset[1],
-    ];
-  }
-
-  private hexToRgba(hex: string | undefined | null, alpha: number): string {
-    const h = (hex && hex.startsWith('#') && hex.length >= 7) ? hex : '#8899aa';
-    const r = parseInt(h.slice(1, 3), 16);
-    const g = parseInt(h.slice(3, 5), 16);
-    const b = parseInt(h.slice(5, 7), 16);
-    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
-  }
-
-  // ==================== SELECTION HANDLES (MagicPlan-style) ====================
+  // ==================== SELECTION HANDLES ====================
   private renderSelectionHandles(
     walls: Wall[],
     rooms: Room[],
@@ -845,34 +842,23 @@ export class Render2DEngine {
   ): void {
     if (!this.ctx || selectedIds.length === 0) return;
     const s = this.transform.scale;
-    if (s < 6) return; // don't render handles when too zoomed out
+    if (s < 6) return;
 
-    // Handle sizes scale with zoom (stay visually consistent)
-    const vr = Math.max(0.06, Math.min(0.14, 5 / s));   // vertex radius
-    const dm = Math.max(0.07, Math.min(0.16, 6 / s));   // diamond size
+    const vr = Math.max(0.06, Math.min(0.14, 5 / s));
+    const dm = Math.max(0.07, Math.min(0.16, 6 / s));
 
-    // ── Selected wall handles ──────────────────────────────
     for (const wall of walls) {
       if (!selectedIds.includes(wall.id)) continue;
-
-      // Vertex handles at start and end
       this.renderHandle(wall.start, 'circle', '#ffffff', '#3b82f6', vr);
       this.renderHandle(wall.end, 'circle', '#ffffff', '#3b82f6', vr);
-
-      // Midpoint push handle (diamond)
       const mid: Vec2 = [(wall.start[0] + wall.end[0]) / 2, (wall.start[1] + wall.end[1]) / 2];
       this.renderHandle(mid, 'diamond', '#3b82f6', '#1d4ed8', dm);
     }
 
-    // ── Selected room handles ──────────────────────────────
     for (const room of rooms) {
       if (!selectedIds.includes(room.id)) continue;
-
       for (let i = 0; i < room.points.length; i++) {
-        // Vertex handles at each corner
         this.renderHandle(room.points[i], 'circle', '#ffffff', '#3b82f6', vr);
-
-        // Edge midpoint push handles (diamonds)
         const a = room.points[i];
         const b = room.points[(i + 1) % room.points.length];
         const edgeLen = Math.hypot(b[0] - a[0], b[1] - a[1]);
@@ -883,7 +869,6 @@ export class Render2DEngine {
       }
     }
 
-    // ── Selected furniture handles ─────────────────────────
     for (const furn of furniture) {
       if (!selectedIds.includes(furn.id)) continue;
       const _fpos = furn.position;
@@ -902,7 +887,6 @@ export class Render2DEngine {
       for (const c of corners) {
         this.renderHandle(c, 'circle', '#ffffff', '#f59e0b', vr * 0.85);
       }
-      // Rotation handle (above center)
       const rotHandle: Vec2 = [_fpx, _fpz - hd - vr * 3];
       this.renderHandle(rotHandle, 'circle', '#f59e0b', '#d97706', vr);
     }
@@ -930,7 +914,6 @@ export class Render2DEngine {
       this.ctx.fill();
       this.ctx.stroke();
     } else {
-      // Diamond shape
       this.ctx.beginPath();
       this.ctx.moveTo(pos[0], pos[1] + size);
       this.ctx.lineTo(pos[0] + size, pos[1]);
@@ -943,12 +926,86 @@ export class Render2DEngine {
     this.ctx.restore();
   }
 
-  // Export canvas as image
+  // ==================== UTILITIES ====================
+  private renderPoint(position: Vec2, radius: number, color: string): void {
+    if (!this.ctx) return;
+    this.ctx.fillStyle = color;
+    this.ctx.beginPath();
+    this.ctx.arc(position[0], position[1], radius, 0, Math.PI * 2);
+    this.ctx.fill();
+  }
+
+  private renderText(
+    text: string,
+    position: Vec2,
+    options: {
+      color?: string;
+      fontSize?: number;
+      align?: 'left' | 'center' | 'right';
+      background?: string;
+    } = {}
+  ): void {
+    if (!this.ctx) return;
+    const { color = '#1e293b', fontSize = 0.2, align = 'center', background } = options;
+
+    this.ctx.save();
+    this.ctx.scale(1, -1);
+    this.ctx.font = `${fontSize * 10}px Inter, system-ui, sans-serif`;
+    this.ctx.fillStyle = color;
+    this.ctx.textAlign = align;
+    this.ctx.textBaseline = 'middle';
+
+    const y = -position[1];
+
+    if (background) {
+      const metrics = this.ctx.measureText(text);
+      const padding = fontSize * 0.2;
+      this.ctx.fillStyle = background;
+      this.ctx.fillRect(
+        position[0] - metrics.width / 2 - padding,
+        y - fontSize / 2 - padding,
+        metrics.width + padding * 2,
+        fontSize + padding * 2
+      );
+      this.ctx.fillStyle = color;
+    }
+
+    this.ctx.fillText(text, position[0], y);
+    this.ctx.restore();
+  }
+
+  screenToWorld(screenX: number, screenY: number): Vec2 {
+    if (!this.canvas) return [0, 0];
+    const centerX = this.canvas.width / 2;
+    const centerY = this.canvas.height / 2;
+    return [
+      (screenX - centerX - this.transform.offset[0]) / this.transform.scale,
+      -(screenY - centerY - this.transform.offset[1]) / this.transform.scale,
+    ];
+  }
+
+  worldToScreen(worldX: number, worldY: number): Vec2 {
+    if (!this.canvas) return [0, 0];
+    const centerX = this.canvas.width / 2;
+    const centerY = this.canvas.height / 2;
+    return [
+      worldX * this.transform.scale + centerX + this.transform.offset[0],
+      -worldY * this.transform.scale + centerY + this.transform.offset[1],
+    ];
+  }
+
+  private hexToRgba(hex: string | undefined | null, alpha: number): string {
+    const h = (hex && hex.startsWith('#') && hex.length >= 7) ? hex : '#8899aa';
+    const r = parseInt(h.slice(1, 3), 16);
+    const g = parseInt(h.slice(3, 5), 16);
+    const b = parseInt(h.slice(5, 7), 16);
+    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+  }
+
   toDataURL(type: string = 'image/png', quality?: number): string {
     return this.canvas?.toDataURL(type, quality) || '';
   }
 
-  // Dispose
   dispose(): void {
     this.canvas = null;
     this.ctx = null;
