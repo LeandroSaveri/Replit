@@ -1,6 +1,5 @@
 // ============================================
 // EDITOR STORE - Estado Global do Editor
-// Fase 4.1: Operações em lote e pipeline único
 // ============================================
 
 import { create } from 'zustand';
@@ -291,7 +290,7 @@ export const useEditorStore = create<EditorState>()(
           createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
           settings: { units: 'metric', currency: 'BRL' },
         };
-        // Aplica pipeline uma única vez após carregar todas as paredes
+        // Aplica pipeline uma única vez após carregar todas as paredes (modo final, pois é carga completa)
         applyGeometryPipeline(newScene);
         set(state => {
           state.project = newProject;
@@ -363,7 +362,7 @@ export const useEditorStore = create<EditorState>()(
         });
       },
 
-      // NOVA FUNÇÃO: Adiciona várias paredes e executa pipeline UMA VEZ
+      // NOVA FUNÇÃO: Adiciona várias paredes e executa pipeline UMA VEZ (modo incremental)
       addWallsBatch: (wallsToAdd: Array<{ start: Vec2; end: Vec2 }>) => {
         const state = get();
         const scene = getCurrentScene(state);
@@ -384,7 +383,8 @@ export const useEditorStore = create<EditorState>()(
           walls: [...scene.walls, ...newWalls],
         };
 
-        applyGeometryPipeline(sceneCopy);
+        // Executa pipeline em modo incremental para evitar perda de paredes
+        applyGeometryPipeline(sceneCopy, { mode: 'incremental' });
 
         set(state => {
           const targetScene = state.scenes.find(s => s.id === state.currentSceneId);
@@ -420,7 +420,8 @@ export const useEditorStore = create<EditorState>()(
         const wallsWithNew = [...scene.walls, newWall];
         const sceneCopy: Scene = { ...scene, walls: wallsWithNew };
 
-        applyGeometryPipeline(sceneCopy);
+        // Executa pipeline em modo incremental para evitar perda de paredes
+        applyGeometryPipeline(sceneCopy, { mode: 'incremental' });
 
         set(state => {
           const targetScene = state.scenes.find(s => s.id === state.currentSceneId);
@@ -488,7 +489,7 @@ export const useEditorStore = create<EditorState>()(
         get().saveToHistory();
       },
 
-      // REFATORADO: Usa addWallsBatch para eficiência e pipeline único
+      // REFATORADO: Usa addWallsBatch para eficiência e pipeline único (modo incremental via addWallsBatch)
       createWallsFromPolygon: (points: Vec2[]) => {
         if (!points || points.length < 3) return;
         let closedPoints = points;
