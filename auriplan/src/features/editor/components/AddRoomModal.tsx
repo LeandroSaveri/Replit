@@ -185,7 +185,7 @@ export function AddRoomModal({ onClose, onScan }: AddRoomModalProps) {
   const [view, setView] = useState<View>('main');
   const [roomCategory, setRoomCategory] = useState<'Residencial' | 'Comercial'>('Residencial');
   const [selectedRoomType, setSelectedRoomType] = useState<string | null>(null);
-  const { addRoom, createWall } = useEditorStore();
+  const { addRoom } = useEditorStore();
 
   const handleAddRoom = () => {
     setView('roomTypes');
@@ -218,9 +218,16 @@ export function AddRoomModal({ onClose, onScan }: AddRoomModalProps) {
     });
     const palette = ROOM_PALETTE[Math.floor(Math.random() * ROOM_PALETTE.length)];
 
-    // Cria as paredes usando a fachada canônica (pipeline obrigatório)
+    // 🔧 CORREÇÃO: substituir loop de createWall por batch único para evitar múltiplas execuções do pipeline
+    const segments: Array<{ start: Vec2; end: Vec2 }> = [];
     for (let i = 0; i < points.length; i++) {
-      createWall(points[i], points[(i + 1) % points.length]);
+      const start = points[i];
+      const end = points[(i + 1) % points.length];
+      if (Math.hypot(end[0] - start[0], end[1] - start[1]) < 1e-6) continue;
+      segments.push({ start, end });
+    }
+    if (segments.length > 0) {
+      useEditorStore.getState().addWallsBatch(segments);
     }
 
     // Adiciona o cômodo com nome e cores (sem bypass)
