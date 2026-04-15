@@ -34,7 +34,7 @@ type DragState =
   | { kind: 'room-vertex'; roomId: string; vtxIdx: number; origPts: Vec2[]; ds: Vec2 }
   | { kind: 'room-edge'; roomId: string; edgeIdx: number; origPts: Vec2[]; ds: Vec2 }
   | { kind: 'room'; id: string; origPts: Vec2[]; ds: Vec2 }
-  | { kind: 'wall-vertex'; wallId: string; vertex: 'start' | 'end'; origPos: Vec2; ds: Vec2; affectedWallIds: string[] }
+  | { kind: 'wall-vertex'; wallId: string; vertex: 'start' | 'end'; origPos: Vec2; ds: Vec2; affectedWallIds: string[]; currentPos?: Vec2 }
   | { kind: 'wall-push'; wallId: string; origStart: Vec2; origEnd: Vec2; ds: Vec2; affectedWallIds: string[] }
   | { kind: 'wall-move'; wallId: string; origStart: Vec2; origEnd: Vec2; ds: Vec2; affectedWallIds: string[] };
 
@@ -49,7 +49,7 @@ export class SelectToolHandler implements ToolHandler {
   private onPreviewChange: (state: PreviewState) => void;
   private onHoverChange: (id: string | null) => void;
   private onCursorChange: (cursor: string) => void;
-  private wallTopology?: WallTopology;
+  private getTopology: () => WallTopology | undefined; // ✅ callback para topologia viva
 
   private drag: DragState = null;
   private isDragging = false;
@@ -61,13 +61,13 @@ export class SelectToolHandler implements ToolHandler {
     onPreviewChange: (state: PreviewState) => void,
     onHoverChange: (id: string | null) => void = () => {},
     onCursorChange: (cursor: string) => void = () => {},
-    wallTopology?: WallTopology,
+    getTopology: () => WallTopology | undefined, // ✅ injeta função para obter topologia atualizada
   ) {
     this.store = store;
     this.onPreviewChange = onPreviewChange;
     this.onHoverChange = onHoverChange;
     this.onCursorChange = onCursorChange;
-    this.wallTopology = wallTopology;
+    this.getTopology = getTopology;
   }
 
   handleEvent(event: InteractionEvent): void {
@@ -90,14 +90,14 @@ export class SelectToolHandler implements ToolHandler {
   getPreviewState(): PreviewState | null { return null; }
 
   // --------------------------------------------------------------
-  // HIT TEST (detecção do que está sob o cursor)
+  // HIT TEST
   // --------------------------------------------------------------
   private hitTest(pos: Vec2): HitResult {
     const state = this.store.getState();
     const scene = state.scenes.find(s => s.id === state.currentSceneId);
     if (!scene) return { type: 'none' };
 
-    // 1. Furniture (prioridade mais alta)
+    // 1. Furniture
     for (const furn of scene.furniture) {
       const [fx, fz] = Array.isArray(furn.position) ? furn.position : [furn.position.x, furn.position.z];
       const size = furn.size || [0.6, 0.6];
@@ -109,12 +109,11 @@ export class SelectToolHandler implements ToolHandler {
       }
     }
 
-    // 2. Rooms (vértices, arestas, interior)
+    // 2. Rooms
     for (const room of scene.rooms) {
       const pts = room.points;
       if (pts.length < 3) continue;
 
-      // Vértices
       for (let i = 0; i < pts.length; i++) {
         const v = pts[i];
         const dist = Math.hypot(v[0] - pos[0], v[1] - pos[1]);
@@ -123,7 +122,6 @@ export class SelectToolHandler implements ToolHandler {
         }
       }
 
-      // Arestas (midpoint)
       for (let i = 0; i < pts.length; i++) {
         const a = pts[i];
         const b = pts[(i + 1) % pts.length];
@@ -134,7 +132,6 @@ export class SelectToolHandler implements ToolHandler {
         }
       }
 
-      // Interior (point-in-polygon)
       if (this.isPointInPolygon(pos, pts)) {
         return { type: 'room', id: room.id };
       }
@@ -142,7 +139,6 @@ export class SelectToolHandler implements ToolHandler {
 
     // 3. Walls
     for (const wall of scene.walls) {
-      // Vértices
       const distStart = Math.hypot(wall.start[0] - pos[0], wall.start[1] - pos[1]);
       const distEnd = Math.hypot(wall.end[0] - pos[0], wall.end[1] - pos[1]);
       if (distStart < VERTEX_R) {
@@ -152,14 +148,12 @@ export class SelectToolHandler implements ToolHandler {
         return { type: 'wall-vertex', wallId: wall.id, vertex: 'end' };
       }
 
-      // Midpoint
       const mid = [(wall.start[0] + wall.end[0]) / 2, (wall.start[1] + wall.end[1]) / 2];
       const distMid = Math.hypot(mid[0] - pos[0], mid[1] - pos[1]);
       if (distMid < EDGE_MID_R) {
         return { type: 'wall-midpoint', wallId: wall.id };
       }
 
-      // Parede (projeção)
       const proj = this.projectPointOnLineSegment(pos, wall.start, wall.end);
       if (proj) {
         const dist = Math.hypot(proj[0] - pos[0], proj[1] - pos[1]);
@@ -199,7 +193,7 @@ export class SelectToolHandler implements ToolHandler {
   }
 
   // --------------------------------------------------------------
-  // Utilitários geométricos
+  // Geometria
   // --------------------------------------------------------------
   private isPointInPolygon(p: Vec2, polygon: Vec2[]): boolean {
     let inside = false;
@@ -231,7 +225,7 @@ export class SelectToolHandler implements ToolHandler {
   }
 
   // --------------------------------------------------------------
-  // Eventos de teclado e duplo clique
+  // Teclado
   // --------------------------------------------------------------
   private onKeyDown(event: InteractionEvent): void {
     if (event.key === 'Delete' || event.key === 'Backspace') {
@@ -321,7 +315,15 @@ export class SelectToolHandler implements ToolHandler {
         if (!wall) return;
         state.select(hit.wallId, addToSel);
         const origPos: Vec2 = hit.vertex === 'start' ? [...wall.start] as Vec2 : [...wall.end] as Vec2;
-        this.drag = { kind: 'wall-vertex', wallId: hit.wallId, vertex: hit.vertex, origPos, ds: pos, affectedWallIds: [hit.wallId] };
+        this.drag = {
+          kind: 'wall-vertex',
+          wallId: hit.wallId,
+          vertex: hit.vertex,
+          origPos,
+          ds: pos,
+          affectedWallIds: [hit.wallId],
+          currentPos: origPos, // guarda última posição aplicada
+        };
         break;
       }
       case 'wall-midpoint': {
@@ -375,7 +377,6 @@ export class SelectToolHandler implements ToolHandler {
     let snapType: SnapType | null = null;
     if (this.drag.kind === 'wall-vertex' || this.drag.kind === 'wall-move' || this.drag.kind === 'wall-push') {
       const walls = state.scenes.find(s => s.id === state.currentSceneId)?.walls ?? [];
-      // Obtém o zoom da viewport a partir do evento
       const zoom = event.viewportZoom ?? 1;
       const snapResult = SnapSolver.computeSnap(pos, walls, undefined, {
         enableVertex: true,
@@ -383,43 +384,43 @@ export class SelectToolHandler implements ToolHandler {
         enableMidpoint: state.snap.midpoints,
         enableWall: state.snap.perpendicular,
         enableAngle: false,
-        zoom,                       // zoom dinâmico
+        zoom,
         gridSize: state.grid.size,
-        snapTol: state.snap.distance, // tolerância base em metros
+        snapTol: state.snap.distance,
       });
       snappedPos = snapResult.point;
       snapType = snapResult.type;
     }
 
     switch (this.drag.kind) {
-      case 'furniture': {
+      case 'furniture':
         state._liveUpdateFurniturePos(this.drag.id, [this.drag.origX + dx, 0, this.drag.origZ + dy]);
         break;
-      }
       case 'room-vertex': {
-        const _rvDrag = this.drag!;
-        if (_rvDrag.kind !== 'room-vertex') break;
-        const newPts = _rvDrag.origPts.map((p, i) =>
-          i === _rvDrag.vtxIdx ? [p[0] + dx, p[1] + dy] as Vec2 : p
+        const drag = this.drag;
+        const newPts = drag.origPts.map((p, i) =>
+          i === drag.vtxIdx ? [p[0] + dx, p[1] + dy] as Vec2 : p
         );
-        state._liveUpdateRoomPoints(_rvDrag.roomId, newPts);
+        state._liveUpdateRoomPoints(drag.roomId, newPts);
         break;
       }
       case 'room-edge': {
-        const n = this.drag.origPts.length;
-        const aIdx = this.drag.edgeIdx;
-        const bIdx = (this.drag.edgeIdx + 1) % n;
-        const newPts = this.drag.origPts.map((p, i) =>
+        const drag = this.drag;
+        const n = drag.origPts.length;
+        const aIdx = drag.edgeIdx;
+        const bIdx = (drag.edgeIdx + 1) % n;
+        const newPts = drag.origPts.map((p, i) =>
           (i === aIdx || i === bIdx) ? [p[0] + dx, p[1] + dy] as Vec2 : p
         );
-        state._liveUpdateRoomPoints(this.drag.roomId, newPts);
+        state._liveUpdateRoomPoints(drag.roomId, newPts);
         break;
       }
       case 'room': {
-        const newPts = this.drag.origPts.map(p => [p[0] + dx, p[1] + dy] as Vec2);
-        state._liveUpdateRoomPoints(this.drag.id, newPts);
+        const drag = this.drag;
+        const newPts = drag.origPts.map(p => [p[0] + dx, p[1] + dy] as Vec2);
+        state._liveUpdateRoomPoints(drag.id, newPts);
         const scene = state.scenes.find(s => s.id === state.currentSceneId);
-        const room = scene?.rooms.find(r => r.id === this.drag.id);
+        const room = scene?.rooms.find(r => r.id === drag.id);
         if (room && room.wallIds) {
           const wallUpdates: Array<{ id: string; start: Vec2; end: Vec2 }> = [];
           for (let i = 0; i < room.wallIds.length; i++) {
@@ -444,62 +445,64 @@ export class SelectToolHandler implements ToolHandler {
         break;
       }
       case 'wall-vertex': {
-        const _wvDrag = this.drag!;
-        if (_wvDrag.kind !== 'wall-vertex') break;
-        const newPos: Vec2 = [_wvDrag.origPos[0] + (snappedPos[0] - _wvDrag.ds[0]), _wvDrag.origPos[1] + (snappedPos[1] - _wvDrag.ds[1])];
+        const drag = this.drag;
+        const newPos: Vec2 = [drag.origPos[0] + (snappedPos[0] - drag.ds[0]), drag.origPos[1] + (snappedPos[1] - drag.ds[1])];
         const scene = state.scenes.find(s => s.id === state.currentSceneId);
-        const wall = scene?.walls.find(w => w.id === _wvDrag.wallId);
+        const wall = scene?.walls.find(w => w.id === drag.wallId);
         if (!wall) break;
 
-        const newStart = _wvDrag.vertex === 'start' ? newPos : [...wall.start] as Vec2;
-        const newEnd = _wvDrag.vertex === 'end' ? newPos : [...wall.end] as Vec2;
-        
-        if (this.wallTopology) {
-          const connectedWalls = this.wallTopology.getWallsConnectedToVertex(_wvDrag.origPos, _wvDrag.wallId);
+        const newStart = drag.vertex === 'start' ? newPos : [...wall.start] as Vec2;
+        const newEnd = drag.vertex === 'end' ? newPos : [...wall.end] as Vec2;
+
+        // ✅ usa topologia atualizada via callback
+        const topology = this.getTopology();
+        if (topology) {
+          // Obtém paredes conectadas usando a posição ORIGINAL do vértice (ainda válida para busca)
+          const connectedWalls = topology.getWallsConnectedToVertex(drag.origPos, drag.wallId);
           const updates: Array<{ id: string; start: Vec2; end: Vec2 }> = [];
-          updates.push({ id: _wvDrag.wallId, start: newStart, end: newEnd });
-          const affectedIds: string[] = [_wvDrag.wallId];
+          updates.push({ id: drag.wallId, start: newStart, end: newEnd });
+          const affectedIds: string[] = [drag.wallId];
+
           for (const conn of connectedWalls) {
-            const isStart = this.arePointsEqual(conn.start, _wvDrag.origPos);
+            const isStart = this.arePointsEqual(conn.start, drag.origPos);
             const newConnStart = isStart ? newPos : conn.start;
-            const newConnEnd = !isStart && this.arePointsEqual(conn.end, _wvDrag.origPos) ? newPos : conn.end;
+            const newConnEnd = (!isStart && this.arePointsEqual(conn.end, drag.origPos)) ? newPos : conn.end;
             updates.push({ id: conn.id, start: newConnStart, end: newConnEnd });
             affectedIds.push(conn.id);
           }
-          _wvDrag.affectedWallIds = affectedIds;
-          if ((state as any)._liveUpdateWallsBatch) {
-            (state as any)._liveUpdateWallsBatch(updates);
-          } else {
-            for (const upd of updates) state._liveUpdateWall(upd.id, upd.start, upd.end);
-          }
+          drag.affectedWallIds = affectedIds;
+          // Atualiza todas as paredes de uma vez
+          state._liveUpdateWallsBatch(updates);
         } else {
-          state._liveUpdateWall(_wvDrag.wallId, newStart, newEnd);
-          _wvDrag.affectedWallIds = [_wvDrag.wallId];
+          state._liveUpdateWall(drag.wallId, newStart, newEnd);
+          drag.affectedWallIds = [drag.wallId];
         }
         break;
       }
       case 'wall-push': {
-        const wdx = this.drag.origEnd[0] - this.drag.origStart[0];
-        const wdy = this.drag.origEnd[1] - this.drag.origStart[1];
+        const drag = this.drag;
+        const wdx = drag.origEnd[0] - drag.origStart[0];
+        const wdy = drag.origEnd[1] - drag.origStart[1];
         const len = Math.hypot(wdx, wdy) || 1;
         const perp: Vec2 = [-wdy / len, wdx / len];
-        const deltaX = snappedPos[0] - this.drag.ds[0];
-        const deltaY = snappedPos[1] - this.drag.ds[1];
+        const deltaX = snappedPos[0] - drag.ds[0];
+        const deltaY = snappedPos[1] - drag.ds[1];
         const proj = deltaX * perp[0] + deltaY * perp[1];
         const deltaPerp: Vec2 = [perp[0] * proj, perp[1] * proj];
-        const newStart: Vec2 = [this.drag.origStart[0] + deltaPerp[0], this.drag.origStart[1] + deltaPerp[1]];
-        const newEnd: Vec2 = [this.drag.origEnd[0] + deltaPerp[0], this.drag.origEnd[1] + deltaPerp[1]];
-        const affected = this.applyWallMoveWithPropagation(this.drag.wallId, newStart, newEnd);
-        this.drag.affectedWallIds = affected;
+        const newStart: Vec2 = [drag.origStart[0] + deltaPerp[0], drag.origStart[1] + deltaPerp[1]];
+        const newEnd: Vec2 = [drag.origEnd[0] + deltaPerp[0], drag.origEnd[1] + deltaPerp[1]];
+        const affected = this.applyWallMoveWithPropagation(drag.wallId, newStart, newEnd);
+        drag.affectedWallIds = affected;
         break;
       }
       case 'wall-move': {
-        const deltaX = snappedPos[0] - this.drag.ds[0];
-        const deltaY = snappedPos[1] - this.drag.ds[1];
-        const newStart: Vec2 = [this.drag.origStart[0] + deltaX, this.drag.origStart[1] + deltaY];
-        const newEnd: Vec2 = [this.drag.origEnd[0] + deltaX, this.drag.origEnd[1] + deltaY];
-        const affected = this.applyWallMoveWithPropagation(this.drag.wallId, newStart, newEnd);
-        this.drag.affectedWallIds = affected;
+        const drag = this.drag;
+        const deltaX = snappedPos[0] - drag.ds[0];
+        const deltaY = snappedPos[1] - drag.ds[1];
+        const newStart: Vec2 = [drag.origStart[0] + deltaX, drag.origStart[1] + deltaY];
+        const newEnd: Vec2 = [drag.origEnd[0] + deltaX, drag.origEnd[1] + deltaY];
+        const affected = this.applyWallMoveWithPropagation(drag.wallId, newStart, newEnd);
+        drag.affectedWallIds = affected;
         break;
       }
     }
@@ -520,11 +523,13 @@ export class SelectToolHandler implements ToolHandler {
     const affectedIds: string[] = [wallId];
     const updates: Array<{ id: string; start: Vec2; end: Vec2 }> = [];
 
-    if (this.wallTopology) {
-      const connectedAtStart = this.wallTopology.getWallsConnectedToVertex(wall.start, wallId);
-      const connectedAtEnd = this.wallTopology.getWallsConnectedToVertex(wall.end, wallId);
+    // ✅ usa topologia atualizada via callback
+    const topology = this.getTopology();
+    if (topology) {
+      const connectedAtStart = topology.getWallsConnectedToVertex(wall.start, wallId);
+      const connectedAtEnd = topology.getWallsConnectedToVertex(wall.end, wallId);
       updates.push({ id: wallId, start: newStart, end: newEnd });
-      
+
       for (const conn of connectedAtStart) {
         const isStart = this.arePointsEqual(conn.start, wall.start);
         const newConnStart = isStart ? newStart : conn.start;
@@ -540,11 +545,8 @@ export class SelectToolHandler implements ToolHandler {
         updates.push({ id: conn.id, start: newConnStart, end: newConnEnd });
         affectedIds.push(conn.id);
       }
-      if ((state as any)._liveUpdateWallsBatch) {
-        (state as any)._liveUpdateWallsBatch(updates);
-      } else {
-        for (const upd of updates) state._liveUpdateWall(upd.id, upd.start, upd.end);
-      }
+      // Aplica todas as atualizações em lote
+      state._liveUpdateWallsBatch(updates);
     } else {
       state._liveUpdateWall(wallId, newStart, newEnd);
       updates.push({ id: wallId, start: newStart, end: newEnd });
@@ -580,7 +582,8 @@ export class SelectToolHandler implements ToolHandler {
       case 'room-vertex':
       case 'room-edge':
       case 'room': {
-        const room = scene.rooms.find(r => r.id === (this.drag.kind === 'room' ? this.drag.id : this.drag.roomId));
+        const roomId = this.drag.kind === 'room' ? this.drag.id : this.drag.roomId;
+        const room = scene.rooms.find(r => r.id === roomId);
         if (room) {
           state.updateRoom(room.id, { points: room.points });
           applyGeometryPipeline(scene);
