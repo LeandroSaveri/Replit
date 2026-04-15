@@ -12,7 +12,6 @@ import type { EditorStore } from '@store/editorStore';
 import type { Vec2, Wall, Room, Furniture } from '@auriplan-types';
 import { SnapSolver } from '@core/snap/SnapSolver';
 import type { SnapType } from '@core/snap/SnapSolver';
-import { applyGeometryPipeline } from '@core/pipeline/applyGeometryPipeline';
 
 const VERTEX_R = 0.18;
 const EDGE_MID_R = 0.15;
@@ -97,6 +96,7 @@ export class SelectToolHandler implements ToolHandler {
     const scene = state.scenes.find(s => s.id === state.currentSceneId);
     if (!scene) return { type: 'none' };
 
+    // 1. Furniture
     for (const furn of scene.furniture) {
       const [fx, fz] = Array.isArray(furn.position) ? furn.position : [furn.position.x, furn.position.z];
       const size = furn.size || [0.6, 0.6];
@@ -108,6 +108,7 @@ export class SelectToolHandler implements ToolHandler {
       }
     }
 
+    // 2. Rooms
     for (const room of scene.rooms) {
       const pts = room.points;
       if (pts.length < 3) continue;
@@ -135,6 +136,7 @@ export class SelectToolHandler implements ToolHandler {
       }
     }
 
+    // 3. Walls
     for (const wall of scene.walls) {
       const distStart = Math.hypot(wall.start[0] - pos[0], wall.start[1] - pos[1]);
       const distEnd = Math.hypot(wall.end[0] - pos[0], wall.end[1] - pos[1]);
@@ -555,6 +557,9 @@ export class SelectToolHandler implements ToolHandler {
     return affectedIds;
   }
 
+  // --------------------------------------------------------------
+  // onPointerUp CORRIGIDO - usando rebuildCurrentSceneGeometry
+  // --------------------------------------------------------------
   private onPointerUp(_event: InteractionEvent): void {
     if (!this.isDragging || !this.drag) {
       this.drag = null;
@@ -586,7 +591,7 @@ export class SelectToolHandler implements ToolHandler {
         const room = scene.rooms.find(r => r.id === roomId);
         if (room) {
           state.updateRoom(room.id, { points: room.points });
-          applyGeometryPipeline(scene);
+          state.rebuildCurrentSceneGeometry();
         }
         break;
       }
@@ -603,7 +608,7 @@ export class SelectToolHandler implements ToolHandler {
         }
         if (updates.length > 0) {
           state.updateWallsBatch(updates);
-          applyGeometryPipeline(scene);
+          state.rebuildCurrentSceneGeometry();
         }
         break;
       }
