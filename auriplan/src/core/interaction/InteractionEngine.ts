@@ -32,6 +32,8 @@ export interface InteractionEvent {
   // que criam eventos sintéticos sem acesso ao evento DOM original
   preventDefault?: () => void;
   stopPropagation?: () => void;
+  // NOVO: Zoom da viewport para snap contextual (adicionado na Fase 3)
+  viewportZoom?: number;
 }
 
 export type InteractionHandler = (event: InteractionEvent) => void | boolean;
@@ -324,7 +326,7 @@ export class InteractionEngine {
       modifiers: Array.from(this.state.modifiers),
       preventDefault: () => originalEvent.preventDefault(),
       stopPropagation: () => originalEvent.stopPropagation(),
-      ...extras,
+      ...extras, // aqui pode vir viewportZoom e outras propriedades
     };
   }
 
