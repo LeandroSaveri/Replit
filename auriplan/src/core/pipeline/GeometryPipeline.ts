@@ -22,6 +22,7 @@ export interface GeometryPipelineResult {
 export interface GeometryPipelineOptions {
   debug?: boolean;
   applyCornerAdjustments?: boolean;
+  mode?: 'incremental' | 'final';
 }
 
 export function computeWallsFingerprint(walls: Wall[]): string {
@@ -86,7 +87,7 @@ export function runGeometryPipeline(
   walls: Wall[],
   options: GeometryPipelineOptions = {}
 ): GeometryPipelineResult {
-  const { debug = false, applyCornerAdjustments: enableCornerAdjustments = true } = options;
+  const { debug = false, applyCornerAdjustments: enableCornerAdjustments = true, mode = 'final' } = options;
   const log = (msg: string) => { if (debug) console.log(`[GeometryPipeline] ${msg}`); };
 
   try {
@@ -104,7 +105,8 @@ export function runGeometryPipeline(
 
     // Etapa 3: Resolução de topologia
     log('Etapa 3: resolveTopology');
-    const topo = resolveTopology(currentWalls);
+    const isIncremental = mode === 'incremental';
+    const topo = resolveTopology(currentWalls, { aggressive: !isIncremental });
     currentWalls = topo.walls;
     log(`  - Paredes após topologia: ${currentWalls.length}`);
 
@@ -128,11 +130,17 @@ export function runGeometryPipeline(
           }
           
           if (changed) {
-            log(`  - Ajustes válidos aplicados.`);
-            currentWalls = adjustedWalls;
-            log('  - Reconstruindo grafo após ajustes');
-            graph = buildGraph(currentWalls);
-            log(`  - Novo grafo: ${graph.nodes.length} nós, ${graph.junctions.size} junções`);
+            // Validação pós-ajuste: garantir que todas as paredes ajustadas mantêm comprimento mínimo
+            const validWalls = adjustedWalls.filter(w => vec2.distance(w.start, w.end) >= MIN_WALL_LENGTH - EPS);
+            if (validWalls.length === adjustedWalls.length) {
+              log(`  - Ajustes válidos aplicados.`);
+              currentWalls = adjustedWalls;
+              log('  - Reconstruindo grafo após ajustes');
+              graph = buildGraph(currentWalls);
+              log(`  - Novo grafo: ${graph.nodes.length} nós, ${graph.junctions.size} junções`);
+            } else {
+              log('  - Ajustes rejeitados por violação de comprimento mínimo.');
+            }
           } else {
             log('  - Ajustes insignificantes ou rejeitados, ignorando.');
           }
