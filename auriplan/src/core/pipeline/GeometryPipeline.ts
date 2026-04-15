@@ -1,6 +1,6 @@
 // ============================================
 // GeometryPipeline.ts – ordem corrigida (split → graph → topology → corners → rooms)
-// Fase 4: Ajuste de cantos idempotente e com única iteração
+// Fase 4: Ajuste de cantos com validação de comprimento
 // ============================================
 
 import type { Wall, Vec2 } from '@auriplan-types';
@@ -11,7 +11,7 @@ import { splitWallsAtIntersections } from '@core/wall/WallSplitEngine';
 import { buildGraph, createEmptyWallGraph, computeCornerAdjustments } from '@core/wall/WallGraph';
 import { RoomDetection } from '@core/room/RoomDetectionEngine';
 import { vec2 } from '@core/math/vector';
-import { GEOM_TOL } from '@core/geometry/geometryConstants';
+import { GEOM_TOL, MIN_WALL_LENGTH, EPS } from '@core/geometry/geometryConstants';
 
 export interface GeometryPipelineResult {
   walls: Wall[];
@@ -24,10 +24,6 @@ export interface GeometryPipelineOptions {
   applyCornerAdjustments?: boolean;
 }
 
-/**
- * Calcula um fingerprint simples das paredes para detecção de mudanças.
- * Não é criptográfico – apenas para comparar se a geometria mudou.
- */
 export function computeWallsFingerprint(walls: Wall[]): string {
   const sorted = [...walls].sort((a, b) => a.id.localeCompare(b.id));
   const parts = sorted.map(w =>
@@ -36,9 +32,6 @@ export function computeWallsFingerprint(walls: Wall[]): string {
   return parts.join('|');
 }
 
-/**
- * Clona profundamente uma parede para evitar mutação de objetos congelados.
- */
 function cloneWall(wall: Wall): Wall {
   return {
     ...wall,
@@ -52,8 +45,7 @@ function cloneWall(wall: Wall): Wall {
 }
 
 /**
- * Aplica ajustes de canto diretamente nos pontos start/end das paredes.
- * Retorna novas paredes (imutável).
+ * Aplica ajustes de canto, rejeitando aqueles que resultariam em parede inválida.
  */
 function applyCornerAdjustmentsToWalls(
   walls: Wall[],
@@ -62,14 +54,30 @@ function applyCornerAdjustmentsToWalls(
   const newWalls = walls.map((wall, idx) => {
     const adj = adjustments.get(idx);
     if (!adj) return wall;
+
     const cloned = cloneWall(wall);
+    let modified = false;
+
     if (adj.start) {
-      cloned.start = adj.start;
+      const testEnd = adj.end ?? cloned.end;
+      if (vec2.distance(adj.start, testEnd) >= MIN_WALL_LENGTH - EPS) {
+        cloned.start = adj.start;
+        modified = true;
+      } else {
+        console.warn(`[GeometryPipeline] Ajuste start rejeitado para parede ${wall.id}: comprimento resultante ${vec2.distance(adj.start, testEnd).toFixed(4)} < ${MIN_WALL_LENGTH}`);
+      }
     }
     if (adj.end) {
-      cloned.end = adj.end;
+      const testStart = adj.start ?? cloned.start;
+      if (vec2.distance(testStart, adj.end) >= MIN_WALL_LENGTH - EPS) {
+        cloned.end = adj.end;
+        modified = true;
+      } else {
+        console.warn(`[GeometryPipeline] Ajuste end rejeitado para parede ${wall.id}: comprimento resultante ${vec2.distance(testStart, adj.end).toFixed(4)} < ${MIN_WALL_LENGTH}`);
+      }
     }
-    return cloned;
+
+    return modified ? cloned : wall;
   });
   return newWalls;
 }
@@ -84,7 +92,7 @@ export function runGeometryPipeline(
   try {
     log('Iniciando pipeline geométrico (ordem corrigida)');
 
-    // Etapa 1: Split de interseções (agora primeiro)
+    // Etapa 1: Split de interseções
     log('Etapa 1: splitWallsAtIntersections');
     let currentWalls = splitWallsAtIntersections(walls);
     log(`  - Paredes após divisão: ${currentWalls.length}`);
@@ -94,21 +102,20 @@ export function runGeometryPipeline(
     let graph = buildGraph(currentWalls);
     log(`  - Nós: ${graph.nodes.length}, junções: ${graph.junctions.size}`);
 
-    // Etapa 3: Resolução de topologia (após grafo)
+    // Etapa 3: Resolução de topologia
     log('Etapa 3: resolveTopology');
     const topo = resolveTopology(currentWalls);
     currentWalls = topo.walls;
     log(`  - Paredes após topologia: ${currentWalls.length}`);
 
-    // Etapa 4: Corner adjustments (se ativado) - UMA ÚNICA ITERAÇÃO (FASE 4)
+    // Etapa 4: Corner adjustments (com validação)
     if (enableCornerAdjustments && graph.junctions.size > 0) {
-      log('Etapa 4: computeCornerAdjustments (Fase 4)');
+      log('Etapa 4: computeCornerAdjustments (com validação de comprimento)');
       try {
         const adjustments = computeCornerAdjustments(graph, currentWalls);
         if (adjustments.size > 0) {
           const adjustedWalls = applyCornerAdjustmentsToWalls(currentWalls, adjustments);
           
-          // Verifica convergência: mudou algo acima da tolerância?
           let changed = false;
           for (let i = 0; i < currentWalls.length; i++) {
             const oldW = currentWalls[i];
@@ -121,16 +128,13 @@ export function runGeometryPipeline(
           }
           
           if (changed) {
-            log(`  - Ajustes aplicados em ${adjustments.size} paredes.`);
+            log(`  - Ajustes válidos aplicados.`);
             currentWalls = adjustedWalls;
-            
-            // Reconstrói grafo apenas se houve mudança
             log('  - Reconstruindo grafo após ajustes');
             graph = buildGraph(currentWalls);
             log(`  - Novo grafo: ${graph.nodes.length} nós, ${graph.junctions.size} junções`);
-            // IMPORTANTE: não chama resolveTopology novamente para evitar loops
           } else {
-            log('  - Ajustes insignificantes (convergência atingida), ignorando.');
+            log('  - Ajustes insignificantes ou rejeitados, ignorando.');
           }
         } else {
           log('  - Nenhum ajuste necessário.');
