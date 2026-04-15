@@ -68,8 +68,8 @@ export class WallToolHandler implements ToolHandler {
     const length = Math.hypot(end[0] - this.startPoint[0], end[1] - this.startPoint[1]);
 
     if (length >= MIN_WALL_LENGTH) {
-      // Adiciona parede com pipeline incremental
-      this.store.getState().createWall(this.startPoint, end, true);
+      // 🔧 CORRIGIDO: usar addWall com incremental=true (substitui createWall)
+      this.store.getState().addWall(this.startPoint, end, true);
       this.segmentStartHistory.push(end);
       this.startPoint = end;
       this.currentPoint = end;
