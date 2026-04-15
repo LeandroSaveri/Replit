@@ -1,6 +1,6 @@
 // ============================================
 // WallGraph.ts – implementação concreta de IGraphTopology
-// Fase 4: Ajuste de cantos baseado em linha central
+// Fase 4: Ajuste de cantos com validação de comprimento mínimo
 // ============================================
 
 import type { Vec2, Wall } from '@auriplan-types';
@@ -11,6 +11,7 @@ import {
   ANGLE_TOL,
   OPPOSITE_ANGLE_TOL,
   MAX_MITER_FACTOR,
+  MIN_WALL_LENGTH,
 } from '@core/geometry/geometryConstants';
 import { vec2, geometry } from '@core/math/vector';
 
@@ -49,7 +50,6 @@ export function createEmptyWallGraph(): WallGraph {
   return { nodes: [], junctions: new Map() };
 }
 
-// ==================== NOVA FÁBRICA DE TOPOLOGIA VAZIA ====================
 export function createEmptyWallGraphTopology(): IGraphTopology {
   return new WallGraphTopology([]);
 }
@@ -197,14 +197,17 @@ export function buildGraph(walls: Wall[]): WallGraph {
   return { nodes: graphNodes, junctions: junctionInfoMap };
 }
 
-// ==================== FASE 4: computeCornerAdjustments reescrita ====================
+// ==================== FUNÇÃO AUXILIAR DE VALIDAÇÃO ====================
 /**
- * Calcula ajustes de canto para paredes em junções.
- * Retorna um mapa com novos pontos start/end para cada parede afetada.
- * Baseia-se na interseção das linhas de offset (left/right) para determinar
- * a nova posição da linha central, garantindo que a fonte de verdade
- * seja sempre a linha central.
+ * Verifica se a aplicação de novos start/end manteria a parede com comprimento mínimo.
  */
+function wouldBeValidLength(wall: Wall, newStart?: Vec2, newEnd?: Vec2): boolean {
+  const start = newStart ?? wall.start;
+  const end = newEnd ?? wall.end;
+  return vec2.distance(start, end) >= MIN_WALL_LENGTH - EPS;
+}
+
+// ==================== FASE 4 CORRIGIDA ====================
 export function computeCornerAdjustments(
   graph: WallGraph,
   walls: Wall[]
@@ -321,61 +324,56 @@ export function computeCornerAdjustments(
         rightIntersection = null;
       }
 
-      // Calcula nova linha central a partir das interseções
+      // Calcula novo centro, se possível
+      let newCenter: Vec2 | null = null;
       if (leftIntersection && rightIntersection) {
-        const newCenter: Vec2 = [
+        newCenter = [
           (leftIntersection[0] + rightIntersection[0]) / 2,
           (leftIntersection[1] + rightIntersection[1]) / 2,
         ];
-        const currentEndpoint = curr.side === 'start' ? curr.wall.start : curr.wall.end;
-        if (vec2.distance(currentEndpoint, newCenter) > GEOM_TOL) {
-          let wallAdj = adjustments.get(curr.wallIndex);
-          if (!wallAdj) { wallAdj = {}; adjustments.set(curr.wallIndex, wallAdj); }
-          if (curr.side === 'start') {
-            wallAdj.start = newCenter;
-          } else {
-            wallAdj.end = newCenter;
-          }
-        }
       } else if (leftIntersection && !rightIntersection) {
         const wall = curr.wall;
         const dir = vec2.normalize(vec2.sub(wall.end, wall.start));
         const perp: Vec2 = [-dir[1], dir[0]];
         const halfThick = wall.thickness / 2;
-        const newCenter: Vec2 = [
+        newCenter = [
           leftIntersection[0] - perp[0] * halfThick,
           leftIntersection[1] - perp[1] * halfThick,
         ];
-        const currentEndpoint = curr.side === 'start' ? wall.start : wall.end;
-        if (vec2.distance(currentEndpoint, newCenter) > GEOM_TOL) {
-          let wallAdj = adjustments.get(curr.wallIndex);
-          if (!wallAdj) { wallAdj = {}; adjustments.set(curr.wallIndex, wallAdj); }
-          if (curr.side === 'start') {
-            wallAdj.start = newCenter;
-          } else {
-            wallAdj.end = newCenter;
-          }
-        }
       } else if (rightIntersection && !leftIntersection) {
         const wall = curr.wall;
         const dir = vec2.normalize(vec2.sub(wall.end, wall.start));
         const perp: Vec2 = [-dir[1], dir[0]];
         const halfThick = wall.thickness / 2;
         const rightOffsetDir: Vec2 = [-perp[0], -perp[1]];
-        const newCenter: Vec2 = [
+        newCenter = [
           rightIntersection[0] - rightOffsetDir[0] * halfThick,
           rightIntersection[1] - rightOffsetDir[1] * halfThick,
         ];
-        const currentEndpoint = curr.side === 'start' ? wall.start : wall.end;
-        if (vec2.distance(currentEndpoint, newCenter) > GEOM_TOL) {
-          let wallAdj = adjustments.get(curr.wallIndex);
-          if (!wallAdj) { wallAdj = {}; adjustments.set(curr.wallIndex, wallAdj); }
-          if (curr.side === 'start') {
-            wallAdj.start = newCenter;
-          } else {
-            wallAdj.end = newCenter;
-          }
-        }
+      }
+
+      if (!newCenter) continue;
+
+      // Verifica comprimento mínimo antes de aceitar o ajuste
+      const currentEndpoint = curr.side === 'start' ? curr.wall.start : curr.wall.end;
+      if (vec2.distance(currentEndpoint, newCenter) <= GEOM_TOL) continue;
+
+      const testStart = curr.side === 'start' ? newCenter : curr.wall.start;
+      const testEnd = curr.side === 'end' ? newCenter : curr.wall.end;
+      if (!wouldBeValidLength(curr.wall, testStart, testEnd)) {
+        // Ajuste rejeitado: deixaria a parede curta demais
+        continue;
+      }
+
+      let wallAdj = adjustments.get(curr.wallIndex);
+      if (!wallAdj) {
+        wallAdj = {};
+        adjustments.set(curr.wallIndex, wallAdj);
+      }
+      if (curr.side === 'start') {
+        wallAdj.start = newCenter;
+      } else {
+        wallAdj.end = newCenter;
       }
     }
   }
@@ -383,7 +381,7 @@ export function computeCornerAdjustments(
   return adjustments;
 }
 
-// ==================== CLASSE WALL TOPOLOGY (com IGraphTopology) ====================
+// ==================== CLASSE WALL TOPOLOGY (inalterada) ====================
 export class WallGraphTopology implements IGraphTopology {
   private walls: Wall[] = [];
 
