@@ -1,8 +1,8 @@
 // ============================================
 // FILE: src/core/wall/TopologyResolver.ts
-// ============================================
 // CORRIGIDO: mergeColinearWalls com projeção correta
 // OTIMIZADO: mergeCloseVertices e snapEndpoints O(n²) → O(n) com hash espacial
+// FASE 4: Adicionado parâmetro aggressive para controle de tolerância
 // ============================================
 
 import type { Wall, Vec2 } from '@auriplan-types';
@@ -11,6 +11,11 @@ import { vec2 } from '@core/math/vector';
 
 export interface TopologyResult {
   walls: Wall[];
+}
+
+export interface TopologyOptions {
+  /** Se false, usa tolerâncias reduzidas para preservar ajustes finos de canto. Padrão: true */
+  aggressive?: boolean;
 }
 
 // ===== Utilitários de hash espacial para O(n) =====
@@ -69,20 +74,19 @@ function removeDuplicateWalls(walls: Wall[]): Wall[] {
 }
 
 // OTIMIZADO: O(n) usando hash espacial
-function mergeCloseVertices(walls: Wall[]): Wall[] {
+function mergeCloseVertices(walls: Wall[], tolerance: number): Wall[] {
   if (walls.length === 0) return [];
 
-  // Coleta todos os pontos únicos com hash
   const allPoints: Vec2[] = [];
   for (const w of walls) {
     allPoints.push(w.start, w.end);
   }
-  const uniquePoints = getUniquePointsWithHash(allPoints, NODE_TOL);
+  const uniquePoints = getUniquePointsWithHash(allPoints, tolerance);
 
   const mergedWalls: Wall[] = [];
   for (const wall of walls) {
-    const newStart = findMergedPoint(wall.start, uniquePoints, NODE_TOL);
-    const newEnd = findMergedPoint(wall.end, uniquePoints, NODE_TOL);
+    const newStart = findMergedPoint(wall.start, uniquePoints, tolerance);
+    const newEnd = findMergedPoint(wall.end, uniquePoints, tolerance);
     if (vec2.distance(newStart, newEnd) >= MIN_WALL_LENGTH) {
       mergedWalls.push({ ...wall, start: newStart, end: newEnd });
     }
@@ -91,19 +95,19 @@ function mergeCloseVertices(walls: Wall[]): Wall[] {
 }
 
 // OTIMIZADO: O(n) usando hash espacial
-function snapEndpoints(walls: Wall[]): Wall[] {
+function snapEndpoints(walls: Wall[], tolerance: number): Wall[] {
   if (walls.length === 0) return [];
 
   const allPoints: Vec2[] = [];
   for (const w of walls) {
     allPoints.push(w.start, w.end);
   }
-  const uniquePoints = getUniquePointsWithHash(allPoints, SNAP_TOL);
+  const uniquePoints = getUniquePointsWithHash(allPoints, tolerance);
 
   const snappedWalls: Wall[] = [];
   for (const wall of walls) {
-    const newStart = findMergedPoint(wall.start, uniquePoints, SNAP_TOL);
-    const newEnd = findMergedPoint(wall.end, uniquePoints, SNAP_TOL);
+    const newStart = findMergedPoint(wall.start, uniquePoints, tolerance);
+    const newEnd = findMergedPoint(wall.end, uniquePoints, tolerance);
     if (vec2.distance(newStart, newEnd) >= MIN_WALL_LENGTH) {
       snappedWalls.push({ ...wall, start: newStart, end: newEnd });
     }
@@ -140,7 +144,6 @@ function mergeColinearWalls(walls: Wall[]): Wall[] {
       continue;
     }
 
-    // Calcula direção unitária consistente
     const first = group[0];
     const dx = first.end[0] - first.start[0];
     const dy = first.end[1] - first.start[1];
@@ -148,7 +151,6 @@ function mergeColinearWalls(walls: Wall[]): Wall[] {
     if (len < EPS) continue;
     const unitDir: Vec2 = [dx / len, dy / len];
 
-    // Projeta cada parede na linha
     type Interval = { start: number; end: number; wall: Wall };
     const intervals: Interval[] = [];
     for (const wall of group) {
@@ -160,7 +162,6 @@ function mergeColinearWalls(walls: Wall[]): Wall[] {
     }
     intervals.sort((a, b) => a.start - b.start);
 
-    // Mescla intervalos sobrepostos
     const mergedIntervals: Interval[] = [];
     for (const iv of intervals) {
       if (mergedIntervals.length === 0) {
@@ -175,7 +176,6 @@ function mergeColinearWalls(walls: Wall[]): Wall[] {
       }
     }
 
-    // Reconstrói paredes a partir dos intervalos mesclados
     for (const iv of mergedIntervals) {
       const templateWall = iv.wall;
       const startPoint: Vec2 = [
@@ -194,13 +194,19 @@ function mergeColinearWalls(walls: Wall[]): Wall[] {
   return merged;
 }
 
-export function resolveTopology(walls: Wall[]): TopologyResult {
+export function resolveTopology(walls: Wall[], options: TopologyOptions = {}): TopologyResult {
+  const { aggressive = true } = options;
   if (walls.length === 0) return { walls: [] };
 
   let filtered = walls.filter(w => vec2.distance(w.start, w.end) >= MIN_WALL_LENGTH);
   filtered = filtered.map(normalizeWallDirection);
-  filtered = snapEndpoints(filtered);
-  filtered = mergeCloseVertices(filtered);
+
+  // FASE 4: tolerâncias reduzidas se não agressivo
+  const snapTol = aggressive ? SNAP_TOL : SNAP_TOL * 0.5;
+  const nodeTol = aggressive ? NODE_TOL : NODE_TOL * 0.5;
+
+  filtered = snapEndpoints(filtered, snapTol);
+  filtered = mergeCloseVertices(filtered, nodeTol);
   filtered = removeDuplicateWalls(filtered);
   filtered = mergeColinearWalls(filtered);
 
