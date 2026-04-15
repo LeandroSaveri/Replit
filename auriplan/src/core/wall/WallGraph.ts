@@ -1,5 +1,6 @@
 // ============================================
 // WallGraph.ts – implementação concreta de IGraphTopology
+// Fase 4: Ajuste de cantos baseado em linha central
 // ============================================
 
 import type { Vec2, Wall } from '@auriplan-types';
@@ -196,11 +197,20 @@ export function buildGraph(walls: Wall[]): WallGraph {
   return { nodes: graphNodes, junctions: junctionInfoMap };
 }
 
+// ==================== FASE 4: computeCornerAdjustments reescrita ====================
+/**
+ * Calcula ajustes de canto para paredes em junções.
+ * Retorna um mapa com novos pontos start/end para cada parede afetada.
+ * Baseia-se na interseção das linhas de offset (left/right) para determinar
+ * a nova posição da linha central, garantindo que a fonte de verdade
+ * seja sempre a linha central.
+ */
 export function computeCornerAdjustments(
   graph: WallGraph,
   walls: Wall[]
-): Map<number, { start?: { left?: Vec2; right?: Vec2 }; end?: { left?: Vec2; right?: Vec2 } }> {
-  const adjustments = new Map();
+): Map<number, { start?: Vec2; end?: Vec2 }> {
+  const adjustments = new Map<number, { start?: Vec2; end?: Vec2 }>();
+
   for (const [nodeIdx, info] of graph.junctions) {
     const incidents = info.incidents;
     const m = incidents.length;
@@ -210,17 +220,21 @@ export function computeCornerAdjustments(
       const curr = incidents[i];
       const maxDist = curr.wall.thickness * MAX_MITER_FACTOR;
 
-      let finalLeft = curr.leftPoint;
-      let finalRight = curr.rightPoint;
+      let leftIntersection: Vec2 | null = null;
+      let rightIntersection: Vec2 | null = null;
 
       if (info.type === 'L') {
         const prev = incidents[(i - 1 + m) % m];
         const next = incidents[(i + 1) % m];
 
-        const leftInt = geometry.lineIntersection(curr.leftLine[0], curr.leftLine[1], prev.leftLine[0], prev.leftLine[1]);
-        if (leftInt && vec2.distance(leftInt, curr.leftPoint) < maxDist) finalLeft = leftInt;
-        const rightInt = geometry.lineIntersection(curr.rightLine[0], curr.rightLine[1], next.rightLine[0], next.rightLine[1]);
-        if (rightInt && vec2.distance(rightInt, curr.rightPoint) < maxDist) finalRight = rightInt;
+        leftIntersection = geometry.lineIntersection(
+          curr.leftLine[0], curr.leftLine[1],
+          prev.leftLine[0], prev.leftLine[1]
+        );
+        rightIntersection = geometry.lineIntersection(
+          curr.rightLine[0], curr.rightLine[1],
+          next.rightLine[0], next.rightLine[1]
+        );
       } else if (info.type === 'T') {
         const angles = incidents.map(inc => inc.angle);
         let legIdx = -1;
@@ -228,73 +242,144 @@ export function computeCornerAdjustments(
           let oppositeFound = false;
           for (let k = 0; k < m; k++) {
             if (j === k) continue;
-            if (areOppositeAngles(angles[j], angles[k])) { oppositeFound = true; break; }
+            if (areOppositeAngles(angles[j], angles[k])) {
+              oppositeFound = true;
+              break;
+            }
           }
-          if (!oppositeFound) { legIdx = j; break; }
+          if (!oppositeFound) {
+            legIdx = j;
+            break;
+          }
         }
         if (legIdx === -1) continue;
 
         if (i === legIdx) {
           const barWalls = incidents.filter((_, idx) => idx !== legIdx);
           const leftCandidates: Vec2[] = [];
-          for (const bar of barWalls) {
-            const int = geometry.lineIntersection(curr.leftLine[0], curr.leftLine[1], bar.leftLine[0], bar.leftLine[1]);
-            if (int) leftCandidates.push(int);
-          }
-          if (leftCandidates.length) {
-            let best = leftCandidates[0], bestDist = vec2.distance(best, curr.leftPoint);
-            for (const cand of leftCandidates) {
-              const d = vec2.distance(cand, curr.leftPoint);
-              if (d < bestDist) { bestDist = d; best = cand; }
-            }
-            if (bestDist < maxDist) finalLeft = best;
-          }
           const rightCandidates: Vec2[] = [];
           for (const bar of barWalls) {
-            const int = geometry.lineIntersection(curr.rightLine[0], curr.rightLine[1], bar.rightLine[0], bar.rightLine[1]);
-            if (int) rightCandidates.push(int);
+            const intLeft = geometry.lineIntersection(
+              curr.leftLine[0], curr.leftLine[1],
+              bar.leftLine[0], bar.leftLine[1]
+            );
+            if (intLeft) leftCandidates.push(intLeft);
+            const intRight = geometry.lineIntersection(
+              curr.rightLine[0], curr.rightLine[1],
+              bar.rightLine[0], bar.rightLine[1]
+            );
+            if (intRight) rightCandidates.push(intRight);
+          }
+          if (leftCandidates.length) {
+            leftIntersection = leftCandidates.reduce((a, b) =>
+              vec2.distance(a, curr.leftPoint) < vec2.distance(b, curr.leftPoint) ? a : b
+            );
           }
           if (rightCandidates.length) {
-            let best = rightCandidates[0], bestDist = vec2.distance(best, curr.rightPoint);
-            for (const cand of rightCandidates) {
-              const d = vec2.distance(cand, curr.rightPoint);
-              if (d < bestDist) { bestDist = d; best = cand; }
-            }
-            if (bestDist < maxDist) finalRight = best;
+            rightIntersection = rightCandidates.reduce((a, b) =>
+              vec2.distance(a, curr.rightPoint) < vec2.distance(b, curr.rightPoint) ? a : b
+            );
           }
         } else {
           const leg = incidents[legIdx];
-          const leftInt = geometry.lineIntersection(curr.leftLine[0], curr.leftLine[1], leg.leftLine[0], leg.leftLine[1]);
-          if (leftInt && vec2.distance(leftInt, curr.leftPoint) < maxDist) finalLeft = leftInt;
-          const rightInt = geometry.lineIntersection(curr.rightLine[0], curr.rightLine[1], leg.rightLine[0], leg.rightLine[1]);
-          if (rightInt && vec2.distance(rightInt, curr.rightPoint) < maxDist) finalRight = rightInt;
+          leftIntersection = geometry.lineIntersection(
+            curr.leftLine[0], curr.leftLine[1],
+            leg.leftLine[0], leg.leftLine[1]
+          );
+          rightIntersection = geometry.lineIntersection(
+            curr.rightLine[0], curr.rightLine[1],
+            leg.rightLine[0], leg.rightLine[1]
+          );
         }
       } else if (info.type === 'X') {
         let oppositeIdx = -1;
         for (let idx = 0; idx < m; idx++) {
           if (idx === i) continue;
-          if (areOppositeAngles(curr.angle, incidents[idx].angle)) { oppositeIdx = idx; break; }
+          if (areOppositeAngles(curr.angle, incidents[idx].angle)) {
+            oppositeIdx = idx;
+            break;
+          }
         }
         if (oppositeIdx !== -1) {
           const opp = incidents[oppositeIdx];
-          const leftInt = geometry.lineIntersection(curr.leftLine[0], curr.leftLine[1], opp.leftLine[0], opp.leftLine[1]);
-          if (leftInt && vec2.distance(leftInt, curr.leftPoint) < maxDist) finalLeft = leftInt;
-          const rightInt = geometry.lineIntersection(curr.rightLine[0], curr.rightLine[1], opp.rightLine[0], opp.rightLine[1]);
-          if (rightInt && vec2.distance(rightInt, curr.rightPoint) < maxDist) finalRight = rightInt;
+          leftIntersection = geometry.lineIntersection(
+            curr.leftLine[0], curr.leftLine[1],
+            opp.leftLine[0], opp.leftLine[1]
+          );
+          rightIntersection = geometry.lineIntersection(
+            curr.rightLine[0], curr.rightLine[1],
+            opp.rightLine[0], opp.rightLine[1]
+          );
         }
       }
 
-      if (!Number.isFinite(finalLeft[0]) || !Number.isFinite(finalLeft[1])) finalLeft = curr.leftPoint;
-      if (!Number.isFinite(finalRight[0]) || !Number.isFinite(finalRight[1])) finalRight = curr.rightPoint;
+      // Valida distâncias
+      if (leftIntersection && vec2.distance(leftIntersection, curr.leftPoint) > maxDist) {
+        leftIntersection = null;
+      }
+      if (rightIntersection && vec2.distance(rightIntersection, curr.rightPoint) > maxDist) {
+        rightIntersection = null;
+      }
 
-      let wallAdj = adjustments.get(curr.wallIndex);
-      if (!wallAdj) { wallAdj = {}; adjustments.set(curr.wallIndex, wallAdj); }
-      const sideKey = curr.side;
-      if (!wallAdj[sideKey]) wallAdj[sideKey] = {};
-      wallAdj[sideKey]!.left = finalLeft;
-      wallAdj[sideKey]!.right = finalRight;
+      // Calcula nova linha central a partir das interseções
+      if (leftIntersection && rightIntersection) {
+        const newCenter: Vec2 = [
+          (leftIntersection[0] + rightIntersection[0]) / 2,
+          (leftIntersection[1] + rightIntersection[1]) / 2,
+        ];
+        const currentEndpoint = curr.side === 'start' ? curr.wall.start : curr.wall.end;
+        if (vec2.distance(currentEndpoint, newCenter) > GEOM_TOL) {
+          let wallAdj = adjustments.get(curr.wallIndex);
+          if (!wallAdj) { wallAdj = {}; adjustments.set(curr.wallIndex, wallAdj); }
+          if (curr.side === 'start') {
+            wallAdj.start = newCenter;
+          } else {
+            wallAdj.end = newCenter;
+          }
+        }
+      } else if (leftIntersection && !rightIntersection) {
+        const wall = curr.wall;
+        const dir = vec2.normalize(vec2.sub(wall.end, wall.start));
+        const perp: Vec2 = [-dir[1], dir[0]];
+        const halfThick = wall.thickness / 2;
+        const newCenter: Vec2 = [
+          leftIntersection[0] - perp[0] * halfThick,
+          leftIntersection[1] - perp[1] * halfThick,
+        ];
+        const currentEndpoint = curr.side === 'start' ? wall.start : wall.end;
+        if (vec2.distance(currentEndpoint, newCenter) > GEOM_TOL) {
+          let wallAdj = adjustments.get(curr.wallIndex);
+          if (!wallAdj) { wallAdj = {}; adjustments.set(curr.wallIndex, wallAdj); }
+          if (curr.side === 'start') {
+            wallAdj.start = newCenter;
+          } else {
+            wallAdj.end = newCenter;
+          }
+        }
+      } else if (rightIntersection && !leftIntersection) {
+        const wall = curr.wall;
+        const dir = vec2.normalize(vec2.sub(wall.end, wall.start));
+        const perp: Vec2 = [-dir[1], dir[0]];
+        const halfThick = wall.thickness / 2;
+        const rightOffsetDir: Vec2 = [-perp[0], -perp[1]];
+        const newCenter: Vec2 = [
+          rightIntersection[0] - rightOffsetDir[0] * halfThick,
+          rightIntersection[1] - rightOffsetDir[1] * halfThick,
+        ];
+        const currentEndpoint = curr.side === 'start' ? wall.start : wall.end;
+        if (vec2.distance(currentEndpoint, newCenter) > GEOM_TOL) {
+          let wallAdj = adjustments.get(curr.wallIndex);
+          if (!wallAdj) { wallAdj = {}; adjustments.set(curr.wallIndex, wallAdj); }
+          if (curr.side === 'start') {
+            wallAdj.start = newCenter;
+          } else {
+            wallAdj.end = newCenter;
+          }
+        }
+      }
     }
   }
+
   return adjustments;
 }
 
