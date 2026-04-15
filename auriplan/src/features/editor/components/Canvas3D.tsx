@@ -26,6 +26,7 @@ export const Canvas3D: React.FC<{ width?: number; height?: number; className?: s
   const render3DRef = useRef<Render3DHandle>(null);
   const { toolManager, activeTool } = useToolContext();
   const store = useEditorStore();
+  const camera = useEditorStore(state => state.camera);
 
   const [isDragging, setIsDragging] = useState(false);
   const dragStartPos = useRef<Vec2 | null>(null);
@@ -45,8 +46,13 @@ export const Canvas3D: React.FC<{ width?: number; height?: number; className?: s
     if (nativeEvent.ctrlKey) modifiers.push('ctrl');
     if (nativeEvent.altKey) modifiers.push('alt');
     if (nativeEvent.metaKey) modifiers.push('meta');
-    return { type, position: worldPos, modifiers };
-  }, []);
+    return {
+      type,
+      position: worldPos,
+      modifiers,
+      viewportZoom: camera.zoom, // zoom da câmera 3D
+    };
+  }, [camera.zoom]);
 
   const handleMouseDown = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
     if (activeTool !== 'select' || !toolManager) return;
