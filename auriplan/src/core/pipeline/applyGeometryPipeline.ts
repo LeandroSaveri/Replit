@@ -14,6 +14,7 @@ export interface ApplyPipelineOptions {
   force?: boolean;
   /** Se true, pula execução se o fingerprint das paredes for igual ao cache. */
   skipIfUnchanged?: boolean;
+  mode?: 'incremental' | 'final';
 }
 
 /**
@@ -36,6 +37,7 @@ export function applyGeometryPipeline(
     debug = false,
     force = false,
     skipIfUnchanged = true,
+    mode = 'final',
   } = options;
 
   const currentFingerprint = computeWallsFingerprint(scene.walls);
@@ -50,7 +52,11 @@ export function applyGeometryPipeline(
     console.log('[applyGeometryPipeline] Executando pipeline...');
   }
 
-  const result = runGeometryPipeline(scene.walls, { debug, applyCornerAdjustments: true, mode: 'final' });
+  const result = runGeometryPipeline(scene.walls, {
+    debug,
+    applyCornerAdjustments: true,
+    mode,
+  });
 
   scene.walls = result.walls;
   scene.rooms = result.rooms;
