@@ -11,11 +11,6 @@ export interface TopologyResult {
   walls: Wall[];
 }
 
-export interface TopologyOptions {
-  aggressive?: boolean;
-  preserveShortWalls?: boolean;
-}
-
 // ============================================
 // FUNÇÃO FALTANTE: normalizeWallDirection
 // ============================================
@@ -83,7 +78,7 @@ function findMergedPoint(point: Vec2, uniquePoints: Map<string, Vec2>, tolerance
   return [point[0], point[1]];
 }
 
-function mergeCloseVertices(walls: Wall[], tolerance: number, preserveShort: boolean = false): Wall[] {
+function mergeCloseVertices(walls: Wall[], tolerance: number, preserveShort: boolean): Wall[] {
   if (walls.length === 0) return [];
 
   const allPoints: Vec2[] = [];
@@ -147,24 +142,31 @@ function mergeColinearWalls(walls: Wall[]): Wall[] {
 // FUNÇÃO PRINCIPAL
 // ============================================
 
-export function resolveTopology(walls: Wall[], options: TopologyOptions = {}): TopologyResult {
-  const { aggressive = true, preserveShortWalls = false } = options;
+export function resolveTopology(walls: Wall[], options?: { aggressive?: boolean }): TopologyResult {
+  const aggressive = options?.aggressive ?? true;
   
   if (walls.length === 0) return { walls: [] };
 
-  // Filtra paredes muito curtas
-  let filtered = walls.filter(w => vec2.distance(w.start, w.end) >= MIN_WALL_LENGTH - EPS);
+  // Filtra paredes muito curtas apenas se modo agressivo
+  let filtered = walls.filter(w => {
+    const len = vec2.distance(w.start, w.end);
+    return aggressive ? len >= MIN_WALL_LENGTH - EPS : true;
+  });
   
-  // ✅ CORREÇÃO: normalizeWallDirection agora está definida
   filtered = filtered.map(normalizeWallDirection);
 
   const snapTol = aggressive ? SNAP_TOL : SNAP_TOL * 0.5;
   const nodeTol = aggressive ? NODE_TOL : NODE_TOL * 0.5;
 
   filtered = snapEndpoints(filtered, snapTol);
-  filtered = mergeCloseVertices(filtered, nodeTol, preserveShortWalls);
+  // Preserva paredes curtas se não agressivo (modo incremental)
+  filtered = mergeCloseVertices(filtered, nodeTol, !aggressive);
   filtered = removeDuplicateWalls(filtered);
-  filtered = mergeColinearWalls(filtered);
+  
+  // Merge colinear apenas em modo agressivo
+  if (aggressive) {
+    filtered = mergeColinearWalls(filtered);
+  }
 
   return { walls: filtered };
 }
