@@ -66,7 +66,7 @@ export interface EditorState {
   setCurrentScene: (id: string) => void;
 
   // Walls
-  addWall: (start: Vec2, end: Vec2) => void;
+  addWall: (start: Vec2, end: Vec2, incremental?: boolean) => void;
   addWallsBatch: (walls: Array<{ start: Vec2; end: Vec2 }>) => void;
   createWall: (start: Vec2, end: Vec2) => void;
   updateWall: (id: string, updates: Partial<Wall>) => void;
@@ -362,29 +362,45 @@ export const useEditorStore = create<EditorState>()(
         });
       },
 
-      // NOVA FUNÇÃO: Adiciona várias paredes e executa pipeline UMA VEZ (modo incremental)
+      // 🔧 CORRIGIDO: addWallsBatch com pipeline único em modo 'final'
       addWallsBatch: (wallsToAdd: Array<{ start: Vec2; end: Vec2 }>) => {
         const state = get();
         const scene = getCurrentScene(state);
         if (!scene) return;
 
-        const newWalls: Wall[] = wallsToAdd.map(({ start, end }) => ({
-          id: uuidv4(),
-          start: [...start] as Vec2,
-          end: [...end] as Vec2,
-          thickness: 0.15, height: 2.8, color: '#8B4513', material: 'paint-white',
-          visible: true, locked: false,
-          connections: { start: [], end: [] },
-          roomIds: [], openingIds: [], metadata: {},
-        }));
+        const newWalls: Wall[] = [];
+
+        for (const seg of wallsToAdd) {
+          const dx = seg.end[0] - seg.start[0];
+          const dy = seg.end[1] - seg.start[1];
+          if (Math.hypot(dx, dy) < 1e-6) continue;
+
+          newWalls.push({
+            id: uuidv4(),
+            start: [...seg.start] as Vec2,
+            end: [...seg.end] as Vec2,
+            thickness: 0.15,
+            height: 2.8,
+            color: '#8B4513',
+            material: 'paint-white',
+            visible: true,
+            locked: false,
+            connections: { start: [], end: [] },
+            roomIds: [],
+            openingIds: [],
+            metadata: {},
+          });
+        }
+
+        if (newWalls.length === 0) return;
 
         const sceneCopy: Scene = {
           ...scene,
           walls: [...scene.walls, ...newWalls],
         };
 
-        // Executa pipeline em modo incremental para evitar perda de paredes
-        applyGeometryPipeline(sceneCopy, { mode: 'incremental' });
+        // 🚨 PIPELINE RODA UMA VEZ SÓ (ESSENCIAL)
+        applyGeometryPipeline(sceneCopy, { mode: 'final' });
 
         set(state => {
           const targetScene = state.scenes.find(s => s.id === state.currentSceneId);
@@ -398,10 +414,12 @@ export const useEditorStore = create<EditorState>()(
         get().saveToHistory();
       },
 
-      addWall: (start: Vec2, end: Vec2) => {
+      // 🔧 CORRIGIDO: addWall com suporte real a incremental e segurança extra
+      addWall: (start: Vec2, end: Vec2, incremental = true) => {
         const dx = end[0] - start[0];
         const dy = end[1] - start[1];
-        if (Math.hypot(dx, dy) < 1e-6) return;
+        // Segurança extra: rejeita paredes muito curtas (evita snap instável)
+        if (Math.hypot(dx, dy) < 0.05) return;
 
         const state = get();
         const scene = getCurrentScene(state);
@@ -411,17 +429,24 @@ export const useEditorStore = create<EditorState>()(
           id: uuidv4(),
           start: [...start] as Vec2,
           end: [...end] as Vec2,
-          thickness: 0.15, height: 2.8, color: '#8B4513', material: 'paint-white',
-          visible: true, locked: false,
+          thickness: 0.15,
+          height: 2.8,
+          color: '#8B4513',
+          material: 'paint-white',
+          visible: true,
+          locked: false,
           connections: { start: [], end: [] },
-          roomIds: [], openingIds: [], metadata: {},
+          roomIds: [],
+          openingIds: [],
+          metadata: {},
         };
 
         const wallsWithNew = [...scene.walls, newWall];
         const sceneCopy: Scene = { ...scene, walls: wallsWithNew };
 
-        // Executa pipeline em modo incremental para evitar perda de paredes
-        applyGeometryPipeline(sceneCopy, { mode: 'incremental' });
+        applyGeometryPipeline(sceneCopy, {
+          mode: incremental ? 'incremental' : 'final'
+        });
 
         set(state => {
           const targetScene = state.scenes.find(s => s.id === state.currentSceneId);
@@ -435,7 +460,7 @@ export const useEditorStore = create<EditorState>()(
         get().saveToHistory();
       },
 
-      createWall: (start: Vec2, end: Vec2) => get().addWall(start, end),
+      createWall: (start: Vec2, end: Vec2) => get().addWall(start, end, true),
 
       updateWall: (id: string, updates: Partial<Wall>) => {
         set(state => {
@@ -489,7 +514,6 @@ export const useEditorStore = create<EditorState>()(
         get().saveToHistory();
       },
 
-      // REFATORADO: Usa addWallsBatch para eficiência e pipeline único (modo incremental via addWallsBatch)
       createWallsFromPolygon: (points: Vec2[]) => {
         if (!points || points.length < 3) return;
         let closedPoints = points;
