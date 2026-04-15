@@ -49,7 +49,7 @@ export class SelectToolHandler implements ToolHandler {
   private onPreviewChange: (state: PreviewState) => void;
   private onHoverChange: (id: string | null) => void;
   private onCursorChange: (cursor: string) => void;
-  private getTopology: () => WallTopology | undefined; // ✅ callback para topologia viva
+  private getTopology: () => WallTopology | undefined;
 
   private drag: DragState = null;
   private isDragging = false;
@@ -61,7 +61,7 @@ export class SelectToolHandler implements ToolHandler {
     onPreviewChange: (state: PreviewState) => void,
     onHoverChange: (id: string | null) => void = () => {},
     onCursorChange: (cursor: string) => void = () => {},
-    getTopology: () => WallTopology | undefined, // ✅ injeta função para obter topologia atualizada
+    getTopology: () => WallTopology | undefined,
   ) {
     this.store = store;
     this.onPreviewChange = onPreviewChange;
@@ -97,7 +97,6 @@ export class SelectToolHandler implements ToolHandler {
     const scene = state.scenes.find(s => s.id === state.currentSceneId);
     if (!scene) return { type: 'none' };
 
-    // 1. Furniture
     for (const furn of scene.furniture) {
       const [fx, fz] = Array.isArray(furn.position) ? furn.position : [furn.position.x, furn.position.z];
       const size = furn.size || [0.6, 0.6];
@@ -109,7 +108,6 @@ export class SelectToolHandler implements ToolHandler {
       }
     }
 
-    // 2. Rooms
     for (const room of scene.rooms) {
       const pts = room.points;
       if (pts.length < 3) continue;
@@ -137,7 +135,6 @@ export class SelectToolHandler implements ToolHandler {
       }
     }
 
-    // 3. Walls
     for (const wall of scene.walls) {
       const distStart = Math.hypot(wall.start[0] - pos[0], wall.start[1] - pos[1]);
       const distEnd = Math.hypot(wall.end[0] - pos[0], wall.end[1] - pos[1]);
@@ -315,14 +312,24 @@ export class SelectToolHandler implements ToolHandler {
         if (!wall) return;
         state.select(hit.wallId, addToSel);
         const origPos: Vec2 = hit.vertex === 'start' ? [...wall.start] as Vec2 : [...wall.end] as Vec2;
+
+        const topology = this.getTopology();
+        const connectedWallIds: string[] = [];
+        if (topology) {
+          const connected = topology.getWallsConnectedToVertex(origPos, hit.wallId);
+          for (const conn of connected) {
+            connectedWallIds.push(conn.id);
+          }
+        }
+
         this.drag = {
           kind: 'wall-vertex',
           wallId: hit.wallId,
           vertex: hit.vertex,
           origPos,
           ds: pos,
-          affectedWallIds: [hit.wallId],
-          currentPos: origPos, // guarda última posição aplicada
+          affectedWallIds: [hit.wallId, ...connectedWallIds],
+          currentPos: origPos,
         };
         break;
       }
@@ -448,34 +455,26 @@ export class SelectToolHandler implements ToolHandler {
         const drag = this.drag;
         const newPos: Vec2 = [drag.origPos[0] + (snappedPos[0] - drag.ds[0]), drag.origPos[1] + (snappedPos[1] - drag.ds[1])];
         const scene = state.scenes.find(s => s.id === state.currentSceneId);
-        const wall = scene?.walls.find(w => w.id === drag.wallId);
-        if (!wall) break;
+        if (!scene) break;
 
-        const newStart = drag.vertex === 'start' ? newPos : [...wall.start] as Vec2;
-        const newEnd = drag.vertex === 'end' ? newPos : [...wall.end] as Vec2;
+        const updates: Array<{ id: string; start: Vec2; end: Vec2 }> = [];
 
-        // ✅ usa topologia atualizada via callback
-        const topology = this.getTopology();
-        if (topology) {
-          // Obtém paredes conectadas usando a posição ORIGINAL do vértice (ainda válida para busca)
-          const connectedWalls = topology.getWallsConnectedToVertex(drag.origPos, drag.wallId);
-          const updates: Array<{ id: string; start: Vec2; end: Vec2 }> = [];
-          updates.push({ id: drag.wallId, start: newStart, end: newEnd });
-          const affectedIds: string[] = [drag.wallId];
+        for (const wid of drag.affectedWallIds) {
+          const w = scene.walls.find(wall => wall.id === wid);
+          if (w) {
+            const isStartAtOrig = this.arePointsEqual(w.start, drag.origPos);
+            const isEndAtOrig = this.arePointsEqual(w.end, drag.origPos);
 
-          for (const conn of connectedWalls) {
-            const isStart = this.arePointsEqual(conn.start, drag.origPos);
-            const newConnStart = isStart ? newPos : conn.start;
-            const newConnEnd = (!isStart && this.arePointsEqual(conn.end, drag.origPos)) ? newPos : conn.end;
-            updates.push({ id: conn.id, start: newConnStart, end: newConnEnd });
-            affectedIds.push(conn.id);
+            const newStart = isStartAtOrig ? newPos : [...w.start] as Vec2;
+            const newEnd = isEndAtOrig ? newPos : [...w.end] as Vec2;
+
+            updates.push({ id: wid, start: newStart, end: newEnd });
           }
-          drag.affectedWallIds = affectedIds;
-          // Atualiza todas as paredes de uma vez
+        }
+
+        if (updates.length > 0) {
           state._liveUpdateWallsBatch(updates);
-        } else {
-          state._liveUpdateWall(drag.wallId, newStart, newEnd);
-          drag.affectedWallIds = [drag.wallId];
+          drag.affectedWallIds = updates.map(u => u.id);
         }
         break;
       }
@@ -523,7 +522,6 @@ export class SelectToolHandler implements ToolHandler {
     const affectedIds: string[] = [wallId];
     const updates: Array<{ id: string; start: Vec2; end: Vec2 }> = [];
 
-    // ✅ usa topologia atualizada via callback
     const topology = this.getTopology();
     if (topology) {
       const connectedAtStart = topology.getWallsConnectedToVertex(wall.start, wallId);
@@ -545,7 +543,6 @@ export class SelectToolHandler implements ToolHandler {
         updates.push({ id: conn.id, start: newConnStart, end: newConnEnd });
         affectedIds.push(conn.id);
       }
-      // Aplica todas as atualizações em lote
       state._liveUpdateWallsBatch(updates);
     } else {
       state._liveUpdateWall(wallId, newStart, newEnd);
