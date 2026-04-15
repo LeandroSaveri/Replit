@@ -8,9 +8,11 @@
 import { useRef, useEffect, useState, useCallback, useLayoutEffect } from 'react';
 import { useEditorStore, selectCurrentScene } from '@store/editorStore';
 import { Render2DEngine } from '@engine/render2d/Render2DEngine';
-import { ToolManager, ToolContext, ROOM_SHAPES, RoomToolHandler } from '../handlers';
+import { useToolContext } from '../handlers/ToolContext';
+import { ROOM_SHAPES, RoomToolHandler } from '../handlers'; // Ajuste conforme necessário
 import type { Vec2 } from '@auriplan-types';
 import { SNAP_COLORS } from '@core/snap/SnapSolver';
+import type { InteractionEvent } from '@core/interaction/InteractionEngine';
 
 const TOOL_CURSORS: Record<string, string> = {
   select: 'default',
@@ -27,7 +29,6 @@ export function Canvas2D() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const renderEngineRef = useRef<Render2DEngine | null>(null);
-  const toolManagerRef = useRef<ToolManager | null>(null);
   const animFrameRef = useRef<number>(0);
 
   const scaleRef = useRef(40);
@@ -44,13 +45,7 @@ export function Canvas2D() {
 
   const [scale, setScaleState] = useState(40);
   const [pan, setPanState] = useState<Vec2>([0, 0]);
-  const [previewState, setPreviewState] = useState<any>(null);
-  const [snapPoint, setSnapPoint] = useState<Vec2 | null>(null);
-  const [snapType, setSnapType] = useState<string | null>(null);
   const [cursorStyle, setCursorStyle] = useState('crosshair');
-  const [hoveredId, setHoveredId] = useState<string | null>(null);
-  const hoveredIdRef = useRef<string | null>(null);
-
   const [renameRoom, setRenameRoom] = useState<{ id: string; name: string } | null>(null);
   const renameInputRef = useRef<HTMLInputElement>(null);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; worldPos: Vec2 } | null>(null);
@@ -60,6 +55,9 @@ export function Canvas2D() {
   const tool = useEditorStore(state => state.tool);
   const gridSettings = useEditorStore(state => state.grid);
   const selectedIds = useEditorStore(state => state.selectedIds);
+
+  // Consome o ToolManager e estado de preview do contexto
+  const { toolManager, previewState, setPreviewState } = useToolContext();
 
   const walls = currentScene?.walls ?? [];
   const rooms = currentScene?.rooms ?? [];
@@ -156,47 +154,17 @@ export function Canvas2D() {
     requestRenderFrame();
   }, [resetView]);
 
+  // Sincroniza o cursor com o ToolManager
   useEffect(() => {
-    if (!toolManagerRef.current) {
-      toolManagerRef.current = new ToolManager(
-        store as any,
-        (state) => {
-          if (state && (state as any).type === 'rename-room') {
-            const roomId = (state as any).roomId as string;
-            const room = store.getState().scenes
-              .find(s => s.id === store.getState().currentSceneId)
-              ?.rooms.find(r => r.id === roomId);
-            if (room) setRenameRoom({ id: roomId, name: room.name });
-            return;
-          }
-          setPreviewState(state);
-          if (state && (state as any).snapPoint) {
-            setSnapPoint((state as any).snapPoint);
-            setSnapType((state as any).snapType || null);
-          } else {
-            setSnapPoint(null);
-            setSnapType(null);
-          }
-        },
-        (id) => {
-          hoveredIdRef.current = id;
-          setHoveredId(id);
-        },
-        (cursor) => {
-          if (store.getState().tool === 'select') setCursorStyle(cursor);
-        },
-      );
-    }
-    return () => {
-      toolManagerRef.current?.destroy();
-      toolManagerRef.current = null;
-    };
+    const unsubscribe = store.subscribe(() => {
+      // Apenas para capturar mudanças de ferramenta e atualizar cursor padrão
+      const currentTool = store.getState().tool;
+      if (currentTool !== 'select') {
+        setCursorStyle(TOOL_CURSORS[currentTool] ?? 'default');
+      }
+    });
+    return unsubscribe;
   }, [store]);
-
-  useEffect(() => {
-    toolManagerRef.current?.setTool(tool);
-    setCursorStyle(TOOL_CURSORS[tool] ?? 'default');
-  }, [tool]);
 
   useEffect(() => {
     const dpr = window.devicePixelRatio || 1;
@@ -210,7 +178,7 @@ export function Canvas2D() {
 
   useEffect(() => {
     requestRenderFrame();
-  }, [walls, rooms, previewState, selectedIds, gridSettings, hoveredId]);
+  }, [walls, rooms, previewState, selectedIds, gridSettings]);
 
   const doRenderRef = useRef<() => void>(() => {});
 
@@ -237,7 +205,7 @@ export function Canvas2D() {
       furniture: currentScene?.furniture ?? [],
       measurements: currentScene?.measurements ?? [],
       selectedIds,
-      hoveredId: hoveredIdRef.current,
+      hoveredId: null, // será gerenciado pelo ToolManager
     });
 
     if (previewState?.type === 'wall') {
@@ -246,6 +214,8 @@ export function Canvas2D() {
       drawPolygonPreview(ctx, previewState.vertices, previewState.previewPoint);
     }
 
+    const snapPoint = (previewState as any)?.snapPoint;
+    const snapType = (previewState as any)?.snapType;
     if (snapPoint) {
       drawSnapIndicator(ctx, snapPoint, snapType);
     }
@@ -362,6 +332,22 @@ export function Canvas2D() {
     return m;
   };
 
+  // Cria um evento de interação com o zoom atual da viewport
+  const createInteractionEvent = (
+    type: InteractionEvent['type'],
+    worldPos: Vec2,
+    nativeEvent: React.PointerEvent | React.KeyboardEvent | React.MouseEvent,
+    extra?: Partial<InteractionEvent>
+  ): InteractionEvent => {
+    return {
+      type,
+      position: worldPos,
+      modifiers: getModifiers(nativeEvent as any),
+      viewportZoom: scaleRef.current, // zoom atual do canvas 2D
+      ...extra,
+    };
+  };
+
   const handlePointerDown = (e: React.PointerEvent) => {
     if (e.button !== 2) e.preventDefault();
     (e.target as HTMLElement).setPointerCapture(e.pointerId);
@@ -393,11 +379,8 @@ export function Canvas2D() {
     if (e.button !== 0) return;
 
     const worldPos = screenToWorld(e.clientX, e.clientY);
-    toolManagerRef.current?.handleEvent({
-      type: 'mousedown',
-      position: worldPos,
-      modifiers: getModifiers(e),
-    } as any);
+    const event = createInteractionEvent('mousedown', worldPos, e);
+    toolManager.handleEvent(event);
     requestRenderFrame();
   };
 
@@ -450,11 +433,8 @@ export function Canvas2D() {
     }
 
     const worldPos = screenToWorld(e.clientX, e.clientY);
-    toolManagerRef.current?.handleEvent({
-      type: 'mousemove',
-      position: worldPos,
-      modifiers: getModifiers(e),
-    } as any);
+    const event = createInteractionEvent('mousemove', worldPos, e);
+    toolManager.handleEvent(event);
     requestRenderFrame();
   };
 
@@ -477,21 +457,15 @@ export function Canvas2D() {
     }
 
     const worldPos = screenToWorld(e.clientX, e.clientY);
-    toolManagerRef.current?.handleEvent({
-      type: 'mouseup',
-      position: worldPos,
-      modifiers: getModifiers(e),
-    } as any);
+    const event = createInteractionEvent('mouseup', worldPos, e);
+    toolManager.handleEvent(event);
     requestRenderFrame();
   };
 
   const handleDoubleClick = (e: React.MouseEvent) => {
     const worldPos = screenToWorld(e.clientX, e.clientY);
-    toolManagerRef.current?.handleEvent({
-      type: 'dblclick',
-      position: worldPos,
-      modifiers: [],
-    } as any);
+    const event = createInteractionEvent('dblclick', worldPos, e);
+    toolManager.handleEvent(event);
     requestRenderFrame();
   };
 
@@ -643,11 +617,13 @@ export function Canvas2D() {
         setCursorStyle('grab');
       }
       if (e.key === 'Escape') {
-        toolManagerRef.current?.handleEvent({ type: 'keydown', key: 'Escape', modifiers: [], position: [0,0] } as any);
+        const event: InteractionEvent = { type: 'keydown', key: 'Escape', modifiers: [], position: [0,0] };
+        toolManager.handleEvent(event);
         requestRenderFrame();
       }
       if (e.key === 'Enter') {
-        toolManagerRef.current?.handleEvent({ type: 'keydown', key: 'Enter', modifiers: [], position: [0,0] } as any);
+        const event: InteractionEvent = { type: 'keydown', key: 'Enter', modifiers: [], position: [0,0] };
+        toolManager.handleEvent(event);
         requestRenderFrame();
       }
       if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
@@ -676,10 +652,10 @@ export function Canvas2D() {
       window.removeEventListener('keydown', onKeyDown);
       window.removeEventListener('keyup', onKeyUp);
     };
-  }, [store, resetView]);
+  }, [store, resetView, toolManager]);
 
   const insertShape = (shapeName: string) => {
-    const handler = (toolManagerRef.current as any)?.currentHandler;
+    const handler = toolManager.getCurrentHandler();
     if (handler instanceof RoomToolHandler) {
       handler.insertShape(shapeName, [0, 0] as Vec2);
       requestRenderFrame();
@@ -687,110 +663,108 @@ export function Canvas2D() {
   };
 
   return (
-    <ToolContext.Provider value={{ previewState, setPreviewState, activeTool: tool }}>
-      <div ref={containerRef} className="w-full h-full relative overflow-hidden bg-slate-100">
-        <canvas
-          ref={canvasRef}
-          className="block select-none"
-          style={{
-            cursor: cursorStyle,
-            touchAction: 'none',
-            WebkitUserSelect: 'none',
-          }}
-          onPointerDown={handlePointerDown}
-          onPointerMove={handlePointerMove}
-          onPointerUp={handlePointerUp}
-          onDoubleClick={handleDoubleClick}
-          onContextMenu={handleContextMenu}
-        />
+    <div ref={containerRef} className="w-full h-full relative overflow-hidden bg-slate-100">
+      <canvas
+        ref={canvasRef}
+        className="block select-none"
+        style={{
+          cursor: cursorStyle,
+          touchAction: 'none',
+          WebkitUserSelect: 'none',
+        }}
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerUp}
+        onDoubleClick={handleDoubleClick}
+        onContextMenu={handleContextMenu}
+      />
 
-        {tool === 'room' && (
-          <div className="absolute top-3 left-3 bg-white/95 backdrop-blur-sm rounded-xl shadow-lg border border-slate-200 p-2 z-20 w-52">
-            <div className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-2 px-2">
-              Formas prontas
-            </div>
-            <div className="grid grid-cols-3 gap-2">
-              {ROOM_SHAPES.map(shape => {
-                const IconComponent = typeof shape.icon === 'string' ? null : shape.icon;
-                return (
-                  <button
-                    key={shape.name}
-                    onClick={() => insertShape(shape.name)}
-                    className="flex flex-col items-center p-2 rounded-lg hover:bg-blue-50 transition-colors"
-                    title={shape.name}
-                  >
-                    {IconComponent ? (
-                      <IconComponent className="w-6 h-6 text-blue-500 mb-1" />
-                    ) : (
-                      <div className="w-6 h-6 flex items-center justify-center text-blue-500 font-bold mb-1">
-                        {shape.icon}
-                      </div>
-                    )}
-                    <span className="text-[10px] text-slate-600 text-center leading-tight">
-                      {shape.name}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
+      {tool === 'room' && (
+        <div className="absolute top-3 left-3 bg-white/95 backdrop-blur-sm rounded-xl shadow-lg border border-slate-200 p-2 z-20 w-52">
+          <div className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-2 px-2">
+            Formas prontas
           </div>
-        )}
-
-        <div className="hidden md:block absolute bottom-4 left-4 bg-white/80 backdrop-blur-sm px-3 py-1.5 rounded-lg text-xs text-slate-600 border border-slate-200 shadow-sm z-10">
-          1 : {(100 / scale * 10).toFixed(0)} &nbsp;|&nbsp; {scale.toFixed(0)} px/m
-        </div>
-
-        {contextMenu && (
-          <div
-            role="menu"
-            className="absolute z-50 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl shadow-black/50 overflow-hidden min-w-[150px]"
-            style={{ left: contextMenu.x, top: contextMenu.y }}
-          >
-            {contextMenuActions().length === 0 ? (
-              <div className="px-4 py-3 text-xs text-slate-500">Selecione um objeto primeiro</div>
-            ) : (
-              contextMenuActions().map((item, i) => (
+          <div className="grid grid-cols-3 gap-2">
+            {ROOM_SHAPES.map(shape => {
+              const IconComponent = typeof shape.icon === 'string' ? null : shape.icon;
+              return (
                 <button
-                  key={i}
-                  role="menuitem"
-                  className={`w-full text-left px-4 py-2.5 text-sm hover:bg-slate-800 transition-colors ${item.color ?? 'text-slate-200'}`}
-                  onClick={() => { item.action(); setContextMenu(null); requestRenderFrame(); }}
+                  key={shape.name}
+                  onClick={() => insertShape(shape.name)}
+                  className="flex flex-col items-center p-2 rounded-lg hover:bg-blue-50 transition-colors"
+                  title={shape.name}
                 >
-                  {item.label}
+                  {IconComponent ? (
+                    <IconComponent className="w-6 h-6 text-blue-500 mb-1" />
+                  ) : (
+                    <div className="w-6 h-6 flex items-center justify-center text-blue-500 font-bold mb-1">
+                      {shape.icon}
+                    </div>
+                  )}
+                  <span className="text-[10px] text-slate-600 text-center leading-tight">
+                    {shape.name}
+                  </span>
                 </button>
-              ))
-            )}
+              );
+            })}
           </div>
-        )}
+        </div>
+      )}
 
-        {renameRoom && (() => {
-          const room = currentScene?.rooms.find(r => r.id === renameRoom.id);
-          if (!room) return null;
-          const centroid = room.points.reduce(
-            (acc, p) => [acc[0] + p[0] / room.points.length, acc[1] + p[1] / room.points.length] as Vec2,
-            [0, 0] as Vec2
-          );
-          const screenPos = worldToScreenPx(centroid[0], centroid[1]);
-          const dpr = window.devicePixelRatio || 1;
-          const sx = screenPos.x / dpr;
-          const sy = screenPos.y / dpr;
-          return (
-            <div className="absolute z-50 flex flex-col items-center gap-1" style={{ left: sx - 80, top: sy - 20 }}>
-              <input
-                ref={renameInputRef}
-                type="text"
-                value={renameRoom.name}
-                onChange={e => setRenameRoom({ ...renameRoom, name: e.target.value })}
-                onKeyDown={e => { if (e.key === 'Enter') commitRename(); if (e.key === 'Escape') setRenameRoom(null); }}
-                onBlur={commitRename}
-                className="w-40 text-center text-sm font-semibold px-3 py-1.5 bg-white border-2 border-blue-500 rounded-lg shadow-xl text-slate-800 focus:outline-none"
-              />
-              <span className="text-[10px] text-slate-500 bg-white/80 px-2 py-0.5 rounded">Enter para salvar • Esc para cancelar</span>
-            </div>
-          );
-        })()}
+      <div className="hidden md:block absolute bottom-4 left-4 bg-white/80 backdrop-blur-sm px-3 py-1.5 rounded-lg text-xs text-slate-600 border border-slate-200 shadow-sm z-10">
+        1 : {(100 / scale * 10).toFixed(0)} &nbsp;|&nbsp; {scale.toFixed(0)} px/m
       </div>
-    </ToolContext.Provider>
+
+      {contextMenu && (
+        <div
+          role="menu"
+          className="absolute z-50 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl shadow-black/50 overflow-hidden min-w-[150px]"
+          style={{ left: contextMenu.x, top: contextMenu.y }}
+        >
+          {contextMenuActions().length === 0 ? (
+            <div className="px-4 py-3 text-xs text-slate-500">Selecione um objeto primeiro</div>
+          ) : (
+            contextMenuActions().map((item, i) => (
+              <button
+                key={i}
+                role="menuitem"
+                className={`w-full text-left px-4 py-2.5 text-sm hover:bg-slate-800 transition-colors ${item.color ?? 'text-slate-200'}`}
+                onClick={() => { item.action(); setContextMenu(null); requestRenderFrame(); }}
+              >
+                {item.label}
+              </button>
+            ))
+          )}
+        </div>
+      )}
+
+      {renameRoom && (() => {
+        const room = currentScene?.rooms.find(r => r.id === renameRoom.id);
+        if (!room) return null;
+        const centroid = room.points.reduce(
+          (acc, p) => [acc[0] + p[0] / room.points.length, acc[1] + p[1] / room.points.length] as Vec2,
+          [0, 0] as Vec2
+        );
+        const screenPos = worldToScreenPx(centroid[0], centroid[1]);
+        const dpr = window.devicePixelRatio || 1;
+        const sx = screenPos.x / dpr;
+        const sy = screenPos.y / dpr;
+        return (
+          <div className="absolute z-50 flex flex-col items-center gap-1" style={{ left: sx - 80, top: sy - 20 }}>
+            <input
+              ref={renameInputRef}
+              type="text"
+              value={renameRoom.name}
+              onChange={e => setRenameRoom({ ...renameRoom, name: e.target.value })}
+              onKeyDown={e => { if (e.key === 'Enter') commitRename(); if (e.key === 'Escape') setRenameRoom(null); }}
+              onBlur={commitRename}
+              className="w-40 text-center text-sm font-semibold px-3 py-1.5 bg-white border-2 border-blue-500 rounded-lg shadow-xl text-slate-800 focus:outline-none"
+            />
+            <span className="text-[10px] text-slate-500 bg-white/80 px-2 py-0.5 rounded">Enter para salvar • Esc para cancelar</span>
+          </div>
+        );
+      })()}
+    </div>
   );
 }
 
