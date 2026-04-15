@@ -1,7 +1,6 @@
 // ============================================================
 // WallToolHandler — click-to-click (MagicPlan style)
-// Flow: click(1) = set start → move = preview → click(2) = commit + new start
-// Escape / Enter / double-click = finish
+// Fase 4.1: Acumula paredes e aplica pipeline apenas ao finalizar
 // ============================================================
 
 import type { InteractionEvent } from '@core/interaction/InteractionEngine';
@@ -12,7 +11,6 @@ import { SnapSolver } from '@core/snap/SnapSolver';
 import type { Vec2 } from '@auriplan-types';
 
 const MIN_WALL_LENGTH = 0.05;
-const CLOSE_TOLERANCE = 0.3;
 
 type Mode = 'idle' | 'drawing';
 
@@ -21,6 +19,7 @@ export class WallToolHandler implements ToolHandler {
   private startPoint: Vec2 | null = null;
   private currentPoint: Vec2 | null = null;
   private segmentStartHistory: Vec2[] = [];
+  private pendingWalls: Array<{ start: Vec2; end: Vec2 }> = []; // Acumula paredes
   private store: EditorStore;
   private onPreviewChange: (state: PreviewState) => void;
 
@@ -40,10 +39,15 @@ export class WallToolHandler implements ToolHandler {
   }
 
   reset(): void {
+    // Se houver paredes pendentes, aplica em lote antes de resetar
+    if (this.pendingWalls.length > 0) {
+      this.store.getState().addWallsBatch(this.pendingWalls);
+    }
     this.mode = 'idle';
     this.startPoint = null;
     this.currentPoint = null;
     this.segmentStartHistory = [];
+    this.pendingWalls = [];
     this.onPreviewChange(null);
   }
 
@@ -60,6 +64,7 @@ export class WallToolHandler implements ToolHandler {
       this.currentPoint = snapped;
       this.mode = 'drawing';
       this.segmentStartHistory = [snapped];
+      this.pendingWalls = [];
       this.updatePreview();
       return;
     }
@@ -69,7 +74,16 @@ export class WallToolHandler implements ToolHandler {
     const length = Math.hypot(end[0] - this.startPoint[0], end[1] - this.startPoint[1]);
 
     if (length >= MIN_WALL_LENGTH) {
-      this.store.getState().createWall(this.startPoint, end);
+      // Acumula para aplicação posterior
+      this.pendingWalls.push({ start: this.startPoint, end });
+      // Atualiza preview imediatamente (usando live update)
+      this.store.getState()._liveUpdateWallsBatch(
+        this.pendingWalls.map((w, idx) => ({
+          id: `preview-${idx}`, // ID fictício, não usado de fato
+          start: w.start,
+          end: w.end,
+        }))
+      );
       this.segmentStartHistory.push(end);
       this.startPoint = end;
       this.currentPoint = end;
@@ -95,20 +109,50 @@ export class WallToolHandler implements ToolHandler {
   }
 
   private onDoubleClick(_event: InteractionEvent): void {
+    // Finaliza e aplica todas as paredes acumuladas
+    if (this.pendingWalls.length > 0) {
+      this.store.getState().addWallsBatch(this.pendingWalls);
+    }
     this.reset();
   }
 
   private onKey(event: InteractionEvent): void {
-    if (event.key === 'Escape' || event.key === 'Enter') {
+    if (event.key === 'Escape') {
+      // Cancela sem aplicar
+      this.mode = 'idle';
+      this.startPoint = null;
+      this.currentPoint = null;
+      this.segmentStartHistory = [];
+      this.pendingWalls = [];
+      this.onPreviewChange(null);
+    }
+    if (event.key === 'Enter') {
+      // Finaliza e aplica
+      if (this.pendingWalls.length > 0) {
+        this.store.getState().addWallsBatch(this.pendingWalls);
+      }
       this.reset();
     }
     if (event.key === 'Backspace' && this.segmentStartHistory.length > 1) {
+      // Remove última parede pendente
+      this.pendingWalls.pop();
       this.segmentStartHistory.pop();
       const prev = this.segmentStartHistory[this.segmentStartHistory.length - 1];
       this.startPoint = prev;
       this.currentPoint = prev;
-      this.store.getState().undo();
       this.updatePreview();
+      // Atualiza preview com as paredes restantes
+      if (this.pendingWalls.length > 0) {
+        this.store.getState()._liveUpdateWallsBatch(
+          this.pendingWalls.map((w, idx) => ({
+            id: `preview-${idx}`,
+            start: w.start,
+            end: w.end,
+          }))
+        );
+      } else {
+        this.store.getState()._liveUpdateWallsBatch([]);
+      }
     }
   }
 
@@ -136,19 +180,18 @@ export class WallToolHandler implements ToolHandler {
     const walls = scene?.walls ?? [];
     const snapConfig = state.snap;
     const gridSize = state.grid.size;
-    // Utiliza o zoom da viewport vindo do evento, com fallback para 1 (evita divisão por zero)
     const zoom = event.viewportZoom ?? 1;
 
     const options = {
       gridSize,
-      snapTol: snapConfig.distance, // a tolerância base (em metros)
+      snapTol: snapConfig.distance,
       enableGrid: snapConfig.grid,
       enableVertex: snapConfig.endpoints,
       enableMidpoint: snapConfig.midpoints,
       enableIntersection: snapConfig.edges,
       enableWall: snapConfig.perpendicular,
       enableAngle: snapConfig.angle,
-      zoom, // zoom real da viewport
+      zoom,
     };
     const result = SnapSolver.computeSnap(event.position, walls, startPoint, options);
     return { point: result.point, type: result.type };
