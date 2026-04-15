@@ -50,7 +50,7 @@ export function applyGeometryPipeline(
     console.log('[applyGeometryPipeline] Executando pipeline...');
   }
 
-  const result = runGeometryPipeline(scene.walls, { debug, applyCornerAdjustments: true });
+  const result = runGeometryPipeline(scene.walls, { debug, applyCornerAdjustments: true, mode: 'final' });
 
   scene.walls = result.walls;
   scene.rooms = result.rooms;
