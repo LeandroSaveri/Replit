@@ -360,6 +360,8 @@ export function computeCornerAdjustments(
 
       const testStart = curr.side === 'start' ? newCenter : curr.wall.start;
       const testEnd = curr.side === 'end' ? newCenter : curr.wall.end;
+      
+      // PROTEÇÃO CRÍTICA: nunca permitir parede abaixo de MIN_WALL_LENGTH
       if (!wouldBeValidLength(curr.wall, testStart, testEnd)) {
         // Ajuste rejeitado: deixaria a parede curta demais
         continue;
