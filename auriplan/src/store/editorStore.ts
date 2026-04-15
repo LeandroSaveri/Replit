@@ -1,6 +1,6 @@
-// src/store/editorStore.ts
 // ============================================
-// EDITOR STORE - Estado Global do Editor (com pipeline geométrico e cache de topologia)
+// EDITOR STORE - Estado Global do Editor
+// Fase 4.1: Operações em lote e pipeline único
 // ============================================
 
 import { create } from 'zustand';
@@ -32,37 +32,31 @@ import type {
 
 import { splitWallAtPoint, type SplitResult, type SplitSegment } from '@core/wall/WallSplitEngine';
 
-// ========== IMPORTS PARA TOPOLOGIA ==========
 import type { IGraphTopology } from '@core/topology/IGraphTopology';
 import { WallGraphTopology } from '@core/wall/WallGraph';
 
-// ==================== EDITOR STATE INTERFACE ====================
+// ==================== INTERFACES ====================
 export interface EditorState {
-  // Data
   project: Project | null;
   scenes: Scene[];
   currentSceneId: string | null;
 
-  // UI state
   viewMode: ViewMode;
   tool: Tool;
   selectedIds: string[];
   hoveredId: string | null;
   assembleMode: boolean;
 
-  // Settings
   grid: GridSettings;
   snap: SnapSettings;
   camera: CameraState;
 
-  // History
   history: Array<{ scenes: Scene[]; currentSceneId: string | null }>;
   historyIndex: number;
 
-  // Internal cache – apenas topologia unificada
   _topologyCache: Record<string, IGraphTopology>;
 
-  // Actions - Project
+  // Project
   createProject: (name: string, owner: User, description?: string) => void;
   loadTemplate: (templateId: string, name: string) => void;
   saveProject: () => void;
@@ -72,8 +66,9 @@ export interface EditorState {
   deleteScene: (id: string) => void;
   setCurrentScene: (id: string) => void;
 
-  // Actions - Walls
+  // Walls
   addWall: (start: Vec2, end: Vec2) => void;
+  addWallsBatch: (walls: Array<{ start: Vec2; end: Vec2 }>) => void;
   createWall: (start: Vec2, end: Vec2) => void;
   updateWall: (id: string, updates: Partial<Wall>) => void;
   deleteWall: (id: string) => void;
@@ -83,46 +78,46 @@ export interface EditorState {
   splitWall: (wallId: string, point: Vec2) => void;
   updateWallsBatch: (updates: Array<{ id: string; start: Vec2; end: Vec2 }>) => void;
 
-  // Live updates (no history — for smooth dragging)
+  // Live updates (no history)
   _liveUpdateWall: (id: string, start: Vec2, end: Vec2) => void;
   _liveUpdateRoomPoints: (id: string, points: Vec2[]) => void;
   _liveUpdateFurniturePos: (id: string, position: [number, number, number]) => void;
   _liveUpdateWallsBatch: (updates: Array<{ id: string; start: Vec2; end: Vec2 }>) => void;
 
-  // Actions - Rooms
-  addRoom: (points: Vec2[], options?: { name?: string; type?: Room['type']; floorColor?: string; wallColor?: string; ceilingColor?: string }) => void;
+  // Rooms
+  addRoom: (points: Vec2[], options?: any) => void;
   updateRoom: (id: string, updates: Partial<Room>) => void;
   deleteRoom: (id: string) => void;
   duplicateRoom: (id: string) => void;
   zoomToRoom: (id: string) => void;
   setAssembleMode: (enabled: boolean) => void;
 
-  // Actions - Doors
+  // Doors
   addDoor: (wallId: string, position: number, width: number) => void;
   updateDoor: (id: string, updates: Partial<Door>) => void;
   deleteDoor: (id: string) => void;
 
-  // Actions - Windows
+  // Windows
   addWindow: (wallId: string, position: number, width: number) => void;
   updateWindow: (id: string, updates: Partial<Window>) => void;
   deleteWindow: (id: string) => void;
 
-  // Actions - Furniture
+  // Furniture
   addFurniture: (furniture: Omit<Furniture, 'id'>) => void;
   updateFurniture: (id: string, updates: Partial<Furniture>) => void;
   deleteFurniture: (id: string) => void;
   duplicateFurniture: (id: string) => void;
 
-  // Actions - Measurements
+  // Measurements
   addMeasurement: (start: Vec2, end: Vec2) => void;
   deleteMeasurement: (id: string) => void;
 
-  // Actions - Selection
+  // Selection
   select: (id: string | string[], addToSelection?: boolean) => void;
   deselect: (id: string) => void;
   deselectAll: () => void;
 
-  // Actions - UI
+  // UI
   setViewMode: (mode: ViewMode) => void;
   setTool: (tool: Tool) => void;
   toggleGrid: () => void;
@@ -134,20 +129,18 @@ export interface EditorState {
   zoomOut: () => void;
   fitToView: () => void;
 
-  // Actions - History
+  // History
   saveToHistory: () => void;
   undo: () => void;
   redo: () => void;
   canUndo: () => boolean;
   canRedo: () => boolean;
 
-  // Ação pública de reconstrução geométrica
   rebuildCurrentSceneGeometry: () => void;
 }
 
 const safeClone = <T>(obj: T): T => JSON.parse(JSON.stringify(obj));
 
-// ==================== UTILITÁRIO DE TOPOLOGIA ====================
 function updateTopologyForScene(state: EditorState, sceneId: string) {
   const scene = state.scenes.find(s => s.id === sceneId);
   if (!scene) return;
@@ -155,21 +148,15 @@ function updateTopologyForScene(state: EditorState, sceneId: string) {
   state._topologyCache[sceneId] = new WallGraphTopology(scene.walls);
 }
 
-// ==================== APLICA O PIPELINE GEOMÉTRICO EM UMA CENA ====================
 function applyGeometryToScene(scene: Scene): void {
   applyGeometryPipeline(scene);
 }
 
-// ==================== AUXILIARES ====================
 function getCurrentScene(state: EditorState): Scene | undefined {
   return state.scenes.find(s => s.id === state.currentSceneId);
 }
 
-// ==================== FUNÇÃO AUXILIAR PARA REASSOCIAÇÃO DE ABERTURAS ====================
-function reassignOpeningsAfterSplit(
-  scene: Scene,
-  splitResult: SplitResult
-): void {
+function reassignOpeningsAfterSplit(scene: Scene, splitResult: SplitResult): void {
   const { originalWallId, segments } = splitResult;
   if (segments.length === 0) return;
 
@@ -183,13 +170,10 @@ function reassignOpeningsAfterSplit(
     return null;
   };
 
-  // Atualizar portas
   for (const door of scene.doors) {
     if (door.wallId === originalWallId) {
       let totalLength = 0;
-      for (const seg of segments) {
-        totalLength += Math.hypot(seg.end[0] - seg.start[0], seg.end[1] - seg.start[1]);
-      }
+      for (const seg of segments) totalLength += Math.hypot(seg.end[0] - seg.start[0], seg.end[1] - seg.start[1]);
       const t = totalLength > 0 ? door.position / totalLength : 0;
       const targetSeg = findSegmentForPosition(t);
       if (targetSeg) {
@@ -201,13 +185,10 @@ function reassignOpeningsAfterSplit(
     }
   }
 
-  // Atualizar janelas
   for (const win of scene.windows) {
     if (win.wallId === originalWallId) {
       let totalLength = 0;
-      for (const seg of segments) {
-        totalLength += Math.hypot(seg.end[0] - seg.start[0], seg.end[1] - seg.start[1]);
-      }
+      for (const seg of segments) totalLength += Math.hypot(seg.end[0] - seg.start[0], seg.end[1] - seg.start[1]);
       const t = totalLength > 0 ? win.position / totalLength : 0;
       const targetSeg = findSegmentForPosition(t);
       if (targetSeg) {
@@ -219,12 +200,9 @@ function reassignOpeningsAfterSplit(
     }
   }
 
-  // Atualizar openingIds nas novas paredes
   for (const seg of segments) {
     const newWall = scene.walls.find(w => w.id === seg.wallId);
-    if (newWall) {
-      newWall.openingIds = [];
-    }
+    if (newWall) newWall.openingIds = [];
   }
   for (const door of scene.doors) {
     const wall = scene.walls.find(w => w.id === door.wallId);
@@ -242,7 +220,6 @@ function reassignOpeningsAfterSplit(
   }
 }
 
-// ==================== ESTADO INICIAL ====================
 const initialState = {
   project: null,
   scenes: [],
@@ -252,65 +229,31 @@ const initialState = {
   selectedIds: [],
   hoveredId: null,
   assembleMode: false,
-  grid: {
-    visible: true,
-    size: 0.5,
-    color: '#475569',
-    opacity: 0.3,
-  },
+  grid: { visible: true, size: 0.5, color: '#475569', opacity: 0.3 },
   snap: {
-    enabled: true,
-    grid: true,
-    endpoints: true,
-    midpoints: true,
-    edges: true,
-    centers: true,
-    perpendicular: true,
-    angle: true,
-    distance: 0.3,
+    enabled: true, grid: true, endpoints: true, midpoints: true,
+    edges: true, centers: true, perpendicular: true, angle: true, distance: 0.3,
   },
-  camera: {
-    position: [0, 0, 10] as [number, number, number],
-    target: [0, 0, 0] as [number, number, number],
-    zoom: 1,
-    rotation: 0,
-  },
+  camera: { position: [0, 0, 10], target: [0, 0, 0], zoom: 1, rotation: 0 },
   history: [],
   historyIndex: -1,
-  _topologyCache: {} as Record<string, IGraphTopology>,
+  _topologyCache: {},
 };
 
-// ==================== STORE PRINCIPAL ====================
 export const useEditorStore = create<EditorState>()(
   devtools(
     immer((set, get) => ({
       ...initialState,
 
-      // --------------------------------------------------------------
-      // PROJETO E CENAS
-      // --------------------------------------------------------------
       createProject: (name, owner, description) => {
         const sceneId = uuidv4();
         const newScene: Scene = {
-          id: sceneId,
-          name: 'Planta Baixa',
-          level: 0,
-          height: 2.8,
-          walls: [],
-          rooms: [],
-          doors: [],
-          windows: [],
-          furniture: [],
-          measurements: [],
+          id: sceneId, name: 'Planta Baixa', level: 0, height: 2.8,
+          walls: [], rooms: [], doors: [], windows: [], furniture: [], measurements: [],
         };
         const newProject: Project = {
-          id: uuidv4(),
-          name,
-          description,
-          owner,
-          collaborators: [],
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
+          id: uuidv4(), name, description, owner, collaborators: [],
+          createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
           settings: { units: 'metric', currency: 'BRL' },
         };
         set(state => {
@@ -329,41 +272,26 @@ export const useEditorStore = create<EditorState>()(
         const template = (FLOOR_PLAN_TEMPLATES as FloorPlanTemplate[]).find(t => t.id === templateId);
         const sceneId = uuidv4();
         const newScene: Scene = {
-          id: sceneId,
-          name: 'Planta Baixa',
-          level: 0,
-          height: 2.8,
+          id: sceneId, name: 'Planta Baixa', level: 0, height: 2.8,
           walls: template
             ? template.walls.map(w => ({
                 id: uuidv4(),
                 start: w.start as Vec2,
                 end: w.end as Vec2,
-                thickness: 0.15,
-                height: 2.8,
-                material: 'concrete',
-                color: '#64748b',
-                visible: true,
-                locked: false,
-                openingIds: [],
-                roomIds: [],
+                thickness: 0.15, height: 2.8, material: 'concrete', color: '#64748b',
+                visible: true, locked: false, openingIds: [], roomIds: [],
               }))
             : [],
-          rooms: [],
-          doors: [],
-          windows: [],
-          furniture: [],
-          measurements: [],
+          rooms: [], doors: [], windows: [], furniture: [], measurements: [],
         };
         const newProject: Project = {
-          id: uuidv4(),
-          name,
-          description: template?.description ?? '',
+          id: uuidv4(), name, description: template?.description ?? '',
           owner: { id: 'user-1', name: 'Usuário', email: 'user@example.com', role: 'owner' },
           collaborators: [],
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
+          createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
           settings: { units: 'metric', currency: 'BRL' },
         };
+        // Aplica pipeline uma única vez após carregar todas as paredes
         applyGeometryPipeline(newScene);
         set(state => {
           state.project = newProject;
@@ -382,15 +310,10 @@ export const useEditorStore = create<EditorState>()(
         if (!project) return;
         const data = JSON.stringify({ project, scenes });
         localStorage.setItem(`project_${project.id}`, data);
-        set(state => {
-          if (state.project) state.project.updatedAt = new Date().toISOString();
-        });
+        set(state => { if (state.project) state.project.updatedAt = new Date().toISOString(); });
       },
 
-      exportProject: () => {
-        const { project, scenes } = get();
-        return JSON.stringify({ project, scenes }, null, 2);
-      },
+      exportProject: () => JSON.stringify({ project: get().project, scenes: get().scenes }, null, 2),
 
       importProject: (data: string) => {
         try {
@@ -403,29 +326,17 @@ export const useEditorStore = create<EditorState>()(
             state.historyIndex = -1;
             state.selectedIds = [];
             state._topologyCache = {};
-            for (const scene of state.scenes) {
-              updateTopologyForScene(state, scene.id);
-            }
+            for (const scene of state.scenes) updateTopologyForScene(state, scene.id);
           });
           get().saveToHistory();
           return true;
-        } catch {
-          return false;
-        }
+        } catch { return false; }
       },
 
       addScene: (name: string) => {
         const newScene: Scene = {
-          id: uuidv4(),
-          name,
-          level: get().scenes.length,
-          height: 2.8,
-          walls: [],
-          rooms: [],
-          doors: [],
-          windows: [],
-          furniture: [],
-          measurements: [],
+          id: uuidv4(), name, level: get().scenes.length, height: 2.8,
+          walls: [], rooms: [], doors: [], windows: [], furniture: [], measurements: [],
         };
         set(state => {
           state.scenes.push(newScene);
@@ -437,9 +348,7 @@ export const useEditorStore = create<EditorState>()(
       deleteScene: (id: string) => {
         set(state => {
           state.scenes = state.scenes.filter(s => s.id !== id);
-          if (state.currentSceneId === id) {
-            state.currentSceneId = state.scenes[0]?.id || null;
-          }
+          if (state.currentSceneId === id) state.currentSceneId = state.scenes[0]?.id || null;
           if (state._topologyCache) delete state._topologyCache[id];
         });
         get().saveToHistory();
@@ -454,38 +363,25 @@ export const useEditorStore = create<EditorState>()(
         });
       },
 
-      // --------------------------------------------------------------
-      // AÇÕES DE PAREDES (COM PIPELINE OBRIGATÓRIO)
-      // --------------------------------------------------------------
-      addWall: (start: Vec2, end: Vec2) => {
-        const dx = end[0] - start[0];
-        const dy = end[1] - start[1];
-        if (Math.hypot(dx, dy) < 1e-6) return;
-
+      // NOVA FUNÇÃO: Adiciona várias paredes e executa pipeline UMA VEZ
+      addWallsBatch: (wallsToAdd: Array<{ start: Vec2; end: Vec2 }>) => {
         const state = get();
         const scene = getCurrentScene(state);
         if (!scene) return;
 
-        const newWall: Wall = {
+        const newWalls: Wall[] = wallsToAdd.map(({ start, end }) => ({
           id: uuidv4(),
           start: [...start] as Vec2,
           end: [...end] as Vec2,
-          thickness: 0.15,
-          height: 2.8,
-          color: '#8B4513',
-          material: 'paint-white',
-          visible: true,
-          locked: false,
+          thickness: 0.15, height: 2.8, color: '#8B4513', material: 'paint-white',
+          visible: true, locked: false,
           connections: { start: [], end: [] },
-          roomIds: [],
-          openingIds: [],
-          metadata: {},
-        };
+          roomIds: [], openingIds: [], metadata: {},
+        }));
 
-        const wallsWithNew = [...scene.walls, newWall];
         const sceneCopy: Scene = {
           ...scene,
-          walls: wallsWithNew,
+          walls: [...scene.walls, ...newWalls],
         };
 
         applyGeometryPipeline(sceneCopy);
@@ -502,9 +398,43 @@ export const useEditorStore = create<EditorState>()(
         get().saveToHistory();
       },
 
-      createWall: (start: Vec2, end: Vec2) => {
-        get().addWall(start, end);
+      addWall: (start: Vec2, end: Vec2) => {
+        const dx = end[0] - start[0];
+        const dy = end[1] - start[1];
+        if (Math.hypot(dx, dy) < 1e-6) return;
+
+        const state = get();
+        const scene = getCurrentScene(state);
+        if (!scene) return;
+
+        const newWall: Wall = {
+          id: uuidv4(),
+          start: [...start] as Vec2,
+          end: [...end] as Vec2,
+          thickness: 0.15, height: 2.8, color: '#8B4513', material: 'paint-white',
+          visible: true, locked: false,
+          connections: { start: [], end: [] },
+          roomIds: [], openingIds: [], metadata: {},
+        };
+
+        const wallsWithNew = [...scene.walls, newWall];
+        const sceneCopy: Scene = { ...scene, walls: wallsWithNew };
+
+        applyGeometryPipeline(sceneCopy);
+
+        set(state => {
+          const targetScene = state.scenes.find(s => s.id === state.currentSceneId);
+          if (targetScene) {
+            targetScene.walls = sceneCopy.walls;
+            targetScene.rooms = sceneCopy.rooms;
+          }
+          updateTopologyForScene(state, scene.id);
+        });
+
+        get().saveToHistory();
       },
+
+      createWall: (start: Vec2, end: Vec2) => get().addWall(start, end),
 
       updateWall: (id: string, updates: Partial<Wall>) => {
         set(state => {
@@ -536,11 +466,8 @@ export const useEditorStore = create<EditorState>()(
           if (!scene) return;
           const wall = scene.walls.find(w => w.id === wallId);
           if (!wall) return;
-          if (vertex === 'start') {
-            wall.start = [newPosition[0], newPosition[1]];
-          } else {
-            wall.end = [newPosition[0], newPosition[1]];
-          }
+          if (vertex === 'start') wall.start = [newPosition[0], newPosition[1]];
+          else wall.end = [newPosition[0], newPosition[1]];
           applyGeometryToScene(scene);
           updateTopologyForScene(state, scene.id);
         });
@@ -561,6 +488,7 @@ export const useEditorStore = create<EditorState>()(
         get().saveToHistory();
       },
 
+      // REFATORADO: Usa addWallsBatch para eficiência e pipeline único
       createWallsFromPolygon: (points: Vec2[]) => {
         if (!points || points.length < 3) return;
         let closedPoints = points;
@@ -569,11 +497,16 @@ export const useEditorStore = create<EditorState>()(
         if (first[0] !== last[0] || first[1] !== last[1]) {
           closedPoints = [...points, first];
         }
+        const wallsToAdd: Array<{ start: Vec2; end: Vec2 }> = [];
         for (let i = 0; i < closedPoints.length - 1; i++) {
           const start = closedPoints[i];
           const end = closedPoints[i + 1];
-          if (Math.hypot(end[0] - start[0], end[1] - start[1]) < 1e-6) continue;
-          get().addWall(start, end);
+          if (Math.hypot(end[0] - start[0], end[1] - start[1]) >= 1e-6) {
+            wallsToAdd.push({ start, end });
+          }
+        }
+        if (wallsToAdd.length > 0) {
+          get().addWallsBatch(wallsToAdd);
         }
       },
 
@@ -581,10 +514,8 @@ export const useEditorStore = create<EditorState>()(
         set(state => {
           const scene = getCurrentScene(state);
           if (!scene) return;
-
           const result = splitWallAtPoint(scene.walls, wallId, point);
           if (result.removedWallIds.length === 0) return;
-
           reassignOpeningsAfterSplit(scene, result);
           scene.walls = result.updatedWalls;
           applyGeometryToScene(scene);
@@ -615,12 +546,9 @@ export const useEditorStore = create<EditorState>()(
             updateTopologyForScene(state, scene.id);
           }
         });
-        if (get().scenes.some(s => s.id === get().currentSceneId)) {
-          get().saveToHistory();
-        }
+        if (get().scenes.some(s => s.id === get().currentSceneId)) get().saveToHistory();
       },
 
-      // Live updates — no history, no geometry pipeline (for smooth drag)
       _liveUpdateWall: (id: string, start: Vec2, end: Vec2) => {
         set(state => {
           const scene = getCurrentScene(state);
@@ -629,8 +557,6 @@ export const useEditorStore = create<EditorState>()(
           if (!wall) return;
           wall.start = [...start] as Vec2;
           wall.end = [...end] as Vec2;
-          // A topologia não é atualizada aqui para não pesar durante o arrasto.
-          // Será atualizada no commit final.
         });
       },
 
@@ -644,8 +570,7 @@ export const useEditorStore = create<EditorState>()(
           let area = 0;
           for (let i = 0; i < points.length; i++) {
             const j = (i + 1) % points.length;
-            area += points[i][0] * points[j][1];
-            area -= points[j][0] * points[i][1];
+            area += points[i][0] * points[j][1] - points[j][0] * points[i][1];
           }
           room.area = Math.abs(area) / 2;
           let perimeter = 0;
@@ -680,17 +605,13 @@ export const useEditorStore = create<EditorState>()(
         });
       },
 
-      // --------------------------------------------------------------
-      // AÇÕES DE CÔMODOS
-      // --------------------------------------------------------------
       addRoom: (points: Vec2[], options = {}) => {
         const scene = getCurrentScene(get());
         if (!scene) return;
         let area = 0;
         for (let i = 0; i < points.length; i++) {
           const j = (i + 1) % points.length;
-          area += points[i][0] * points[j][1];
-          area -= points[j][0] * points[i][1];
+          area += points[i][0] * points[j][1] - points[j][0] * points[i][1];
         }
         area = Math.abs(area) / 2;
         let perimeter = 0;
@@ -700,18 +621,14 @@ export const useEditorStore = create<EditorState>()(
         }
         const newRoom: Room = {
           id: uuidv4(),
-          name: options.name || 'Novo Cômodo',
-          type: options.type || 'custom',
+          name: (options as any).name || 'Novo Cômodo',
+          type: (options as any).type || 'custom',
           points,
-          wallColor: options.wallColor || '#F5F5DC',
-          floorColor: options.floorColor || '#D2691E',
-          ceilingColor: options.ceilingColor || '#FFFFFF',
-          height: 2.8,
-          area,
-          perimeter,
-          visible: true,
-          locked: false,
-          metadata: {},
+          wallColor: (options as any).wallColor || '#F5F5DC',
+          floorColor: (options as any).floorColor || '#D2691E',
+          ceilingColor: (options as any).ceilingColor || '#FFFFFF',
+          height: 2.8, area, perimeter,
+          visible: true, locked: false, metadata: {},
         };
         set(state => {
           const sc = state.scenes.find(s => s.id === state.currentSceneId);
@@ -748,24 +665,22 @@ export const useEditorStore = create<EditorState>()(
         if (!original) return;
         const offset = 2.0;
         const newPoints = original.points.map(p => [p[0] + offset, p[1]] as Vec2);
-        const newRoom: Room = {
-          ...original,
-          id: uuidv4(),
-          points: newPoints,
-          name: `${original.name} (cópia)`,
-        };
+        const newRoom: Room = { ...original, id: uuidv4(), points: newPoints, name: `${original.name} (cópia)` };
+        const wallsToAdd: Array<{ start: Vec2; end: Vec2 }> = [];
         for (let i = 0; i < newPoints.length; i++) {
           const start = newPoints[i];
           const end = newPoints[(i + 1) % newPoints.length];
-          get().addWall(start, end);
+          wallsToAdd.push({ start, end });
         }
         set(state => {
           const sc = state.scenes.find(s => s.id === state.currentSceneId);
           if (sc) {
             sc.rooms.push(newRoom);
-            applyGeometryToScene(sc);
           }
         });
+        if (wallsToAdd.length > 0) {
+          get().addWallsBatch(wallsToAdd);
+        }
         get().saveToHistory();
       },
 
@@ -778,15 +693,11 @@ export const useEditorStore = create<EditorState>()(
         const points = room.points;
         let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
         for (const p of points) {
-          minX = Math.min(minX, p[0]);
-          minY = Math.min(minY, p[1]);
-          maxX = Math.max(maxX, p[0]);
-          maxY = Math.max(maxY, p[1]);
+          minX = Math.min(minX, p[0]); minY = Math.min(minY, p[1]);
+          maxX = Math.max(maxX, p[0]); maxY = Math.max(maxY, p[1]);
         }
-        const centerX = (minX + maxX) / 2;
-        const centerY = (minY + maxY) / 2;
-        const width = maxX - minX;
-        const height = maxY - minY;
+        const centerX = (minX + maxX) / 2, centerY = (minY + maxY) / 2;
+        const width = maxX - minX, height = maxY - minY;
         const newZoom = Math.min(10, 5 / Math.max(width, height));
         set(state => {
           state.camera.target = [centerX, centerY, 0];
@@ -794,33 +705,16 @@ export const useEditorStore = create<EditorState>()(
         });
       },
 
-      setAssembleMode: (enabled: boolean) => {
-        set(state => {
-          state.assembleMode = enabled;
-        });
-      },
+      setAssembleMode: (enabled: boolean) => set(state => { state.assembleMode = enabled; }),
 
-      // --------------------------------------------------------------
-      // PORTAS
-      // --------------------------------------------------------------
       addDoor: (wallId: string, position: number, width: number) => {
         set(state => {
           const scene = getCurrentScene(state);
           if (!scene) return;
           const newDoor: Door = {
-            id: uuidv4(),
-            wallId,
-            position,
-            width,
-            height: 2.1,
-            thickness: 0.05,
-            material: 'wood',
-            color: '#8B5A2B',
-            swing: 'left',
-            openAngle: 90,
-            visible: true,
-            locked: false,
-            metadata: {},
+            id: uuidv4(), wallId, position, width, height: 2.1, thickness: 0.05,
+            material: 'wood', color: '#8B5A2B', swing: 'left', openAngle: 90,
+            visible: true, locked: false, metadata: {},
           };
           scene.doors.push(newDoor);
           const wall = scene.walls.find(w => w.id === wallId);
@@ -848,34 +742,21 @@ export const useEditorStore = create<EditorState>()(
           const door = scene.doors.find(d => d.id === id);
           if (door) {
             const wall = scene.walls.find(w => w.id === door.wallId);
-            if (wall) {
-              wall.openingIds = (wall.openingIds ?? []).filter(oid => oid !== id);
-            }
+            if (wall) wall.openingIds = (wall.openingIds ?? []).filter(oid => oid !== id);
           }
           scene.doors = scene.doors.filter(d => d.id !== id);
         });
         get().saveToHistory();
       },
 
-      // --------------------------------------------------------------
-      // JANELAS
-      // --------------------------------------------------------------
       addWindow: (wallId: string, position: number, width: number) => {
         set(state => {
           const scene = getCurrentScene(state);
           if (!scene) return;
           const newWindow: Window = {
-            id: uuidv4(),
-            wallId,
-            position,
-            width,
-            height: 1.2,
-            sillHeight: 0.9,
-            material: 'aluminum',
-            color: '#C0C0C0',
-            visible: true,
-            locked: false,
-            metadata: {},
+            id: uuidv4(), wallId, position, width, height: 1.2, sillHeight: 0.9,
+            material: 'aluminum', color: '#C0C0C0',
+            visible: true, locked: false, metadata: {},
           };
           scene.windows.push(newWindow);
           const wall = scene.walls.find(w => w.id === wallId);
@@ -903,26 +784,18 @@ export const useEditorStore = create<EditorState>()(
           const windowObj = scene.windows.find(w => w.id === id);
           if (windowObj) {
             const wall = scene.walls.find(w => w.id === windowObj.wallId);
-            if (wall) {
-              wall.openingIds = (wall.openingIds ?? []).filter(oid => oid !== id);
-            }
+            if (wall) wall.openingIds = (wall.openingIds ?? []).filter(oid => oid !== id);
           }
           scene.windows = scene.windows.filter(w => w.id !== id);
         });
         get().saveToHistory();
       },
 
-      // --------------------------------------------------------------
-      // MÓVEIS
-      // --------------------------------------------------------------
       addFurniture: (furniture: Omit<Furniture, 'id'>) => {
         set(state => {
           const scene = getCurrentScene(state);
           if (!scene) return;
-          const newFurniture: Furniture = {
-            id: uuidv4(),
-            ...furniture,
-          };
+          const newFurniture: Furniture = { id: uuidv4(), ...furniture };
           scene.furniture.push(newFurniture);
         });
         get().saveToHistory();
@@ -956,10 +829,8 @@ export const useEditorStore = create<EditorState>()(
           const py = Array.isArray(origPos) ? origPos[1] : (origPos as any).y ?? 0;
           const pz = Array.isArray(origPos) ? origPos[2] : (origPos as any).z ?? 0;
           const cloned: Furniture = {
-            ...original,
-            id: uuidv4(),
+            ...original, id: uuidv4(),
             position: [px + 0.5, py + 0.5, pz ?? 0] as [number, number, number],
-            rotation: original.rotation,
             name: `${original.name} (cópia)`,
           };
           scene.furniture.push(cloned);
@@ -967,22 +838,14 @@ export const useEditorStore = create<EditorState>()(
         get().saveToHistory();
       },
 
-      // --------------------------------------------------------------
-      // MEDIDAS
-      // --------------------------------------------------------------
       addMeasurement: (start: Vec2, end: Vec2) => {
         set(state => {
           const scene = getCurrentScene(state);
           if (!scene) return;
           const distance = Math.hypot(end[0] - start[0], end[1] - start[1]);
           const newMeasurement: Measurement = {
-            id: uuidv4(),
-            start,
-            end,
-            distance,
-            text: `${distance.toFixed(2)} m`,
-            visible: true,
-            locked: false,
+            id: uuidv4(), start, end, distance,
+            text: `${distance.toFixed(2)} m`, visible: true, locked: false,
           };
           scene.measurements.push(newMeasurement);
         });
@@ -997,78 +860,36 @@ export const useEditorStore = create<EditorState>()(
         get().saveToHistory();
       },
 
-      // --------------------------------------------------------------
-      // SELEÇÃO E ESTADO DA INTERFACE
-      // --------------------------------------------------------------
       select: (id: string | string[], addToSelection = false) => {
         set(state => {
-          if (Array.isArray(id)) {
-            state.selectedIds = id;
-          } else if (addToSelection) {
-            if (!state.selectedIds.includes(id)) state.selectedIds.push(id);
-          } else {
-            state.selectedIds = [id];
-          }
+          if (Array.isArray(id)) state.selectedIds = id;
+          else if (addToSelection) { if (!state.selectedIds.includes(id)) state.selectedIds.push(id); }
+          else state.selectedIds = [id];
         });
       },
 
-      deselect: (id: string) => {
-        set(state => {
-          state.selectedIds = state.selectedIds.filter(sid => sid !== id);
-        });
-      },
+      deselect: (id: string) => set(state => { state.selectedIds = state.selectedIds.filter(sid => sid !== id); }),
+      deselectAll: () => set(state => { state.selectedIds = []; }),
 
-      deselectAll: () => {
-        set(state => {
-          state.selectedIds = [];
-        });
-      },
+      setViewMode: (mode: ViewMode) => set(state => { state.viewMode = mode; }),
+      setTool: (tool: Tool) => set(state => { state.tool = tool; }),
+      toggleSnap: () => set(state => { state.snap.enabled = !state.snap.enabled; }),
+      toggleGrid: () => set(state => { state.grid.visible = !state.grid.visible; }),
 
-      setViewMode: (mode: ViewMode) => {
-        set(state => { state.viewMode = mode; });
-      },
+      setGrid: (grid: Partial<GridSettings>) => set(state => { state.grid = { ...state.grid, ...grid }; }),
+      setSnap: (snap: Partial<SnapSettings>) => set(state => { state.snap = { ...state.snap, ...snap }; }),
+      setCamera: (camera: Partial<CameraState>) => set(state => { state.camera = { ...state.camera, ...camera }; }),
 
-      setTool: (tool: Tool) => {
-        set(state => { state.tool = tool; });
-      },
+      zoomIn: () => set(state => { state.camera.zoom = Math.min(state.camera.zoom * 1.2, 10); }),
+      zoomOut: () => set(state => { state.camera.zoom = Math.max(state.camera.zoom / 1.2, 0.1); }),
 
-      toggleSnap: () => { set(state => { state.snap.enabled = !state.snap.enabled; }); },
-      toggleGrid: () => {
-        set(state => { state.grid.visible = !state.grid.visible; });
-      },
+      fitToView: () => set(state => {
+        state.camera.position = [0, 0, 10];
+        state.camera.target = [0, 0, 0];
+        state.camera.zoom = 1;
+        state.camera.rotation = 0;
+      }),
 
-      setGrid: (grid: Partial<GridSettings>) => {
-        set(state => { state.grid = { ...state.grid, ...grid }; });
-      },
-
-      setSnap: (snap: Partial<SnapSettings>) => {
-        set(state => { state.snap = { ...state.snap, ...snap }; });
-      },
-
-      setCamera: (camera: Partial<CameraState>) => {
-        set(state => { state.camera = { ...state.camera, ...camera }; });
-      },
-
-      zoomIn: () => {
-        set(state => { state.camera.zoom = Math.min(state.camera.zoom * 1.2, 10); });
-      },
-
-      zoomOut: () => {
-        set(state => { state.camera.zoom = Math.max(state.camera.zoom / 1.2, 0.1); });
-      },
-
-      fitToView: () => {
-        set(state => {
-          state.camera.position = [0, 0, 10] as [number, number, number];
-          state.camera.target = [0, 0, 0];
-          state.camera.zoom = 1;
-          state.camera.rotation = 0;
-        });
-      },
-
-      // --------------------------------------------------------------
-      // HISTÓRICO (UNDO/REDO)
-      // --------------------------------------------------------------
       saveToHistory: () => {
         set(state => {
           const currentState = {
@@ -1098,9 +919,7 @@ export const useEditorStore = create<EditorState>()(
           s.historyIndex = newIndex;
           s.selectedIds = [];
           s._topologyCache = {};
-          for (const scene of s.scenes) {
-            updateTopologyForScene(s, scene.id);
-          }
+          for (const scene of s.scenes) updateTopologyForScene(s, scene.id);
         });
       },
 
@@ -1115,9 +934,7 @@ export const useEditorStore = create<EditorState>()(
           s.historyIndex = newIndex;
           s.selectedIds = [];
           s._topologyCache = {};
-          for (const scene of s.scenes) {
-            updateTopologyForScene(s, scene.id);
-          }
+          for (const scene of s.scenes) updateTopologyForScene(s, scene.id);
         });
       },
 
@@ -1137,46 +954,30 @@ export const useEditorStore = create<EditorState>()(
   )
 );
 
-// ==================== SELECTORS ====================
-export const selectCurrentScene = (state: EditorState) =>
-  state.scenes.find(s => s.id === state.currentSceneId);
-
+export const selectCurrentScene = (state: EditorState) => state.scenes.find(s => s.id === state.currentSceneId);
 export const selectSelectedItems = (state: EditorState) => {
   const scene = selectCurrentScene(state);
   if (!scene) return [];
   const items: (Wall | Room | Door | Window | Furniture)[] = [];
   state.selectedIds.forEach(id => {
-    const wall = scene.walls.find(w => w.id === id);
-    if (wall) items.push(wall);
-    const room = scene.rooms.find(r => r.id === id);
-    if (room) items.push(room);
-    const door = scene.doors.find(d => d.id === id);
-    if (door) items.push(door);
-    const window = scene.windows.find(w => w.id === id);
-    if (window) items.push(window);
-    const furniture = scene.furniture.find(f => f.id === id);
-    if (furniture) items.push(furniture);
+    const wall = scene.walls.find(w => w.id === id); if (wall) items.push(wall);
+    const room = scene.rooms.find(r => r.id === id); if (room) items.push(room);
+    const door = scene.doors.find(d => d.id === id); if (door) items.push(door);
+    const window = scene.windows.find(w => w.id === id); if (window) items.push(window);
+    const furniture = scene.furniture.find(f => f.id === id); if (furniture) items.push(furniture);
   });
   return items;
 };
-
 export const selectProjectStats = (state: EditorState) => {
   const scene = selectCurrentScene(state);
-  if (!scene) {
-    return { walls: 0, rooms: 0, doors: 0, windows: 0, furniture: 0, area: 0 };
-  }
+  if (!scene) return { walls: 0, rooms: 0, doors: 0, windows: 0, furniture: 0, area: 0 };
   const area = scene.rooms.reduce((acc, room) => acc + (room.area || 0), 0);
   return {
-    walls: scene.walls.length,
-    rooms: scene.rooms.length,
-    doors: scene.doors.length,
-    windows: scene.windows.length,
-    furniture: scene.furniture.length,
-    area,
+    walls: scene.walls.length, rooms: scene.rooms.length,
+    doors: scene.doors.length, windows: scene.windows.length,
+    furniture: scene.furniture.length, area,
   };
 };
-
-// Selector da topologia unificada (única fonte de verdade)
 export const selectCurrentTopology = (state: EditorState): IGraphTopology | undefined => {
   const sceneId = state.currentSceneId;
   if (!sceneId) return undefined;
