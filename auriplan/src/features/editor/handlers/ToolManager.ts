@@ -33,7 +33,6 @@ export class ToolManager {
     this.onHoverChange = onHoverChange;
     this.onCursorChange = onCursorChange;
 
-    // Inicializa a topologia de paredes com as paredes atuais
     const scene = store.getState().scenes.find(s => s.id === store.getState().currentSceneId);
     if (scene) {
       this.wallTopology = new WallGraphTopology(scene.walls);
@@ -45,7 +44,6 @@ export class ToolManager {
       if (newTool !== this.currentTool) {
         this.setTool(newTool);
       }
-      // Atualiza a topologia sempre que a cena mudar (ex: paredes adicionadas/removidas)
       const currentScene = store.getState().scenes.find(s => s.id === store.getState().currentSceneId);
       if (currentScene && this.wallTopology) {
         this.wallTopology.updateWalls(currentScene.walls);
@@ -62,12 +60,13 @@ export class ToolManager {
         this.currentHandler = new WallToolHandler(this.store, this.onPreviewChange);
         break;
       case 'select':
+        // ✅ CORREÇÃO: passar uma FUNÇÃO que retorna a topologia atualizada
         this.currentHandler = new SelectToolHandler(
           this.store,
           this.onPreviewChange,
           this.onHoverChange,
           this.onCursorChange,
-          this.wallTopology || undefined,
+          () => this.wallTopology || undefined,   // callback para obter topologia viva
         );
         break;
       case 'room':
@@ -85,10 +84,6 @@ export class ToolManager {
     this.currentHandler?.handleEvent(event);
   }
 
-  /**
-   * Retorna o handler atualmente ativo.
-   * Útil para ações específicas da ferramenta que não são acionadas por eventos de interação.
-   */
   getCurrentHandler(): ToolHandler | null {
     return this.currentHandler;
   }
