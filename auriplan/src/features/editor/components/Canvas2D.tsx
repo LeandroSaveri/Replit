@@ -1,5 +1,5 @@
 // ============================================================
-// Canvas2D.tsx – Orquestrador de desenho 2D com zoom/pan/full delegation
+// Canvas2D.tsx – com zoom por pinça (mobile) e pan
 // ============================================================
 
 import { useRef, useEffect, useState, useCallback, useLayoutEffect } from 'react';
@@ -37,6 +37,13 @@ export function Canvas2D() {
   const [renameRoom, setRenameRoom] = useState<{ id: string; name: string } | null>(null);
   const renameInputRef = useRef<HTMLInputElement>(null);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; worldPos: Vec2 } | null>(null);
+
+  // Suporte a toque (pinça)
+  const activePointersRef = useRef<Map<number, { x: number; y: number }>>(new Map());
+  const pinchStartDistRef = useRef(0);
+  const pinchStartScaleRef = useRef(40);
+  const pinchStartPanRef = useRef<Vec2>([0, 0]);
+  const pinchStartMidRef = useRef({ x: 0, y: 0 });
 
   const store = useEditorStore;
   const currentScene = useEditorStore(selectCurrentScene);
@@ -331,10 +338,28 @@ export function Canvas2D() {
   };
 
   // --------------------------------------------------------------
-  // POINTER EVENTS (delega tudo ao ToolManager)
+  // POINTER EVENTS (com suporte a pinça)
   // --------------------------------------------------------------
   const handlePointerDown = (e: React.PointerEvent) => {
     e.preventDefault();
+    activePointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+
+    // Se dois dedos, prepara pinça
+    if (activePointersRef.current.size === 2) {
+      const pts = Array.from(activePointersRef.current.values());
+      const dx = pts[1].x - pts[0].x;
+      const dy = pts[1].y - pts[0].y;
+      pinchStartDistRef.current = Math.hypot(dx, dy);
+      pinchStartScaleRef.current = scaleRef.current;
+      pinchStartPanRef.current = [...panRef.current];
+      pinchStartMidRef.current = {
+        x: (pts[0].x + pts[1].x) / 2,
+        y: (pts[0].y + pts[1].y) / 2,
+      };
+      return;
+    }
+
+    // Caso contrário, delega ao ToolManager
     const worldPos = screenToWorld(e.clientX, e.clientY);
     const event = createInteractionEvent('mousedown', worldPos, e);
     toolManager.handleEvent(event);
@@ -342,6 +367,46 @@ export function Canvas2D() {
   };
 
   const handlePointerMove = (e: React.PointerEvent) => {
+    activePointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+
+    // Pinça: zoom e pan
+    if (activePointersRef.current.size === 2 && pinchStartDistRef.current > 0) {
+      const pts = Array.from(activePointersRef.current.values());
+      const dx = pts[1].x - pts[0].x;
+      const dy = pts[1].y - pts[0].y;
+      const dist = Math.hypot(dx, dy);
+      if (dist < 1) return;
+
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+      const rect = canvas.getBoundingClientRect();
+      const cx = rect.left + rect.width / 2;
+      const cy = rect.top + rect.height / 2;
+
+      const midX = (pts[0].x + pts[1].x) / 2;
+      const midY = (pts[0].y + pts[1].y) / 2;
+      const startMidX = pinchStartMidRef.current.x;
+      const startMidY = pinchStartMidRef.current.y;
+
+      const newScale = Math.max(8, Math.min(400, pinchStartScaleRef.current * (dist / pinchStartDistRef.current)));
+      const ratio = newScale / pinchStartScaleRef.current;
+
+      const pivotX = startMidX - cx;
+      const pivotY = startMidY - cy;
+      const panDeltaX = midX - startMidX;
+      const panDeltaY = midY - startMidY;
+
+      setPan([
+        pivotX + (pinchStartPanRef.current[0] - pivotX) * ratio + panDeltaX,
+        pivotY + (pinchStartPanRef.current[1] - pivotY) * ratio + panDeltaY,
+      ]);
+      setScale(newScale);
+      requestRenderFrame();
+      return;
+    }
+
+    // Um dedo: movimento normal (se a ferramenta atual não estiver desenhando, pode fazer pan?)
+    // Por simplicidade, sempre delegamos ao ToolManager, que decide se é pan.
     const worldPos = screenToWorld(e.clientX, e.clientY);
     const event = createInteractionEvent('mousemove', worldPos, e);
     toolManager.handleEvent(event);
@@ -349,6 +414,10 @@ export function Canvas2D() {
   };
 
   const handlePointerUp = (e: React.PointerEvent) => {
+    activePointersRef.current.delete(e.pointerId);
+    if (activePointersRef.current.size < 2) {
+      pinchStartDistRef.current = 0;
+    }
     const worldPos = screenToWorld(e.clientX, e.clientY);
     const event = createInteractionEvent('mouseup', worldPos, e);
     toolManager.handleEvent(event);
@@ -363,7 +432,7 @@ export function Canvas2D() {
   };
 
   // --------------------------------------------------------------
-  // WHEEL (zoom)
+  // WHEEL (zoom) para desktop
   // --------------------------------------------------------------
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -503,7 +572,7 @@ export function Canvas2D() {
     return actions;
   };
 
-  // Teclado (Escape, Enter, Delete)
+  // Teclado
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
