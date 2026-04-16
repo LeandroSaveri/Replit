@@ -1,8 +1,5 @@
 // src/features/editor/handlers/tools/WallToolHandler.ts
-// ============================================================
-// WallToolHandler — click-to-click (MagicPlan style)
-// CORREÇÃO: Acumula segmentos e aplica pipeline apenas no final.
-// ============================================================
+// Com snap forte ao grid e ortogonal
 
 import type { InteractionEvent } from '@core/interaction/InteractionEngine';
 import type { ToolHandler } from '../ToolHandler';
@@ -96,7 +93,6 @@ export class WallToolHandler implements ToolHandler {
     const length = Math.hypot(end[0] - start[0], end[1] - start[1]);
 
     if (length >= MIN_WALL_LENGTH) {
-      // Cria a parede usando addWallsBatch (já corrigido)
       this.store.getState().addWallsBatch([{ start, end }]);
     }
 
@@ -138,7 +134,7 @@ export class WallToolHandler implements ToolHandler {
     const options = {
       gridSize,
       snapTol: snapConfig.distance,
-      enableGrid: snapConfig.grid,
+      enableGrid: true,               // força grid sempre ligado para alinhar
       enableVertex: snapConfig.endpoints,
       enableMidpoint: snapConfig.midpoints,
       enableIntersection: snapConfig.edges,
