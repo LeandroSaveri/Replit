@@ -14,7 +14,10 @@ export interface ApplyPipelineOptions {
   force?: boolean;
   /** Se true, pula execução se o fingerprint das paredes for igual ao cache. */
   skipIfUnchanged?: boolean;
+  /** Modo de execução: 'incremental' (durante desenho) ou 'final' (após concluir). */
   mode?: 'incremental' | 'final';
+  /** Se true, preserva paredes curtas (não as remove durante o pipeline). */
+  preserveShortWalls?: boolean;
 }
 
 /**
@@ -38,6 +41,7 @@ export function applyGeometryPipeline(
     force = false,
     skipIfUnchanged = true,
     mode = 'final',
+    preserveShortWalls = false,
   } = options;
 
   const currentFingerprint = computeWallsFingerprint(scene.walls);
@@ -56,6 +60,7 @@ export function applyGeometryPipeline(
     debug,
     applyCornerAdjustments: true,
     mode,
+    preserveShortWalls, // REPASSAR para o pipeline
   });
 
   scene.walls = result.walls;
