@@ -1,7 +1,7 @@
 // src/core/wall/WallSplitEngine.ts
 // ============================================
 // WALL SPLIT ENGINE - Divisão de Paredes
-// CORREÇÃO: Tolerância aumentada para 5cm ao ignorar interseções próximas a vértices.
+// CORREÇÃO: Tolerância aumentada para 10cm ao ignorar interseções próximas a vértices.
 // ============================================
 
 import type { Wall, Vec2 } from '@auriplan-types';
@@ -161,8 +161,8 @@ export function splitWallsAtIntersections(walls: Wall[]): Wall[] {
   let iterations = 0;
   const MAX_ITERATIONS = 20; // reduzido
 
-  // Tolerância para ignorar interseções muito próximas de vértices (5 cm)
-  const VERTEX_PROXIMITY_TOL = 0.05;
+  // Tolerância para ignorar interseções muito próximas de vértices (10 cm)
+  const VERTEX_PROXIMITY_TOL = 0.10;
 
   while (anySplit && iterations < MAX_ITERATIONS) {
     anySplit = false;
