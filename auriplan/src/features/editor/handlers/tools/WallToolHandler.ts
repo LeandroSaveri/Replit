@@ -138,10 +138,13 @@ export class WallToolHandler implements ToolHandler {
       }
     }
 
+    console.log('[WallToolHandler] wallsToAdd:', wallsToAdd);
     if (wallsToAdd.length > 0) {
-      // Adiciona em lote e força atualização da store
       const state = this.store.getState();
+      console.log('[WallToolHandler] currentSceneId:', state.currentSceneId);
       state.addWallsBatch(wallsToAdd);
+      console.log('[WallToolHandler] after addWallsBatch, walls count:',
+        state.scenes.find(s => s.id === state.currentSceneId)?.walls.length);
       // Força uma re-renderização imediata (caso a store não dispare)
       state.rebuildCurrentSceneGeometry();
     }
