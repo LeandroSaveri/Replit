@@ -128,7 +128,7 @@ export interface EditorState {
   setGrid: (grid: Partial<GridSettings>) => void;
   setSnap: (snap: Partial<SnapSettings>) => void;
   setCamera: (camera: Partial<CameraState>) => void;
-  panCamera: (dx: number, dy: number) => void;   // <-- NOVO
+  panCamera: (dx: number, dy: number) => void;
   zoomIn: () => void;
   zoomOut: () => void;
   fitToView: () => void;
@@ -153,7 +153,6 @@ function updateTopologyForScene(state: EditorState, sceneId: string) {
 }
 
 function applyGeometryToScene(scene: Scene): void {
-  // Usa applyGeometryPipeline com skipIfUnchanged para evitar reprocessamento desnecessário
   applyGeometryPipeline(scene, { skipIfUnchanged: true });
 }
 
@@ -298,12 +297,10 @@ export const useEditorStore = create<EditorState>()(
           settings: { units: 'metric', currency: 'BRL' },
         };
 
-        // Aplica apenas merge de vértices (resolveTopology) sem ajustes de canto
         const { resolveTopology } = await import('@core/wall/TopologyResolver');
         const topoResult = resolveTopology(newScene.walls, { aggressive: false, preserveShortWalls: true });
         newScene.walls = topoResult.walls;
 
-        // Detecta cômodos sem modificar geometria
         const { buildGraph } = await import('@core/wall/WallGraph');
         const { RoomDetection } = await import('@core/room/RoomDetectionEngine');
         const graph = buildGraph(newScene.walls);
@@ -379,19 +376,16 @@ export const useEditorStore = create<EditorState>()(
         });
       },
 
-      // ==================== NOVA FUNÇÃO commitGeometry ====================
       commitGeometry: (sceneId: string, options?: { preserveShortWalls?: boolean; mode?: 'incremental' | 'final' }) => {
         set(state => {
           const scene = state.scenes.find(s => s.id === sceneId);
           if (!scene) return;
-          // Clona a cena para não mutar o estado durante o pipeline
           const sceneCopy = JSON.parse(JSON.stringify(scene));
           applyGeometryPipeline(sceneCopy, { 
             skipIfUnchanged: false, 
             preserveShortWalls: options?.preserveShortWalls ?? false,
             mode: options?.mode ?? 'final'
           });
-          // Aplica as mudanças na cena original
           scene.walls = sceneCopy.walls;
           scene.rooms = sceneCopy.rooms;
           updateTopologyForScene(state, sceneId);
@@ -399,16 +393,13 @@ export const useEditorStore = create<EditorState>()(
         get().saveToHistory();
       },
 
-      // ==================== addWall refatorado ====================
       addWall: (start: Vec2, end: Vec2, incremental = true) => {
         const dx = end[0] - start[0];
         const dy = end[1] - start[1];
         if (Math.hypot(dx, dy) < MIN_WALL_LENGTH) return;
-        // Delega para addWallsBatch
         get().addWallsBatch([{ start, end }]);
       },
 
-      // ==================== addWallsBatch (com logs e preserveShortWalls) ====================
       addWallsBatch: (wallsToAdd: Array<{ start: Vec2; end: Vec2 }>) => {
         const state = get();
         const scene = getCurrentScene(state);
@@ -461,15 +452,11 @@ export const useEditorStore = create<EditorState>()(
           updateTopologyForScene(state, scene.id);
         });
 
-        // NÃO chama saveToHistory aqui – será chamado apenas no commitGeometry
-        // Mas como não temos um commit explícito, mantemos o saveToHistory para não quebrar o undo/redo.
-        // Opcional: chamar get().commitGeometry(scene.id, { preserveShortWalls: true, mode: 'incremental' });
         get().saveToHistory();
       },
 
       createWall: (start: Vec2, end: Vec2) => get().addWall(start, end, true),
 
-      // ==================== updateWall (preservando curtas) ====================
       updateWall: (id: string, updates: Partial<Wall>) => {
         set(state => {
           const scene = getCurrentScene(state);
@@ -477,14 +464,12 @@ export const useEditorStore = create<EditorState>()(
           const wall = scene.walls.find(w => w.id === id);
           if (!wall) return;
           Object.assign(wall, updates);
-          // Aplica pipeline preservando curtas
           applyGeometryPipeline(scene, { preserveShortWalls: true, mode: 'incremental' });
           updateTopologyForScene(state, scene.id);
         });
         get().saveToHistory();
       },
 
-      // ==================== deleteWall (preserveShortWalls false) ====================
       deleteWall: (id: string) => {
         set(state => {
           const scene = getCurrentScene(state);
@@ -559,8 +544,8 @@ export const useEditorStore = create<EditorState>()(
         get().saveToHistory();
       },
 
-      // ==================== updateWallsBatch padronizado ====================
-      updateWallsBatch: (updates: Array<{ id: string; start: Vec2; end: Vec2 }>, preserveShort = true) => {
+      // ==================== updateWallsBatch AJUSTADO ====================
+      updateWallsBatch: (updates: Array<{ id: string; start: Vec2; end: Vec2 }>) => {
         set(state => {
           const scene = getCurrentScene(state);
           if (!scene) return;
@@ -578,13 +563,11 @@ export const useEditorStore = create<EditorState>()(
             }
           }
           if (changed) {
-            // Aplica o pipeline de forma incremental, preservando paredes curtas
-            applyGeometryPipeline(scene, { preserveShortWalls: preserveShort, mode: 'incremental' });
+            // Aplica pipeline final, removendo paredes curtas
+            applyGeometryPipeline(scene, { preserveShortWalls: false, mode: 'final' });
             updateTopologyForScene(state, scene.id);
           }
         });
-        // Salva no histórico apenas se não for um live update (chamado pelo SelectToolHandler)
-        // Como é um commit real, chamamos saveToHistory.
         get().saveToHistory();
       },
 
@@ -630,7 +613,6 @@ export const useEditorStore = create<EditorState>()(
         });
       },
 
-      // ==================== _liveUpdateWallsBatch (sem pipeline, sem histórico) ====================
       _liveUpdateWallsBatch: (updates: Array<{ id: string; start: Vec2; end: Vec2 }>) => {
         set(state => {
           const scene = getCurrentScene(state);
@@ -642,7 +624,6 @@ export const useEditorStore = create<EditorState>()(
               wall.end = [...upd.end] as Vec2;
             }
           }
-          // NÃO aplica pipeline, NÃO salva no histórico
         });
       },
 
@@ -921,7 +902,6 @@ export const useEditorStore = create<EditorState>()(
       setSnap: (snap: Partial<SnapSettings>) => set(state => { state.snap = { ...state.snap, ...snap }; }),
       setCamera: (camera: Partial<CameraState>) => set(state => { state.camera = { ...state.camera, ...camera }; }),
 
-      // ==================== NOVO: panCamera ====================
       panCamera: (dx: number, dy: number) => {
         set(state => {
           state.camera.position[0] += dx / state.camera.zoom;
