@@ -1,6 +1,5 @@
 // ============================================================
-// CAMINHO: src/features/editor/components/Canvas2D.tsx
-// FUNÇÃO: Orquestrador
+// Canvas2D.tsx – Orquestrador de desenho 2D com zoom/pan/full delegation
 // ============================================================
 
 import { useRef, useEffect, useState, useCallback, useLayoutEffect } from 'react';
@@ -45,8 +44,7 @@ export function Canvas2D() {
   const gridSettings = useEditorStore(state => state.grid);
   const selectedIds = useEditorStore(state => state.selectedIds);
 
-  // Consome o ToolManager e estado de preview do contexto
-  const { toolManager, previewState, setPreviewState, activeTool } = useToolContext();
+  const { toolManager, previewState, activeTool } = useToolContext();
 
   const walls = currentScene?.walls ?? [];
   const rooms = currentScene?.rooms ?? [];
@@ -70,7 +68,7 @@ export function Canvas2D() {
   const resetView = useCallback(() => {
     setScale(40);
     setPan([0, 0]);
-  }, [setScale, setPan]);
+  }, []);
 
   useLayoutEffect(() => {
     const container = containerRef.current;
@@ -143,7 +141,6 @@ export function Canvas2D() {
     requestRenderFrame();
   }, [resetView]);
 
-  // Sincroniza o cursor com a ferramenta ativa
   useEffect(() => {
     const unsubscribe = store.subscribe(() => {
       const currentTool = store.getState().tool;
@@ -191,7 +188,7 @@ export function Canvas2D() {
       furniture: currentScene?.furniture ?? [],
       measurements: currentScene?.measurements ?? [],
       selectedIds,
-      hoveredId: null, // será gerenciado pelo ToolManager
+      hoveredId: null,
     });
 
     if (previewState?.type === 'wall') {
@@ -318,7 +315,6 @@ export function Canvas2D() {
     return m;
   };
 
-  // Cria um evento de interação com o zoom atual da viewport
   const createInteractionEvent = (
     type: InteractionEvent['type'],
     worldPos: Vec2,
@@ -329,13 +325,13 @@ export function Canvas2D() {
       type,
       position: worldPos,
       modifiers: getModifiers(nativeEvent as any),
-      viewportZoom: scaleRef.current, // zoom atual do canvas 2D
+      viewportZoom: scaleRef.current,
       ...extra,
     };
   };
 
   // --------------------------------------------------------------
-  // Handlers simplificados – apenas delegam ao ToolManager
+  // POINTER EVENTS (delega tudo ao ToolManager)
   // --------------------------------------------------------------
   const handlePointerDown = (e: React.PointerEvent) => {
     e.preventDefault();
@@ -366,6 +362,37 @@ export function Canvas2D() {
     requestRenderFrame();
   };
 
+  // --------------------------------------------------------------
+  // WHEEL (zoom)
+  // --------------------------------------------------------------
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      const rect = canvas.getBoundingClientRect();
+      const cursorX = e.clientX - rect.left - rect.width / 2;
+      const cursorY = e.clientY - rect.top - rect.height / 2;
+
+      const factor = e.deltaY < 0 ? 1.12 : 1 / 1.12;
+      const newScale = Math.max(8, Math.min(400, scaleRef.current * factor));
+      const ratio = newScale / scaleRef.current;
+
+      setPan(([px, py]) => [
+        cursorX + (px - cursorX) * ratio,
+        cursorY + (py - cursorY) * ratio,
+      ]);
+      setScale(newScale);
+    };
+
+    canvas.addEventListener('wheel', onWheel, { passive: false });
+    return () => canvas.removeEventListener('wheel', onWheel);
+  }, []);
+
+  // --------------------------------------------------------------
+  // CONTEXT MENU
+  // --------------------------------------------------------------
   const handleContextMenu = useCallback((e: MouseEvent | React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
@@ -379,9 +406,8 @@ export function Canvas2D() {
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    const listener = (e: MouseEvent) => handleContextMenu(e);
-    canvas.addEventListener('contextmenu', listener);
-    return () => canvas.removeEventListener('contextmenu', listener);
+    canvas.addEventListener('contextmenu', handleContextMenu);
+    return () => canvas.removeEventListener('contextmenu', handleContextMenu);
   }, [handleContextMenu]);
 
   useEffect(() => {
@@ -477,10 +503,9 @@ export function Canvas2D() {
     return actions;
   };
 
-  // Atalhos de teclado (exceto pan/zoom, que agora são de responsabilidade do ToolManager)
+  // Teclado (Escape, Enter, Delete)
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      // Atalhos globais não relacionados a ferramentas
       if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
         e.preventDefault();
         store.getState().undo();
@@ -492,7 +517,6 @@ export function Canvas2D() {
       if (e.key === 'f' && !e.ctrlKey) {
         resetView();
       }
-      // Encaminha outras teclas (Escape, Enter, etc.) para o ToolManager
       if (e.key === 'Escape' || e.key === 'Enter' || e.key === 'Delete' || e.key === 'Backspace') {
         const event: InteractionEvent = { type: 'keydown', key: e.key, modifiers: [], position: [0,0] };
         toolManager.handleEvent(event);
