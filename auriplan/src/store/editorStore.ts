@@ -127,7 +127,11 @@ export interface EditorState {
   zoomIn: () => void;
   zoomOut: () => void;
   fitToView: () => void;
-
+  
+function applyGeometryToScene(scene: Scene): void {
+  // Usa applyGeometryPipeline com skipIfUnchanged para evitar reprocessamento desnecessário
+  applyGeometryPipeline(scene, { skipIfUnchanged: true });
+}
   // History
   saveToHistory: () => void;
   undo: () => void;
