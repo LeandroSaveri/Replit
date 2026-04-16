@@ -34,6 +34,9 @@ import { splitWallAtPoint, type SplitResult, type SplitSegment } from '@core/wal
 import type { IGraphTopology } from '@core/topology/IGraphTopology';
 import { WallGraphTopology } from '@core/wall/WallGraph';
 
+// ==================== CONSTANTES ====================
+const MIN_WALL_LENGTH = 0.05; // comprimento mínimo para uma parede (5cm)
+
 // ==================== INTERFACES ====================
 export interface EditorState {
   project: Project | null;
@@ -268,7 +271,6 @@ export const useEditorStore = create<EditorState>()(
         get().saveToHistory();
       },
 
-      // 🔁 NOVA IMPLEMENTAÇÃO DE loadTemplate (com preserveShortWalls e sem ajustes de canto)
       loadTemplate: async (templateId, name) => {
         const template = (FLOOR_PLAN_TEMPLATES as FloorPlanTemplate[]).find(t => t.id === templateId);
         if (!template) return;
@@ -375,7 +377,7 @@ export const useEditorStore = create<EditorState>()(
         });
       },
 
-      // 🔁 NOVA IMPLEMENTAÇÃO DE addWallsBatch (com validação e logs)
+      // NOVA VERSÃO DE addWallsBatch COM LOGS E PRESERVAÇÃO DE PAREDES CURTAS
       addWallsBatch: (wallsToAdd: Array<{ start: Vec2; end: Vec2 }>) => {
         const state = get();
         const scene = getCurrentScene(state);
@@ -387,13 +389,15 @@ export const useEditorStore = create<EditorState>()(
         // Filtra segmentos muito curtos antes de criar as paredes
         const validSegments = wallsToAdd.filter(({ start, end }) => {
           const len = Math.hypot(end[0] - start[0], end[1] - start[1]);
-          return len >= 0.05;
+          return len >= MIN_WALL_LENGTH;
         });
 
         if (validSegments.length === 0) {
           console.warn('[addWallsBatch] All segments are too short (< 5cm), skipping');
           return;
         }
+
+        console.log(`[addWallsBatch] Adicionando ${validSegments.length} paredes. Total antes: ${scene.walls.length}`);
 
         const newWalls: Wall[] = validSegments.map(({ start, end }) => ({
           id: uuidv4(),
@@ -410,12 +414,13 @@ export const useEditorStore = create<EditorState>()(
           walls: [...scene.walls, ...newWalls],
         };
 
-        // Aplica pipeline geométrico (com skipIfUnchanged: false para forçar execução)
-        applyGeometryPipeline(sceneCopy, { skipIfUnchanged: false });
+        // Aplica pipeline geométrico (força execução)
+        applyGeometryPipeline(sceneCopy, { skipIfUnchanged: false, preserveShortWalls: true });
+        console.log(`[addWallsBatch] Paredes após pipeline: ${sceneCopy.walls.length}`);
 
         // Se o pipeline removeu todas as paredes, aborta
         if (sceneCopy.walls.length === 0) {
-          console.warn('[addWallsBatch] Pipeline removed all walls, aborting');
+          console.error('[addWallsBatch] Pipeline removeu todas as paredes! Abortando.');
           return;
         }
 
@@ -429,13 +434,13 @@ export const useEditorStore = create<EditorState>()(
         });
 
         get().saveToHistory();
-        console.log(`[addWallsBatch] Added ${newWalls.length} walls, total: ${sceneCopy.walls.length}`);
+        console.log(`[addWallsBatch] Commit concluído. Total final: ${sceneCopy.walls.length}`);
       },
 
       addWall: (start: Vec2, end: Vec2, incremental = true) => {
         const dx = end[0] - start[0];
         const dy = end[1] - start[1];
-        if (Math.hypot(dx, dy) < 0.05) return;
+        if (Math.hypot(dx, dy) < MIN_WALL_LENGTH) return;
 
         const state = get();
         const scene = getCurrentScene(state);
