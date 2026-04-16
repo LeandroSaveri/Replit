@@ -1,5 +1,6 @@
 // ============================================================
 // Canvas2D.tsx – Renderização 2D, zoom com pinça, delegação total ao ToolManager
+// Suporte a long press para alternar visibilidade de paredes
 // ============================================================
 
 import { useRef, useEffect, useState, useCallback, useLayoutEffect } from 'react';
@@ -44,6 +45,10 @@ export function Canvas2D() {
   const pinchStartScaleRef = useRef(40);
   const pinchStartPanRef = useRef<Vec2>([0, 0]);
   const pinchStartMidRef = useRef({ x: 0, y: 0 });
+
+  // Suporte a long press (visibilidade de parede)
+  const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [longPressTarget, setLongPressTarget] = useState<{ type: 'wall'; id: string } | null>(null);
 
   const store = useEditorStore;
   const currentScene = useEditorStore(selectCurrentScene);
@@ -338,7 +343,7 @@ export function Canvas2D() {
   };
 
   // --------------------------------------------------------------
-  // POINTER EVENTS (com suporte a pinça)
+  // POINTER EVENTS (com suporte a pinça e long press)
   // --------------------------------------------------------------
   const handlePointerDown = (e: React.PointerEvent) => {
     e.preventDefault();
@@ -359,7 +364,28 @@ export function Canvas2D() {
       return;
     }
 
-    // Caso contrário, delega ao ToolManager
+    // Inicia timer para long press (apenas um dedo)
+    if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current);
+    longPressTimerRef.current = setTimeout(() => {
+      const worldPos = screenToWorld(e.clientX, e.clientY);
+      // Tenta obter o método hitTest do handler atual (se existir)
+      const hit = (toolManager as any).currentHandler?.hitTest?.(worldPos);
+      if (hit?.type === 'wall') {
+        const wallId = hit.id;
+        const scene = currentScene;
+        if (scene) {
+          const wall = scene.walls.find(w => w.id === wallId);
+          if (wall) {
+            const newVisibility = !wall.visible;
+            store.getState().updateWall(wallId, { visible: newVisibility });
+            requestRenderFrame();
+          }
+        }
+      }
+      longPressTimerRef.current = null;
+    }, 500);
+
+    // Delega evento normal ao ToolManager (para seleção/arraste)
     const worldPos = screenToWorld(e.clientX, e.clientY);
     const event = createInteractionEvent('mousedown', worldPos, e);
     toolManager.handleEvent(event);
@@ -413,6 +439,12 @@ export function Canvas2D() {
   };
 
   const handlePointerUp = (e: React.PointerEvent) => {
+    // Cancela timer de long press se existir
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+
     activePointersRef.current.delete(e.pointerId);
     if (activePointersRef.current.size < 2) {
       pinchStartDistRef.current = 0;
