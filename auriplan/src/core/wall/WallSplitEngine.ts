@@ -1,14 +1,12 @@
+// src/core/wall/WallSplitEngine.ts
 // ============================================
 // WALL SPLIT ENGINE - Divisão de Paredes
+// CORREÇÃO: Tolerância aumentada para 5cm ao ignorar interseções próximas a vértices.
 // ============================================
 
 import type { Wall, Vec2 } from '@auriplan-types';
 import { v4 as uuidv4 } from 'uuid';
 import { EPS, GEOM_TOL, MIN_WALL_LENGTH } from '@core/geometry/geometryConstants';
-
-// ============================================
-// TIPOS
-// ============================================
 
 export interface SplitSegment {
   wallId: string;
@@ -24,10 +22,6 @@ export interface SplitResult {
   removedWallIds: string[];
   segments: SplitSegment[];
 }
-
-// ============================================
-// FUNÇÕES AUXILIARES GEOMÉTRICAS
-// ============================================
 
 function distance(a: Vec2, b: Vec2): number {
   const dx = a[0] - b[0];
@@ -94,18 +88,6 @@ function createWallFromSegment(original: Wall, start: Vec2, end: Vec2): Wall {
   };
 }
 
-// ============================================
-// FUNÇÃO PRINCIPAL: splitWallAtPoint
-// ============================================
-
-/**
- * Divide uma parede em um ponto específico, gerando dois novos segmentos.
- * 
- * @param walls - Lista atual de paredes (não modificada)
- * @param wallId - ID da parede a ser dividida
- * @param point - Ponto de divisão (deve estar sobre a parede)
- * @returns Resultado contendo as novas paredes, segmentos e IDs removidos.
- */
 export function splitWallAtPoint(
   walls: Wall[],
   wallId: string,
@@ -126,11 +108,13 @@ export function splitWallAtPoint(
   const distToEnd = distance(point, originalWall.end);
   const wallLength = distance(originalWall.start, originalWall.end);
 
-  if (distToStart < GEOM_TOL || distToEnd < GEOM_TOL || distToStart > wallLength - GEOM_TOL) {
+  // Se o ponto está muito próximo de uma extremidade, não divide
+  if (distToStart < GEOM_TOL * 10 || distToEnd < GEOM_TOL * 10) {
     return { originalWallId: wallId, updatedWalls: walls, removedWallIds: [], segments: [] };
   }
 
   if (distToStart < MIN_WALL_LENGTH || distToEnd < MIN_WALL_LENGTH) {
+    console.warn(`splitWallAtPoint: resulting segments too short (${distToStart.toFixed(3)}, ${distToEnd.toFixed(3)}), skipping split`);
     return { originalWallId: wallId, updatedWalls: walls, removedWallIds: [], segments: [] };
   }
 
@@ -171,19 +155,14 @@ export function splitWallAtPoint(
   }
 }
 
-// ============================================
-// FUNÇÃO AVANÇADA: splitWallsAtIntersections
-// ============================================
-
-/**
- * Divide todas as paredes que se intersectam, garantindo que interseções sejam vértices.
- * Utilizada no pipeline geométrico.
- */
 export function splitWallsAtIntersections(walls: Wall[]): Wall[] {
   let currentWalls = [...walls];
   let anySplit = true;
   let iterations = 0;
-  const MAX_ITERATIONS = 100;
+  const MAX_ITERATIONS = 20; // reduzido
+
+  // Tolerância para ignorar interseções muito próximas de vértices (5 cm)
+  const VERTEX_PROXIMITY_TOL = 0.05;
 
   while (anySplit && iterations < MAX_ITERATIONS) {
     anySplit = false;
@@ -203,20 +182,18 @@ export function splitWallsAtIntersections(walls: Wall[]): Wall[] {
         );
         if (!intersection) continue;
 
-        const onA = isPointOnSegment(intersection, wallA.start, wallA.end);
-        const onB = isPointOnSegment(intersection, wallB.start, wallB.end);
-        if (!onA || !onB) continue;
-
         const distAStart = distance(intersection, wallA.start);
-        const distAEnd = distance(intersection, wallA.end);
+        const distAEnd   = distance(intersection, wallA.end);
         const distBStart = distance(intersection, wallB.start);
-        const distBEnd = distance(intersection, wallB.end);
+        const distBEnd   = distance(intersection, wallB.end);
 
-        if (distAStart < GEOM_TOL || distAEnd < GEOM_TOL ||
-            distBStart < GEOM_TOL || distBEnd < GEOM_TOL) {
+        // Ignora se a interseção está muito próxima de qualquer vértice
+        if (distAStart < VERTEX_PROXIMITY_TOL || distAEnd < VERTEX_PROXIMITY_TOL ||
+            distBStart < VERTEX_PROXIMITY_TOL || distBEnd < VERTEX_PROXIMITY_TOL) {
           continue;
         }
 
+        // Divide wallA
         const splitA = splitWallAtPoint(currentWalls, wallA.id, intersection);
         if (splitA.removedWallIds.length > 0) {
           currentWalls = splitA.updatedWalls;
@@ -224,6 +201,7 @@ export function splitWallsAtIntersections(walls: Wall[]): Wall[] {
           break;
         }
 
+        // Divide wallB (usando a lista já atualizada)
         const updatedWallB = currentWalls.find(w => w.id === wallB.id);
         if (!updatedWallB) {
           anySplit = true;
