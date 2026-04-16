@@ -1,3 +1,4 @@
+// src/features/editor/components/AddRoomModal.tsx
 // ============================================================
 // AddRoomModal — Modal "Adicionar um cômodo" com formatos pré-definidos
 // ============================================================
