@@ -128,6 +128,7 @@ export interface EditorState {
   setGrid: (grid: Partial<GridSettings>) => void;
   setSnap: (snap: Partial<SnapSettings>) => void;
   setCamera: (camera: Partial<CameraState>) => void;
+  panCamera: (dx: number, dy: number) => void;   // <-- NOVO
   zoomIn: () => void;
   zoomOut: () => void;
   fitToView: () => void;
@@ -919,6 +920,14 @@ export const useEditorStore = create<EditorState>()(
       setGrid: (grid: Partial<GridSettings>) => set(state => { state.grid = { ...state.grid, ...grid }; }),
       setSnap: (snap: Partial<SnapSettings>) => set(state => { state.snap = { ...state.snap, ...snap }; }),
       setCamera: (camera: Partial<CameraState>) => set(state => { state.camera = { ...state.camera, ...camera }; }),
+
+      // ==================== NOVO: panCamera ====================
+      panCamera: (dx: number, dy: number) => {
+        set(state => {
+          state.camera.position[0] += dx / state.camera.zoom;
+          state.camera.position[1] += dy / state.camera.zoom;
+        });
+      },
 
       zoomIn: () => set(state => { state.camera.zoom = Math.min(state.camera.zoom * 1.2, 10); }),
       zoomOut: () => set(state => { state.camera.zoom = Math.max(state.camera.zoom / 1.2, 0.1); }),
