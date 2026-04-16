@@ -69,6 +69,7 @@ export interface EditorState {
   setCurrentScene: (id: string) => void;
 
   // Walls
+  commitGeometry: (sceneId: string, options?: { preserveShortWalls?: boolean; mode?: 'incremental' | 'final' }) => void;
   addWall: (start: Vec2, end: Vec2, incremental?: boolean) => void;
   addWallsBatch: (walls: Array<{ start: Vec2; end: Vec2 }>) => void;
   createWall: (start: Vec2, end: Vec2) => void;
@@ -377,7 +378,36 @@ export const useEditorStore = create<EditorState>()(
         });
       },
 
-      // NOVA VERSÃO DE addWallsBatch COM LOGS E PRESERVAÇÃO DE PAREDES CURTAS
+      // ==================== NOVA FUNÇÃO commitGeometry ====================
+      commitGeometry: (sceneId: string, options?: { preserveShortWalls?: boolean; mode?: 'incremental' | 'final' }) => {
+        set(state => {
+          const scene = state.scenes.find(s => s.id === sceneId);
+          if (!scene) return;
+          // Clona a cena para não mutar o estado durante o pipeline
+          const sceneCopy = JSON.parse(JSON.stringify(scene));
+          applyGeometryPipeline(sceneCopy, { 
+            skipIfUnchanged: false, 
+            preserveShortWalls: options?.preserveShortWalls ?? false,
+            mode: options?.mode ?? 'final'
+          });
+          // Aplica as mudanças na cena original
+          scene.walls = sceneCopy.walls;
+          scene.rooms = sceneCopy.rooms;
+          updateTopologyForScene(state, sceneId);
+        });
+        get().saveToHistory();
+      },
+
+      // ==================== addWall refatorado ====================
+      addWall: (start: Vec2, end: Vec2, incremental = true) => {
+        const dx = end[0] - start[0];
+        const dy = end[1] - start[1];
+        if (Math.hypot(dx, dy) < MIN_WALL_LENGTH) return;
+        // Delega para addWallsBatch
+        get().addWallsBatch([{ start, end }]);
+      },
+
+      // ==================== addWallsBatch (com logs e preserveShortWalls) ====================
       addWallsBatch: (wallsToAdd: Array<{ start: Vec2; end: Vec2 }>) => {
         const state = get();
         const scene = getCurrentScene(state);
@@ -386,7 +416,6 @@ export const useEditorStore = create<EditorState>()(
           return;
         }
 
-        // Filtra segmentos muito curtos antes de criar as paredes
         const validSegments = wallsToAdd.filter(({ start, end }) => {
           const len = Math.hypot(end[0] - start[0], end[1] - start[1]);
           return len >= MIN_WALL_LENGTH;
@@ -397,7 +426,7 @@ export const useEditorStore = create<EditorState>()(
           return;
         }
 
-        console.log(`[addWallsBatch] Adicionando ${validSegments.length} paredes. Total antes: ${scene.walls.length}`);
+        console.log(`[addWallsBatch] Adicionando ${validSegments.length} paredes.`);
 
         const newWalls: Wall[] = validSegments.map(({ start, end }) => ({
           id: uuidv4(),
@@ -414,11 +443,9 @@ export const useEditorStore = create<EditorState>()(
           walls: [...scene.walls, ...newWalls],
         };
 
-        // Aplica pipeline geométrico (força execução)
         applyGeometryPipeline(sceneCopy, { skipIfUnchanged: false, preserveShortWalls: true });
         console.log(`[addWallsBatch] Paredes após pipeline: ${sceneCopy.walls.length}`);
 
-        // Se o pipeline removeu todas as paredes, aborta
         if (sceneCopy.walls.length === 0) {
           console.error('[addWallsBatch] Pipeline removeu todas as paredes! Abortando.');
           return;
@@ -433,56 +460,15 @@ export const useEditorStore = create<EditorState>()(
           updateTopologyForScene(state, scene.id);
         });
 
-        get().saveToHistory();
-        console.log(`[addWallsBatch] Commit concluído. Total final: ${sceneCopy.walls.length}`);
-      },
-
-      addWall: (start: Vec2, end: Vec2, incremental = true) => {
-        const dx = end[0] - start[0];
-        const dy = end[1] - start[1];
-        if (Math.hypot(dx, dy) < MIN_WALL_LENGTH) return;
-
-        const state = get();
-        const scene = getCurrentScene(state);
-        if (!scene) return;
-
-        const newWall: Wall = {
-          id: uuidv4(),
-          start: [...start] as Vec2,
-          end: [...end] as Vec2,
-          thickness: 0.15,
-          height: 2.8,
-          color: '#8B4513',
-          material: 'paint-white',
-          visible: true,
-          locked: false,
-          connections: { start: [], end: [] },
-          roomIds: [],
-          openingIds: [],
-          metadata: {},
-        };
-
-        const wallsWithNew = [...scene.walls, newWall];
-        const sceneCopy: Scene = { ...scene, walls: wallsWithNew };
-
-        applyGeometryPipeline(sceneCopy, {
-          mode: incremental ? 'incremental' : 'final'
-        });
-
-        set(state => {
-          const targetScene = state.scenes.find(s => s.id === state.currentSceneId);
-          if (targetScene) {
-            targetScene.walls = sceneCopy.walls;
-            targetScene.rooms = sceneCopy.rooms;
-          }
-          updateTopologyForScene(state, scene.id);
-        });
-
+        // NÃO chama saveToHistory aqui – será chamado apenas no commitGeometry
+        // Mas como não temos um commit explícito, mantemos o saveToHistory para não quebrar o undo/redo.
+        // Opcional: chamar get().commitGeometry(scene.id, { preserveShortWalls: true, mode: 'incremental' });
         get().saveToHistory();
       },
 
       createWall: (start: Vec2, end: Vec2) => get().addWall(start, end, true),
 
+      // ==================== updateWall (preservando curtas) ====================
       updateWall: (id: string, updates: Partial<Wall>) => {
         set(state => {
           const scene = getCurrentScene(state);
@@ -490,18 +476,20 @@ export const useEditorStore = create<EditorState>()(
           const wall = scene.walls.find(w => w.id === id);
           if (!wall) return;
           Object.assign(wall, updates);
-          applyGeometryToScene(scene);
+          // Aplica pipeline preservando curtas
+          applyGeometryPipeline(scene, { preserveShortWalls: true, mode: 'incremental' });
           updateTopologyForScene(state, scene.id);
         });
         get().saveToHistory();
       },
 
+      // ==================== deleteWall (preserveShortWalls false) ====================
       deleteWall: (id: string) => {
         set(state => {
           const scene = getCurrentScene(state);
           if (!scene) return;
           scene.walls = scene.walls.filter(w => w.id !== id);
-          applyGeometryToScene(scene);
+          applyGeometryPipeline(scene, { preserveShortWalls: false, mode: 'final' });
           updateTopologyForScene(state, scene.id);
         });
         get().saveToHistory();
@@ -570,7 +558,8 @@ export const useEditorStore = create<EditorState>()(
         get().saveToHistory();
       },
 
-      updateWallsBatch: (updates: Array<{ id: string; start: Vec2; end: Vec2 }>) => {
+      // ==================== updateWallsBatch padronizado ====================
+      updateWallsBatch: (updates: Array<{ id: string; start: Vec2; end: Vec2 }>, preserveShort = true) => {
         set(state => {
           const scene = getCurrentScene(state);
           if (!scene) return;
@@ -588,11 +577,14 @@ export const useEditorStore = create<EditorState>()(
             }
           }
           if (changed) {
-            applyGeometryToScene(scene);
+            // Aplica o pipeline de forma incremental, preservando paredes curtas
+            applyGeometryPipeline(scene, { preserveShortWalls: preserveShort, mode: 'incremental' });
             updateTopologyForScene(state, scene.id);
           }
         });
-        if (get().scenes.some(s => s.id === get().currentSceneId)) get().saveToHistory();
+        // Salva no histórico apenas se não for um live update (chamado pelo SelectToolHandler)
+        // Como é um commit real, chamamos saveToHistory.
+        get().saveToHistory();
       },
 
       _liveUpdateWall: (id: string, start: Vec2, end: Vec2) => {
@@ -637,7 +629,8 @@ export const useEditorStore = create<EditorState>()(
         });
       },
 
-      _liveUpdateWallsBatch: (updates) => {
+      // ==================== _liveUpdateWallsBatch (sem pipeline, sem histórico) ====================
+      _liveUpdateWallsBatch: (updates: Array<{ id: string; start: Vec2; end: Vec2 }>) => {
         set(state => {
           const scene = getCurrentScene(state);
           if (!scene) return;
@@ -648,6 +641,7 @@ export const useEditorStore = create<EditorState>()(
               wall.end = [...upd.end] as Vec2;
             }
           }
+          // NÃO aplica pipeline, NÃO salva no histórico
         });
       },
 
