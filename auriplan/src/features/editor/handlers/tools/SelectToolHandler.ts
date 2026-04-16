@@ -1,8 +1,5 @@
 // ============================================================
-// SelectToolHandler — MagicPlan-like interactive editing
-// Supports: rooms (vertex/edge/move), walls (vertex/push/move),
-// furniture (drag), hover state, cursor updates, delete, rotate,
-// room drag (assemble mode), zoom to room
+// SelectToolHandler — MagicPlan interactive editing
 // ============================================================
 
 import type { InteractionEvent } from '@core/interaction/InteractionEngine';
@@ -558,7 +555,7 @@ export class SelectToolHandler implements ToolHandler {
   }
 
   // --------------------------------------------------------------
-  // onPointerUp CORRIGIDO - usando rebuildCurrentSceneGeometry
+  // onPointerUp ATUALIZADO - sem rebuildCurrentSceneGeometry redundante
   // --------------------------------------------------------------
   private onPointerUp(_event: InteractionEvent): void {
     if (!this.isDragging || !this.drag) {
@@ -591,7 +588,7 @@ export class SelectToolHandler implements ToolHandler {
         const room = scene.rooms.find(r => r.id === roomId);
         if (room) {
           state.updateRoom(room.id, { points: room.points });
-          state.rebuildCurrentSceneGeometry();
+          // NÃO chama rebuildCurrentSceneGeometry – o updateRoom já aplica pipeline
         }
         break;
       }
@@ -608,7 +605,7 @@ export class SelectToolHandler implements ToolHandler {
         }
         if (updates.length > 0) {
           state.updateWallsBatch(updates);
-          state.rebuildCurrentSceneGeometry();
+          // NÃO chama rebuildCurrentSceneGeometry
         }
         break;
       }
