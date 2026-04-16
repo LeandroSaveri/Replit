@@ -1,5 +1,5 @@
 // ============================================================
-// Canvas2D.tsx – com zoom por pinça (mobile) e pan
+// Canvas2D.tsx – Renderização 2D, zoom com pinça, delegação total ao ToolManager
 // ============================================================
 
 import { useRef, useEffect, useState, useCallback, useLayoutEffect } from 'react';
@@ -405,8 +405,7 @@ export function Canvas2D() {
       return;
     }
 
-    // Um dedo: movimento normal (se a ferramenta atual não estiver desenhando, pode fazer pan?)
-    // Por simplicidade, sempre delegamos ao ToolManager, que decide se é pan.
+    // Um dedo: movimento normal
     const worldPos = screenToWorld(e.clientX, e.clientY);
     const event = createInteractionEvent('mousemove', worldPos, e);
     toolManager.handleEvent(event);
