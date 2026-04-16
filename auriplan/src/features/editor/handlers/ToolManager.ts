@@ -115,7 +115,7 @@ export class ToolManager {
         if (this.cameraPanStart) {
           const dx = event.position[0] - this.cameraPanStart[0];
           const dy = event.position[1] - this.cameraPanStart[1];
-          // A store deve ter um método panCamera(dx, dy) para deslocar a câmera
+          // A store possui o método panCamera(dx, dy)
           this.store.getState().panCamera?.(dx, dy);
           this.cameraPanStart = event.position;
         }
