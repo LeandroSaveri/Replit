@@ -1,5 +1,5 @@
 // src/features/editor/handlers/tools/WallToolHandler.ts
-// Com snap forte ao grid e ortogonal
+// Desenho de paredes com arrasto, snap ao grid e ortogonal (Shift)
 
 import type { InteractionEvent } from '@core/interaction/InteractionEngine';
 import type { ToolHandler } from '../ToolHandler';
