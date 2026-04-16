@@ -268,39 +268,40 @@ export const useEditorStore = create<EditorState>()(
         get().saveToHistory();
       },
 
+      // 🔁 NOVA IMPLEMENTAÇÃO DE loadTemplate (com preserveShortWalls e sem ajustes de canto)
       loadTemplate: async (templateId, name) => {
         const template = (FLOOR_PLAN_TEMPLATES as FloorPlanTemplate[]).find(t => t.id === templateId);
+        if (!template) return;
+
         const sceneId = uuidv4();
         const newScene: Scene = {
           id: sceneId, name: 'Planta Baixa', level: 0, height: 2.8,
-          walls: template
-            ? template.walls.map(w => ({
-                id: uuidv4(),
-                start: w.start as Vec2,
-                end: w.end as Vec2,
-                thickness: 0.15, height: 2.8, material: 'concrete', color: '#64748b',
-                visible: true, locked: false, openingIds: [], roomIds: [],
-              }))
-            : [],
+          walls: template.walls.map(w => ({
+            id: uuidv4(),
+            start: [...w.start] as Vec2,
+            end: [...w.end] as Vec2,
+            thickness: 0.15, height: 2.8, material: 'concrete', color: '#64748b',
+            visible: true, locked: false, openingIds: [], roomIds: [],
+          })),
           rooms: [], doors: [], windows: [], furniture: [], measurements: [],
         };
+
         const newProject: Project = {
-          id: uuidv4(), name, description: template?.description ?? '',
+          id: uuidv4(), name, description: template.description,
           owner: { id: 'user-1', name: 'Usuário', email: 'user@example.com', role: 'owner' },
           collaborators: [],
           createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
           settings: { units: 'metric', currency: 'BRL' },
         };
 
-        // ⚠️ NÃO aplicar ajustes de canto em templates (evita distorções)
-        // Usamos resolveTopology para unir vértices, mas sem modificar geometria.
+        // Aplica apenas merge de vértices (resolveTopology) sem ajustes de canto
         const { resolveTopology } = await import('@core/wall/TopologyResolver');
-        const resolvedWalls = resolveTopology(newScene.walls, { aggressive: false }).walls;
-        newScene.walls = resolvedWalls;
+        const topoResult = resolveTopology(newScene.walls, { aggressive: false, preserveShortWalls: true });
+        newScene.walls = topoResult.walls;
 
-        // Detecta cômodos sem ajustes de canto
-        const { RoomDetection } = await import('@core/room/RoomDetectionEngine');
+        // Detecta cômodos sem modificar geometria
         const { buildGraph } = await import('@core/wall/WallGraph');
+        const { RoomDetection } = await import('@core/room/RoomDetectionEngine');
         const graph = buildGraph(newScene.walls);
         newScene.rooms = RoomDetection.detectRooms(graph, newScene.walls);
 
@@ -374,45 +375,49 @@ export const useEditorStore = create<EditorState>()(
         });
       },
 
-      // 🔧 CORRIGIDO: addWallsBatch com pipeline único em modo 'final'
+      // 🔁 NOVA IMPLEMENTAÇÃO DE addWallsBatch (com validação e logs)
       addWallsBatch: (wallsToAdd: Array<{ start: Vec2; end: Vec2 }>) => {
         const state = get();
         const scene = getCurrentScene(state);
-        if (!scene) return;
-
-        const newWalls: Wall[] = [];
-
-        for (const seg of wallsToAdd) {
-          const dx = seg.end[0] - seg.start[0];
-          const dy = seg.end[1] - seg.start[1];
-          if (Math.hypot(dx, dy) < 1e-6) continue;
-
-          newWalls.push({
-            id: uuidv4(),
-            start: [...seg.start] as Vec2,
-            end: [...seg.end] as Vec2,
-            thickness: 0.15,
-            height: 2.8,
-            color: '#8B4513',
-            material: 'paint-white',
-            visible: true,
-            locked: false,
-            connections: { start: [], end: [] },
-            roomIds: [],
-            openingIds: [],
-            metadata: {},
-          });
+        if (!scene) {
+          console.error('[addWallsBatch] No current scene');
+          return;
         }
 
-        if (newWalls.length === 0) return;
+        // Filtra segmentos muito curtos antes de criar as paredes
+        const validSegments = wallsToAdd.filter(({ start, end }) => {
+          const len = Math.hypot(end[0] - start[0], end[1] - start[1]);
+          return len >= 0.05;
+        });
+
+        if (validSegments.length === 0) {
+          console.warn('[addWallsBatch] All segments are too short (< 5cm), skipping');
+          return;
+        }
+
+        const newWalls: Wall[] = validSegments.map(({ start, end }) => ({
+          id: uuidv4(),
+          start: [...start] as Vec2,
+          end: [...end] as Vec2,
+          thickness: 0.15, height: 2.8, color: '#8B4513', material: 'paint-white',
+          visible: true, locked: false,
+          connections: { start: [], end: [] },
+          roomIds: [], openingIds: [], metadata: {},
+        }));
 
         const sceneCopy: Scene = {
           ...scene,
           walls: [...scene.walls, ...newWalls],
         };
 
-        // 🚨 PIPELINE RODA UMA VEZ SÓ (ESSENCIAL)
-        applyGeometryPipeline(sceneCopy, { mode: 'final' });
+        // Aplica pipeline geométrico (com skipIfUnchanged: false para forçar execução)
+        applyGeometryPipeline(sceneCopy, { skipIfUnchanged: false });
+
+        // Se o pipeline removeu todas as paredes, aborta
+        if (sceneCopy.walls.length === 0) {
+          console.warn('[addWallsBatch] Pipeline removed all walls, aborting');
+          return;
+        }
 
         set(state => {
           const targetScene = state.scenes.find(s => s.id === state.currentSceneId);
@@ -424,13 +429,12 @@ export const useEditorStore = create<EditorState>()(
         });
 
         get().saveToHistory();
+        console.log(`[addWallsBatch] Added ${newWalls.length} walls, total: ${sceneCopy.walls.length}`);
       },
 
-      // 🔧 CORRIGIDO: addWall com suporte real a incremental e segurança extra
       addWall: (start: Vec2, end: Vec2, incremental = true) => {
         const dx = end[0] - start[0];
         const dy = end[1] - start[1];
-        // Segurança extra: rejeita paredes muito curtas (evita snap instável)
         if (Math.hypot(dx, dy) < 0.05) return;
 
         const state = get();
