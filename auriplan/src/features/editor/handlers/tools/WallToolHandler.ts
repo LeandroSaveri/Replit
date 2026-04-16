@@ -1,8 +1,8 @@
 // src/features/editor/handlers/tools/WallToolHandler.ts
 // ============================================================
 // WallToolHandler — click-to-click (MagicPlan style)
-// Fase 4.1: Modo incremental seguro
-// CORREÇÃO: Acumula segmentos e aplica pipeline apenas no final.
+// CORREÇÃO: Modo híbrido - acumula segmentos, preview via live update,
+// commit final com addWallsBatch + força refresh.
 // ============================================================
 
 import type { InteractionEvent } from '@core/interaction/InteractionEngine';
@@ -11,7 +11,6 @@ import type { PreviewState } from '../ToolContext';
 import type { EditorStore } from '@store/editorStore';
 import { SnapSolver } from '@core/snap/SnapSolver';
 import type { Vec2 } from '@auriplan-types';
-import { applyGeometryPipeline } from '@core/pipeline/applyGeometryPipeline';
 
 const MIN_WALL_LENGTH = 0.05;
 
@@ -74,7 +73,7 @@ export class WallToolHandler implements ToolHandler {
     const length = Math.hypot(end[0] - this.startPoint[0], end[1] - this.startPoint[1]);
 
     if (length >= MIN_WALL_LENGTH) {
-      // Acumula o segmento, NÃO cria a parede ainda
+      // Acumula o segmento
       this.segmentStartHistory.push(end);
       this.startPoint = end;
       this.currentPoint = end;
@@ -113,7 +112,6 @@ export class WallToolHandler implements ToolHandler {
       this.finalizeAndCommit();
     }
     if (event.key === 'Backspace' && this.segmentStartHistory.length > 1) {
-      // Remove o último ponto da história (sem desfazer na store, pois ainda não commitamos)
       this.segmentStartHistory.pop();
       const prev = this.segmentStartHistory[this.segmentStartHistory.length - 1];
       this.startPoint = prev;
@@ -141,8 +139,11 @@ export class WallToolHandler implements ToolHandler {
     }
 
     if (wallsToAdd.length > 0) {
-      // Adiciona todas as paredes em lote e aplica o pipeline UMA VEZ
-      this.store.getState().addWallsBatch(wallsToAdd);
+      // Adiciona em lote e força atualização da store
+      const state = this.store.getState();
+      state.addWallsBatch(wallsToAdd);
+      // Força uma re-renderização imediata (caso a store não dispare)
+      state.rebuildCurrentSceneGeometry();
     }
 
     this.reset();
