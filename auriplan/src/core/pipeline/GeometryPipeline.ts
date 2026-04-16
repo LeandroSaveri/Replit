@@ -23,6 +23,8 @@ export interface GeometryPipelineOptions {
   debug?: boolean;
   applyCornerAdjustments?: boolean;
   mode?: 'incremental' | 'final';
+  /** Se true, preserva paredes curtas durante a resolução de topologia. */
+  preserveShortWalls?: boolean;
 }
 
 export function computeWallsFingerprint(walls: Wall[]): string {
@@ -87,7 +89,12 @@ export function runGeometryPipeline(
   walls: Wall[],
   options: GeometryPipelineOptions = {}
 ): GeometryPipelineResult {
-  const { debug = false, applyCornerAdjustments: enableCornerAdjustments = true, mode = 'final' } = options;
+  const { 
+    debug = false, 
+    applyCornerAdjustments: enableCornerAdjustments = true, 
+    mode = 'final',
+    preserveShortWalls = false 
+  } = options;
   const log = (msg: string) => { if (debug) console.log(`[GeometryPipeline] ${msg}`); };
 
   try {
@@ -103,10 +110,13 @@ export function runGeometryPipeline(
     let graph = buildGraph(currentWalls);
     log(`  - Nós: ${graph.nodes.length}, junções: ${graph.junctions.size}`);
 
-    // Etapa 3: Resolução de topologia
+    // Etapa 3: Resolução de topologia (repassa preserveShortWalls)
     log('Etapa 3: resolveTopology');
     const isIncremental = mode === 'incremental';
-    const topo = resolveTopology(currentWalls, { aggressive: !isIncremental });
+    const topo = resolveTopology(currentWalls, { 
+      aggressive: !isIncremental,
+      preserveShortWalls: preserveShortWalls || isIncremental // preserva curtas no modo incremental
+    });
     currentWalls = topo.walls;
     log(`  - Paredes após topologia: ${currentWalls.length}`);
 
