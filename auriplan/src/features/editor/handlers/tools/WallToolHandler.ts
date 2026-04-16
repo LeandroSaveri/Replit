@@ -13,13 +13,12 @@ import type { Vec2 } from '@auriplan-types';
 
 const MIN_WALL_LENGTH = 0.05;
 
-type Mode = 'idle' | 'drawing';
+type Mode = 'idle' | 'dragging';
 
 export class WallToolHandler implements ToolHandler {
   private mode: Mode = 'idle';
   private startPoint: Vec2 | null = null;
   private currentPoint: Vec2 | null = null;
-  private segmentStartHistory: Vec2[] = [];
   private store: EditorStore;
   private onPreviewChange: (state: PreviewState) => void;
 
@@ -30,11 +29,18 @@ export class WallToolHandler implements ToolHandler {
 
   handleEvent(event: InteractionEvent): void {
     switch (event.type) {
-      case 'mousedown': this.onDown(event); break;
-      case 'mousemove': this.onMove(event); break;
-      case 'mouseup': break;
-      case 'dblclick': this.onDoubleClick(event); break;
-      case 'keydown': this.onKey(event); break;
+      case 'mousedown':
+        this.onPointerDown(event);
+        break;
+      case 'mousemove':
+        this.onPointerMove(event);
+        break;
+      case 'mouseup':
+        this.onPointerUp(event);
+        break;
+      case 'keydown':
+        this.onKeyDown(event);
+        break;
     }
   }
 
@@ -42,48 +48,28 @@ export class WallToolHandler implements ToolHandler {
     this.mode = 'idle';
     this.startPoint = null;
     this.currentPoint = null;
-    this.segmentStartHistory = [];
     this.onPreviewChange(null);
   }
 
   getPreviewState(): PreviewState | null {
-    if (this.mode !== 'drawing' || !this.startPoint || !this.currentPoint) return null;
+    if (this.mode !== 'dragging' || !this.startPoint || !this.currentPoint) return null;
     return { type: 'wall', start: this.startPoint, end: this.currentPoint };
   }
 
-  private onDown(event: InteractionEvent): void {
+  private onPointerDown(event: InteractionEvent): void {
+    if (this.mode !== 'idle') return;
     const snapped = this.snap(event);
-
-    if (this.mode === 'idle') {
-      this.startPoint = snapped;
-      this.currentPoint = snapped;
-      this.mode = 'drawing';
-      this.segmentStartHistory = [snapped];
-      this.updatePreview();
-      return;
-    }
-
-    if (!this.startPoint) {
-      this.reset();
-      return;
-    }
-
-    const end = this.snap(event, this.startPoint);
-    const length = Math.hypot(end[0] - this.startPoint[0], end[1] - this.startPoint[1]);
-
-    if (length >= MIN_WALL_LENGTH) {
-      // Acumula o segmento, NÃO cria a parede ainda
-      this.segmentStartHistory.push(end);
-      this.startPoint = end;
-      this.currentPoint = end;
-      this.updatePreview();
-    }
+    this.startPoint = snapped;
+    this.currentPoint = snapped;
+    this.mode = 'dragging';
+    this.updatePreview();
   }
 
-  private onMove(event: InteractionEvent): void {
-    if (this.mode !== 'drawing' || !this.startPoint) return;
+  private onPointerMove(event: InteractionEvent): void {
+    if (this.mode !== 'dragging' || !this.startPoint) return;
 
     let pos = event.position;
+    // Snap ortogonal com Shift
     if (event.modifiers.includes('shift')) {
       const dx = pos[0] - this.startPoint[0];
       const dy = pos[1] - this.startPoint[1];
@@ -99,50 +85,28 @@ export class WallToolHandler implements ToolHandler {
     this.updatePreview(snapResult.point, snapResult.type);
   }
 
-  private onDoubleClick(_event: InteractionEvent): void {
-    this.finalizeAndCommit();
-  }
-
-  private onKey(event: InteractionEvent): void {
-    if (event.key === 'Escape') {
-      this.reset();
-    }
-    if (event.key === 'Enter') {
-      this.finalizeAndCommit();
-    }
-    if (event.key === 'Backspace' && this.segmentStartHistory.length > 1) {
-      this.segmentStartHistory.pop();
-      const prev = this.segmentStartHistory[this.segmentStartHistory.length - 1];
-      this.startPoint = prev;
-      this.currentPoint = prev;
-      this.updatePreview();
-    }
-  }
-
-  private finalizeAndCommit(): void {
-    if (this.segmentStartHistory.length < 2) {
+  private onPointerUp(event: InteractionEvent): void {
+    if (this.mode !== 'dragging' || !this.startPoint || !this.currentPoint) {
       this.reset();
       return;
     }
 
-    const points = this.segmentStartHistory;
-    const wallsToAdd: Array<{ start: Vec2; end: Vec2 }> = [];
+    const start = this.startPoint;
+    const end = this.currentPoint;
+    const length = Math.hypot(end[0] - start[0], end[1] - start[1]);
 
-    for (let i = 0; i < points.length - 1; i++) {
-      const start = points[i];
-      const end = points[i + 1];
-      const length = Math.hypot(end[0] - start[0], end[1] - start[1]);
-      if (length >= MIN_WALL_LENGTH) {
-        wallsToAdd.push({ start, end });
-      }
-    }
-
-    if (wallsToAdd.length > 0) {
-      // Adiciona todas as paredes em lote e aplica o pipeline UMA VEZ
-      this.store.getState().addWallsBatch(wallsToAdd);
+    if (length >= MIN_WALL_LENGTH) {
+      // Cria a parede usando addWallsBatch (já corrigido)
+      this.store.getState().addWallsBatch([{ start, end }]);
     }
 
     this.reset();
+  }
+
+  private onKeyDown(event: InteractionEvent): void {
+    if (event.key === 'Escape') {
+      this.reset();
+    }
   }
 
   private updatePreview(snapPoint?: Vec2, snapType?: any): void {
