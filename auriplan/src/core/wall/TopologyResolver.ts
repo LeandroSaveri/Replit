@@ -11,6 +11,13 @@ export interface TopologyResult {
   walls: Wall[];
 }
 
+export interface TopologyOptions {
+  /** Se true, aplica merge agressivo e remove paredes curtas. */
+  aggressive?: boolean;
+  /** Se true, preserva paredes curtas (não as remove durante o merge). */
+  preserveShortWalls?: boolean;
+}
+
 // ============================================
 // FUNÇÃO FALTANTE: normalizeWallDirection
 // ============================================
@@ -92,8 +99,11 @@ function mergeCloseVertices(walls: Wall[], tolerance: number, preserveShort: boo
     const newStart = findMergedPoint(wall.start, uniquePoints, tolerance);
     const newEnd = findMergedPoint(wall.end, uniquePoints, tolerance);
     const length = vec2.distance(newStart, newEnd);
+    // Se preserveShort for true, mantém a parede mesmo se curta
     if (preserveShort || length >= MIN_WALL_LENGTH - EPS) {
       mergedWalls.push({ ...wall, start: newStart, end: newEnd });
+    } else {
+      console.log(`[TopologyResolver] Parede ${wall.id} removida: comprimento ${length.toFixed(4)} < ${MIN_WALL_LENGTH}`);
     }
   }
   return mergedWalls;
@@ -142,16 +152,23 @@ function mergeColinearWalls(walls: Wall[]): Wall[] {
 // FUNÇÃO PRINCIPAL
 // ============================================
 
-export function resolveTopology(walls: Wall[], options?: { aggressive?: boolean }): TopologyResult {
-  const aggressive = options?.aggressive ?? true;
+export function resolveTopology(walls: Wall[], options: TopologyOptions = {}): TopologyResult {
+  const { aggressive = true, preserveShortWalls = false } = options;
   
   if (walls.length === 0) return { walls: [] };
 
-  // Filtra paredes muito curtas apenas se modo agressivo
-  let filtered = walls.filter(w => {
-    const len = vec2.distance(w.start, w.end);
-    return aggressive ? len >= MIN_WALL_LENGTH - EPS : true;
-  });
+  // Filtra paredes muito curtas APENAS se modo agressivo E preserveShortWalls for false
+  let filtered = walls;
+  if (aggressive && !preserveShortWalls) {
+    filtered = walls.filter(w => {
+      const len = vec2.distance(w.start, w.end);
+      const keep = len >= MIN_WALL_LENGTH - EPS;
+      if (!keep) {
+        console.log(`[TopologyResolver] Parede ${w.id} filtrada (curta): ${len.toFixed(4)} < ${MIN_WALL_LENGTH}`);
+      }
+      return keep;
+    });
+  }
   
   filtered = filtered.map(normalizeWallDirection);
 
@@ -159,8 +176,9 @@ export function resolveTopology(walls: Wall[], options?: { aggressive?: boolean 
   const nodeTol = aggressive ? NODE_TOL : NODE_TOL * 0.5;
 
   filtered = snapEndpoints(filtered, snapTol);
-  // Preserva paredes curtas se não agressivo (modo incremental)
-  filtered = mergeCloseVertices(filtered, nodeTol, !aggressive);
+  // Preserva paredes curtas se preserveShortWalls for true (ou modo não agressivo)
+  const shouldPreserveShort = preserveShortWalls || !aggressive;
+  filtered = mergeCloseVertices(filtered, nodeTol, shouldPreserveShort);
   filtered = removeDuplicateWalls(filtered);
   
   // Merge colinear apenas em modo agressivo
@@ -168,5 +186,6 @@ export function resolveTopology(walls: Wall[], options?: { aggressive?: boolean 
     filtered = mergeColinearWalls(filtered);
   }
 
+  console.log(`[TopologyResolver] Resultado: ${filtered.length} paredes (entrada: ${walls.length})`);
   return { walls: filtered };
 }
