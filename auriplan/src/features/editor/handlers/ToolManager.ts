@@ -1,8 +1,9 @@
 // ============================================================
 // ToolManager — gerencia a ferramenta ativa e delega eventos
+// Suporte a pan/zoom integrado (pan com ferramenta 'pan' ou tecla espaço)
 // ============================================================
 
-import type { Tool } from '@auriplan-types';
+import type { Tool, Vec2 } from '@auriplan-types';
 import type { InteractionEvent } from '@core/interaction/InteractionEngine';
 import type { ToolHandler } from './ToolHandler';
 import type { PreviewState } from './ToolContext';
@@ -21,6 +22,9 @@ export class ToolManager {
   private store: EditorStore;
   private unsubscribe?: () => void;
   private wallTopology: WallGraphTopology | null = null;
+
+  // Estado interno para pan
+  private cameraPanStart: Vec2 | null = null;
 
   constructor(
     store: EditorStore,
@@ -80,7 +84,46 @@ export class ToolManager {
   }
 
   handleEvent(event: InteractionEvent): void {
-    this.currentHandler?.handleEvent(event);
+    // Tenta delegar ao handler da ferramenta ativa
+    let consumed = false;
+    if (this.currentHandler) {
+      // Assumimos que o handler possui um método handleEvent que retorna boolean indicando se consumiu
+      // Caso contrário, tratamos como consumido sempre.
+      const result = this.currentHandler.handleEvent(event);
+      consumed = result !== false; // se retornar false explicitamente, não consumiu
+    }
+
+    if (consumed) return;
+
+    // Se não foi consumido, verifica se deve ativar o pan
+    const state = this.store.getState();
+    const isPanTool = state.tool === 'pan';
+    // Verifica se a tecla espaço está pressionada (assumindo que foi adicionada aos modificadores no evento)
+    const isSpacePressed = event.modifiers?.includes('space') ?? false;
+
+    if (isPanTool || isSpacePressed) {
+      this.handlePan(event);
+    }
+  }
+
+  private handlePan(event: InteractionEvent): void {
+    switch (event.type) {
+      case 'mousedown':
+        this.cameraPanStart = event.position;
+        break;
+      case 'mousemove':
+        if (this.cameraPanStart) {
+          const dx = event.position[0] - this.cameraPanStart[0];
+          const dy = event.position[1] - this.cameraPanStart[1];
+          // A store deve ter um método panCamera(dx, dy) para deslocar a câmera
+          this.store.getState().panCamera?.(dx, dy);
+          this.cameraPanStart = event.position;
+        }
+        break;
+      case 'mouseup':
+        this.cameraPanStart = null;
+        break;
+    }
   }
 
   getCurrentHandler(): ToolHandler | null {
