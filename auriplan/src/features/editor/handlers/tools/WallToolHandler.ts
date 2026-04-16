@@ -1,8 +1,7 @@
 // src/features/editor/handlers/tools/WallToolHandler.ts
 // ============================================================
 // WallToolHandler — click-to-click (MagicPlan style)
-// CORREÇÃO: Modo híbrido - acumula segmentos, preview via live update,
-// commit final com addWallsBatch + força refresh.
+// CORREÇÃO: Acumula segmentos e aplica pipeline apenas no final.
 // ============================================================
 
 import type { InteractionEvent } from '@core/interaction/InteractionEngine';
@@ -73,7 +72,7 @@ export class WallToolHandler implements ToolHandler {
     const length = Math.hypot(end[0] - this.startPoint[0], end[1] - this.startPoint[1]);
 
     if (length >= MIN_WALL_LENGTH) {
-      // Acumula o segmento
+      // Acumula o segmento, NÃO cria a parede ainda
       this.segmentStartHistory.push(end);
       this.startPoint = end;
       this.currentPoint = end;
@@ -138,15 +137,9 @@ export class WallToolHandler implements ToolHandler {
       }
     }
 
-    console.log('[WallToolHandler] wallsToAdd:', wallsToAdd);
     if (wallsToAdd.length > 0) {
-      const state = this.store.getState();
-      console.log('[WallToolHandler] currentSceneId:', state.currentSceneId);
-      state.addWallsBatch(wallsToAdd);
-      console.log('[WallToolHandler] after addWallsBatch, walls count:',
-        state.scenes.find(s => s.id === state.currentSceneId)?.walls.length);
-      // Força uma re-renderização imediata (caso a store não dispare)
-      state.rebuildCurrentSceneGeometry();
+      // Adiciona todas as paredes em lote e aplica o pipeline UMA VEZ
+      this.store.getState().addWallsBatch(wallsToAdd);
     }
 
     this.reset();
