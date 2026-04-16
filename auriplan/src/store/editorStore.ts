@@ -57,7 +57,7 @@ export interface EditorState {
 
   // Project
   createProject: (name: string, owner: User, description?: string) => void;
-  loadTemplate: (templateId: string, name: string) => void;
+  loadTemplate: (templateId: string, name: string) => Promise<void>;
   saveProject: () => void;
   exportProject: () => string;
   importProject: (data: string) => boolean;
@@ -268,7 +268,7 @@ export const useEditorStore = create<EditorState>()(
         get().saveToHistory();
       },
 
-      loadTemplate: (templateId, name) => {
+      loadTemplate: async (templateId, name) => {
         const template = (FLOOR_PLAN_TEMPLATES as FloorPlanTemplate[]).find(t => t.id === templateId);
         const sceneId = uuidv4();
         const newScene: Scene = {
@@ -291,8 +291,19 @@ export const useEditorStore = create<EditorState>()(
           createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
           settings: { units: 'metric', currency: 'BRL' },
         };
-        // Aplica pipeline uma única vez após carregar todas as paredes (modo final, pois é carga completa)
-        applyGeometryPipeline(newScene);
+
+        // ⚠️ NÃO aplicar ajustes de canto em templates (evita distorções)
+        // Usamos resolveTopology para unir vértices, mas sem modificar geometria.
+        const { resolveTopology } = await import('@core/wall/TopologyResolver');
+        const resolvedWalls = resolveTopology(newScene.walls, { aggressive: false }).walls;
+        newScene.walls = resolvedWalls;
+
+        // Detecta cômodos sem ajustes de canto
+        const { RoomDetection } = await import('@core/room/RoomDetectionEngine');
+        const { buildGraph } = await import('@core/wall/WallGraph');
+        const graph = buildGraph(newScene.walls);
+        newScene.rooms = RoomDetection.detectRooms(graph, newScene.walls);
+
         set(state => {
           state.project = newProject;
           state.scenes = [newScene];
