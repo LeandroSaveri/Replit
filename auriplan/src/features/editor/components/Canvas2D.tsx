@@ -1,15 +1,13 @@
 // ============================================================
 // CAMINHO: src/features/editor/components/Canvas2D.tsx
-// FUNÇÃO: Orquestrador de desenho 2D – zoom/pan, preview,
-//         contexto, menu de formas prontas com ícones,
-//         indicador de snap colorido
+// FUNÇÃO: Orquestrador
 // ============================================================
 
 import { useRef, useEffect, useState, useCallback, useLayoutEffect } from 'react';
 import { useEditorStore, selectCurrentScene } from '@store/editorStore';
 import { Render2DEngine } from '@engine/render2d/Render2DEngine';
 import { useToolContext } from '../handlers/ToolContext';
-import { ROOM_SHAPES, RoomToolHandler } from '../handlers'; // Ajuste conforme necessário
+import { ROOM_SHAPES, RoomToolHandler } from '../handlers';
 import type { Vec2 } from '@auriplan-types';
 import { SNAP_COLORS } from '@core/snap/SnapSolver';
 import type { InteractionEvent } from '@core/interaction/InteractionEngine';
@@ -33,15 +31,6 @@ export function Canvas2D() {
 
   const scaleRef = useRef(40);
   const panRef = useRef<Vec2>([0, 0]);
-  const isPanningRef = useRef(false);
-  const panStartRef = useRef({ x: 0, y: 0 });
-  const isSpacePressedRef = useRef(false);
-
-  const activePointersRef = useRef<Map<number, { x: number; y: number }>>(new Map());
-  const pinchStartDistRef = useRef(0);
-  const pinchStartScaleRef = useRef(40);
-  const pinchStartPanRef = useRef<Vec2>([0, 0]);
-  const pinchStartMidRef = useRef({ x: 0, y: 0 });
 
   const [scale, setScaleState] = useState(40);
   const [pan, setPanState] = useState<Vec2>([0, 0]);
@@ -57,7 +46,7 @@ export function Canvas2D() {
   const selectedIds = useEditorStore(state => state.selectedIds);
 
   // Consome o ToolManager e estado de preview do contexto
-  const { toolManager, previewState, setPreviewState } = useToolContext();
+  const { toolManager, previewState, setPreviewState, activeTool } = useToolContext();
 
   const walls = currentScene?.walls ?? [];
   const rooms = currentScene?.rooms ?? [];
@@ -154,14 +143,11 @@ export function Canvas2D() {
     requestRenderFrame();
   }, [resetView]);
 
-  // Sincroniza o cursor com o ToolManager
+  // Sincroniza o cursor com a ferramenta ativa
   useEffect(() => {
     const unsubscribe = store.subscribe(() => {
-      // Apenas para capturar mudanças de ferramenta e atualizar cursor padrão
       const currentTool = store.getState().tool;
-      if (currentTool !== 'select') {
-        setCursorStyle(TOOL_CURSORS[currentTool] ?? 'default');
-      }
+      setCursorStyle(TOOL_CURSORS[currentTool] ?? 'default');
     });
     return unsubscribe;
   }, [store]);
@@ -348,36 +334,11 @@ export function Canvas2D() {
     };
   };
 
+  // --------------------------------------------------------------
+  // Handlers simplificados – apenas delegam ao ToolManager
+  // --------------------------------------------------------------
   const handlePointerDown = (e: React.PointerEvent) => {
-    if (e.button !== 2) e.preventDefault();
-    (e.target as HTMLElement).setPointerCapture(e.pointerId);
-
-    activePointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
-
-    if (activePointersRef.current.size === 2) {
-      const pts = Array.from(activePointersRef.current.values());
-      const dx = pts[1].x - pts[0].x;
-      const dy = pts[1].y - pts[0].y;
-      pinchStartDistRef.current = Math.hypot(dx, dy);
-      pinchStartScaleRef.current = scaleRef.current;
-      pinchStartPanRef.current = [...panRef.current] as Vec2;
-      pinchStartMidRef.current = {
-        x: (pts[0].x + pts[1].x) / 2,
-        y: (pts[0].y + pts[1].y) / 2,
-      };
-      isPanningRef.current = false;
-      return;
-    }
-
-    if (isSpacePressedRef.current || e.button === 1 || tool === 'pan') {
-      isPanningRef.current = true;
-      panStartRef.current = { x: e.clientX, y: e.clientY };
-      setCursorStyle('grabbing');
-      return;
-    }
-
-    if (e.button !== 0) return;
-
+    e.preventDefault();
     const worldPos = screenToWorld(e.clientX, e.clientY);
     const event = createInteractionEvent('mousedown', worldPos, e);
     toolManager.handleEvent(event);
@@ -385,53 +346,6 @@ export function Canvas2D() {
   };
 
   const handlePointerMove = (e: React.PointerEvent) => {
-    activePointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
-
-    if (activePointersRef.current.size === 2) {
-      const pts = Array.from(activePointersRef.current.values());
-      const dx = pts[1].x - pts[0].x;
-      const dy = pts[1].y - pts[0].y;
-      const dist = Math.hypot(dx, dy);
-      if (pinchStartDistRef.current < 1) return;
-
-      const canvas = canvasRef.current;
-      if (!canvas) return;
-      const rect = canvas.getBoundingClientRect();
-      const cx = rect.left + rect.width / 2;
-      const cy = rect.top + rect.height / 2;
-
-      const midX = (pts[0].x + pts[1].x) / 2;
-      const midY = (pts[0].y + pts[1].y) / 2;
-      const startMidX = pinchStartMidRef.current.x;
-      const startMidY = pinchStartMidRef.current.y;
-
-      const newScale = Math.max(8, Math.min(400,
-        pinchStartScaleRef.current * (dist / pinchStartDistRef.current)
-      ));
-      const ratio = newScale / pinchStartScaleRef.current;
-
-      const pivotX = startMidX - cx;
-      const pivotY = startMidY - cy;
-      const panDeltaX = midX - startMidX;
-      const panDeltaY = midY - startMidY;
-
-      setPan([
-        pivotX + (pinchStartPanRef.current[0] - pivotX) * ratio + panDeltaX,
-        pivotY + (pinchStartPanRef.current[1] - pivotY) * ratio + panDeltaY,
-      ]);
-      setScale(newScale);
-      requestRenderFrame();
-      return;
-    }
-
-    if (isPanningRef.current) {
-      const dx = e.clientX - panStartRef.current.x;
-      const dy = e.clientY - panStartRef.current.y;
-      panStartRef.current = { x: e.clientX, y: e.clientY };
-      setPan(([px, py]) => [px + dx, py + dy]);
-      return;
-    }
-
     const worldPos = screenToWorld(e.clientX, e.clientY);
     const event = createInteractionEvent('mousemove', worldPos, e);
     toolManager.handleEvent(event);
@@ -439,23 +353,6 @@ export function Canvas2D() {
   };
 
   const handlePointerUp = (e: React.PointerEvent) => {
-    (e.target as HTMLElement).releasePointerCapture(e.pointerId);
-    const wasMultiTouch = activePointersRef.current.size >= 2;
-    activePointersRef.current.delete(e.pointerId);
-
-    if (activePointersRef.current.size === 0) {
-      pinchStartDistRef.current = 0;
-      isPanningRef.current = false;
-    } else if (wasMultiTouch) {
-      pinchStartDistRef.current = 0;
-    }
-
-    if (isPanningRef.current) {
-      isPanningRef.current = false;
-      setCursorStyle(isSpacePressedRef.current ? 'grab' : TOOL_CURSORS[tool] ?? 'default');
-      return;
-    }
-
     const worldPos = screenToWorld(e.clientX, e.clientY);
     const event = createInteractionEvent('mouseup', worldPos, e);
     toolManager.handleEvent(event);
@@ -580,52 +477,10 @@ export function Canvas2D() {
     return actions;
   };
 
-  const handleWheel = useCallback((e: WheelEvent) => {
-    e.preventDefault();
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-
-    if (activePointersRef.current.size > 0) return;
-
-    const rect = canvas.getBoundingClientRect();
-    const cursorX = e.clientX - rect.left - rect.width / 2;
-    const cursorY = e.clientY - rect.top - rect.height / 2;
-
-    const factor = e.deltaY < 0 ? 1.12 : 1 / 1.12;
-    const newScale = Math.max(8, Math.min(400, scaleRef.current * factor));
-    const ratio = newScale / scaleRef.current;
-
-    setPan(([px, py]) => [
-      cursorX + (px - cursorX) * ratio,
-      cursorY + (py - cursorY) * ratio,
-    ]);
-    setScale(newScale);
-  }, []);
-
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    canvas.addEventListener('wheel', handleWheel, { passive: false });
-    return () => canvas.removeEventListener('wheel', handleWheel);
-  }, [handleWheel]);
-
+  // Atalhos de teclado (exceto pan/zoom, que agora são de responsabilidade do ToolManager)
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.code === 'Space' && !e.repeat) {
-        e.preventDefault();
-        isSpacePressedRef.current = true;
-        setCursorStyle('grab');
-      }
-      if (e.key === 'Escape') {
-        const event: InteractionEvent = { type: 'keydown', key: 'Escape', modifiers: [], position: [0,0] };
-        toolManager.handleEvent(event);
-        requestRenderFrame();
-      }
-      if (e.key === 'Enter') {
-        const event: InteractionEvent = { type: 'keydown', key: 'Enter', modifiers: [], position: [0,0] };
-        toolManager.handleEvent(event);
-        requestRenderFrame();
-      }
+      // Atalhos globais não relacionados a ferramentas
       if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
         e.preventDefault();
         store.getState().undo();
@@ -637,21 +492,15 @@ export function Canvas2D() {
       if (e.key === 'f' && !e.ctrlKey) {
         resetView();
       }
-    };
-    const onKeyUp = (e: KeyboardEvent) => {
-      if (e.code === 'Space') {
-        isSpacePressedRef.current = false;
-        if (!isPanningRef.current) {
-          setCursorStyle(TOOL_CURSORS[store.getState().tool] ?? 'default');
-        }
+      // Encaminha outras teclas (Escape, Enter, etc.) para o ToolManager
+      if (e.key === 'Escape' || e.key === 'Enter' || e.key === 'Delete' || e.key === 'Backspace') {
+        const event: InteractionEvent = { type: 'keydown', key: e.key, modifiers: [], position: [0,0] };
+        toolManager.handleEvent(event);
+        requestRenderFrame();
       }
     };
     window.addEventListener('keydown', onKeyDown);
-    window.addEventListener('keyup', onKeyUp);
-    return () => {
-      window.removeEventListener('keydown', onKeyDown);
-      window.removeEventListener('keyup', onKeyUp);
-    };
+    return () => window.removeEventListener('keydown', onKeyDown);
   }, [store, resetView, toolManager]);
 
   const insertShape = (shapeName: string) => {
