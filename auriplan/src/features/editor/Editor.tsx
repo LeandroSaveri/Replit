@@ -1,8 +1,5 @@
 // ============================================================
 // CAMINHO: src/features/editor/Editor.tsx
-// FUNÇÃO: Componente raiz – menu mobile ancorado, cores azuis,
-//         persistência de estado, sidebar desktop flutuante,
-//         botão Modo Montagem
 // ============================================================
 
 import { useState, useEffect, useRef } from 'react';
@@ -127,7 +124,7 @@ export function Editor({ onBack, openScanOnMount }: EditorProps) {
   const {
     project, scenes, currentSceneId, createProject, saveProject,
     setCurrentScene, addScene, selectedIds, canUndo, canRedo, undo, redo,
-    tool, setTool, assembleMode, setAssembleMode,
+    tool, setTool,
   } = useEditorStore();
 
   const stats = useEditorStore(selectProjectStats);
@@ -215,21 +212,7 @@ export function Editor({ onBack, openScanOnMount }: EditorProps) {
               <button onClick={() => setViewMode('split')} className={`px-2 sm:px-3 py-1 sm:py-1.5 text-[10px] sm:text-xs font-semibold rounded-md transition-all ${viewMode === 'split' ? 'bg-blue-500 text-white shadow-sm' : 'text-gray-600 dark:text-slate-400 hover:text-gray-900 dark:hover:text-white'}`}>Split</button>
             </div>
             <div className="hidden sm:block w-px h-5 bg-gray-300 dark:bg-slate-700 mx-0.5" />
-            {/* Botão Modo Montagem */}
-            <button
-              onClick={() => setAssembleMode(!assembleMode)}
-              className={`p-1.5 sm:p-2 rounded-lg transition-colors ${
-                assembleMode
-                  ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/50 dark:text-purple-300'
-                  : 'text-gray-500 dark:text-slate-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-slate-800'
-              }`}
-              title="Modo Montagem (arrastar cômodos)"
-            >
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <rect x="3" y="3" width="18" height="18" rx="2" />
-                <path d="M12 8v8M8 12h8" />
-              </svg>
-            </button>
+
             <button onClick={() => setShowScan(true)} className="flex items-center gap-1 sm:gap-1.5 px-2 sm:px-2.5 py-1 sm:py-1.5 text-xs sm:text-sm bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-400 hover:to-blue-500 text-white rounded-lg transition-all shadow-md hover:shadow-lg flex-shrink-0" title="Escanear Cômodo">
               <Camera className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
               <span className="hidden sm:inline text-xs font-medium">Scan</span>
