@@ -582,12 +582,16 @@ export function ScanModal({ onClose }: ScanModalProps) {
       });
     }
 
-    let walls = 0;
+    // 🔁 Substituído: loop createWall por addWallsBatch
+    const wallsToAdd: Array<{ start: Vec2; end: Vec2 }> = [];
     for (let i = 0; i < pts.length; i++) {
-      store.createWall(pts[i], pts[(i + 1) % pts.length]);
-      walls++;
+      wallsToAdd.push({ start: pts[i], end: pts[(i + 1) % pts.length] });
     }
-    setDone({ rooms: 1, walls });
+    if (wallsToAdd.length > 0) {
+      store.addWallsBatch(wallsToAdd);
+    }
+
+    setDone({ rooms: 1, walls: pts.length });
     setTimeout(onClose, 2000);
   };
 
@@ -596,6 +600,9 @@ export function ScanModal({ onClose }: ScanModalProps) {
     const sceneId = store.currentSceneId;
     let originX = 0;
     let totalWalls = 0;
+
+    // Acumula todas as paredes para adicionar em batch
+    const allWallsToAdd: Array<{ start: Vec2; end: Vec2 }> = [];
 
     rooms.forEach((room, idx) => {
       const palette = ROOM_PALETTE[idx % ROOM_PALETTE.length];
@@ -626,13 +633,19 @@ export function ScanModal({ onClose }: ScanModalProps) {
         });
       }
 
+      // Acumula paredes deste cômodo
       for (let i = 0; i < pts.length; i++) {
-        store.createWall(pts[i], pts[(i + 1) % pts.length]);
+        allWallsToAdd.push({ start: pts[i], end: pts[(i + 1) % pts.length] });
         totalWalls++;
       }
 
       originX += w + 0.5;
     });
+
+    // 🔁 Adiciona todas as paredes de uma vez
+    if (allWallsToAdd.length > 0) {
+      store.addWallsBatch(allWallsToAdd);
+    }
 
     setDone({ rooms: rooms.length, walls: totalWalls });
     setTimeout(onClose, 2000);
