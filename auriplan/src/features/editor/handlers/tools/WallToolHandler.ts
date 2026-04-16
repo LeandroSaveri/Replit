@@ -1,6 +1,8 @@
+// src/features/editor/handlers/tools/WallToolHandler.ts
 // ============================================================
 // WallToolHandler — click-to-click (MagicPlan style)
 // Fase 4.1: Modo incremental seguro
+// CORREÇÃO: Acumula segmentos e aplica pipeline apenas no final.
 // ============================================================
 
 import type { InteractionEvent } from '@core/interaction/InteractionEngine';
@@ -63,13 +65,16 @@ export class WallToolHandler implements ToolHandler {
       return;
     }
 
-    if (!this.startPoint) { this.reset(); return; }
+    if (!this.startPoint) {
+      this.reset();
+      return;
+    }
+
     const end = this.snap(event, this.startPoint);
     const length = Math.hypot(end[0] - this.startPoint[0], end[1] - this.startPoint[1]);
 
     if (length >= MIN_WALL_LENGTH) {
-      // 🔧 CORRIGIDO: usar addWall com incremental=true (substitui createWall)
-      this.store.getState().addWall(this.startPoint, end, true);
+      // Acumula o segmento, NÃO cria a parede ainda
       this.segmentStartHistory.push(end);
       this.startPoint = end;
       this.currentPoint = end;
@@ -79,6 +84,7 @@ export class WallToolHandler implements ToolHandler {
 
   private onMove(event: InteractionEvent): void {
     if (this.mode !== 'drawing' || !this.startPoint) return;
+
     let pos = event.position;
     if (event.modifiers.includes('shift')) {
       const dx = pos[0] - this.startPoint[0];
@@ -89,15 +95,14 @@ export class WallToolHandler implements ToolHandler {
         pos = [this.startPoint[0], this.startPoint[1] + dy];
       }
     }
+
     const snapResult = this.snapWithDetails(event, this.startPoint);
     this.currentPoint = snapResult.point;
     this.updatePreview(snapResult.point, snapResult.type);
   }
 
   private onDoubleClick(_event: InteractionEvent): void {
-    // Finaliza e consolida geometria com pipeline completo
-    this.consolidateGeometry();
-    this.reset();
+    this.finalizeAndCommit();
   }
 
   private onKey(event: InteractionEvent): void {
@@ -105,12 +110,10 @@ export class WallToolHandler implements ToolHandler {
       this.reset();
     }
     if (event.key === 'Enter') {
-      this.consolidateGeometry();
-      this.reset();
+      this.finalizeAndCommit();
     }
     if (event.key === 'Backspace' && this.segmentStartHistory.length > 1) {
-      // Remove última parede via undo
-      this.store.getState().undo();
+      // Remove o último ponto da história (sem desfazer na store, pois ainda não commitamos)
       this.segmentStartHistory.pop();
       const prev = this.segmentStartHistory[this.segmentStartHistory.length - 1];
       this.startPoint = prev;
@@ -119,15 +122,30 @@ export class WallToolHandler implements ToolHandler {
     }
   }
 
-  private consolidateGeometry(): void {
-    const state = this.store.getState();
-    const scene = state.scenes.find(s => s.id === state.currentSceneId);
-    if (scene) {
-      // Aplica pipeline completo (não incremental) para consolidar
-      applyGeometryPipeline(scene, { incremental: false, force: true });
-      // Atualiza a store
-      state.rebuildCurrentSceneGeometry();
+  private finalizeAndCommit(): void {
+    if (this.segmentStartHistory.length < 2) {
+      this.reset();
+      return;
     }
+
+    const points = this.segmentStartHistory;
+    const wallsToAdd: Array<{ start: Vec2; end: Vec2 }> = [];
+
+    for (let i = 0; i < points.length - 1; i++) {
+      const start = points[i];
+      const end = points[i + 1];
+      const length = Math.hypot(end[0] - start[0], end[1] - start[1]);
+      if (length >= MIN_WALL_LENGTH) {
+        wallsToAdd.push({ start, end });
+      }
+    }
+
+    if (wallsToAdd.length > 0) {
+      // Adiciona todas as paredes em lote e aplica o pipeline UMA VEZ
+      this.store.getState().addWallsBatch(wallsToAdd);
+    }
+
+    this.reset();
   }
 
   private updatePreview(snapPoint?: Vec2, snapType?: any): void {
