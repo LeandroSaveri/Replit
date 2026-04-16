@@ -127,11 +127,7 @@ export interface EditorState {
   zoomIn: () => void;
   zoomOut: () => void;
   fitToView: () => void;
-  
-function applyGeometryToScene(scene: Scene): void {
-  // Usa applyGeometryPipeline com skipIfUnchanged para evitar reprocessamento desnecessário
-  applyGeometryPipeline(scene, { skipIfUnchanged: true });
-}
+
   // History
   saveToHistory: () => void;
   undo: () => void;
@@ -152,7 +148,8 @@ function updateTopologyForScene(state: EditorState, sceneId: string) {
 }
 
 function applyGeometryToScene(scene: Scene): void {
-  applyGeometryPipeline(scene);
+  // Usa applyGeometryPipeline com skipIfUnchanged para evitar reprocessamento desnecessário
+  applyGeometryPipeline(scene, { skipIfUnchanged: true });
 }
 
 function getCurrentScene(state: EditorState): Scene | undefined {
