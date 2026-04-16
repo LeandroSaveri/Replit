@@ -1,6 +1,7 @@
 // ============================================================
-// SelectToolHandler — MagicPlan-like editing
-// PRIORIDADE: furniture → walls → rooms (paredes primeiro)
+// SelectToolHandler — MagicPlan-like selection & editing
+// Responsabilidades: hit test (paredes > móveis > cômodos),
+// seleção, arraste de vértices, paredes, cômodos (assemble mode)
 // ============================================================
 
 import type { InteractionEvent } from '@core/interaction/InteractionEngine';
@@ -11,9 +12,9 @@ import type { Vec2, Wall, Room, Furniture } from '@auriplan-types';
 import { SnapSolver } from '@core/snap/SnapSolver';
 import type { SnapType } from '@core/snap/SnapSolver';
 
-const VERTEX_R = 0.18;
-const EDGE_MID_R = 0.15;
-const WALL_HIT_TOL = 0.14;
+const VERTEX_R = 0.18;       // raio de detecção de vértices
+const EDGE_MID_R = 0.15;     // raio para ponto médio
+const WALL_HIT_TOL = 0.14;    // tolerância para clique na parede
 
 type HitResult =
   | { type: 'none' }
@@ -87,7 +88,7 @@ export class SelectToolHandler implements ToolHandler {
   getPreviewState(): PreviewState | null { return null; }
 
   // --------------------------------------------------------------
-  // HIT TEST (furniture → walls → rooms)
+  // HIT TEST (prioridade: furniture → walls → rooms)
   // --------------------------------------------------------------
   private hitTest(pos: Vec2): HitResult {
     const state = this.store.getState();
@@ -267,8 +268,6 @@ export class SelectToolHandler implements ToolHandler {
 
     const addToSel = event.modifiers.includes('shift') || event.modifiers.includes('ctrl') || event.modifiers.includes('meta');
 
-    // NÃO faz zoom automático no clique simples (removido)
-
     switch (hit.type) {
       case 'furniture': {
         const furn = scene.furniture.find(f => f.id === hit.id);
@@ -298,6 +297,7 @@ export class SelectToolHandler implements ToolHandler {
         const room = scene.rooms.find(r => r.id === hit.id);
         if (!room) return;
         state.select(hit.id, addToSel);
+        // Arrastar cômodo inteiro apenas se assembleMode estiver ativo
         if (state.assembleMode) {
           this.drag = { kind: 'room', id: hit.id, origPts: room.points.map(p => [...p] as Vec2), ds: pos };
         } else {
