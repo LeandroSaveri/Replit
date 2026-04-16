@@ -1,5 +1,6 @@
 // ============================================================
-// SelectToolHandler — MagicPlan interactive editing
+// SelectToolHandler — MagicPlan-like editing
+// PRIORIDADE: furniture → walls → rooms (paredes primeiro)
 // ============================================================
 
 import type { InteractionEvent } from '@core/interaction/InteractionEngine';
@@ -86,7 +87,7 @@ export class SelectToolHandler implements ToolHandler {
   getPreviewState(): PreviewState | null { return null; }
 
   // --------------------------------------------------------------
-  // HIT TEST
+  // HIT TEST (furniture → walls → rooms)
   // --------------------------------------------------------------
   private hitTest(pos: Vec2): HitResult {
     const state = this.store.getState();
@@ -105,7 +106,33 @@ export class SelectToolHandler implements ToolHandler {
       }
     }
 
-    // 2. Rooms
+    // 2. WALLS (prioridade sobre rooms)
+    for (const wall of scene.walls) {
+      const distStart = Math.hypot(wall.start[0] - pos[0], wall.start[1] - pos[1]);
+      const distEnd = Math.hypot(wall.end[0] - pos[0], wall.end[1] - pos[1]);
+      if (distStart < VERTEX_R) {
+        return { type: 'wall-vertex', wallId: wall.id, vertex: 'start' };
+      }
+      if (distEnd < VERTEX_R) {
+        return { type: 'wall-vertex', wallId: wall.id, vertex: 'end' };
+      }
+
+      const mid = [(wall.start[0] + wall.end[0]) / 2, (wall.start[1] + wall.end[1]) / 2];
+      const distMid = Math.hypot(mid[0] - pos[0], mid[1] - pos[1]);
+      if (distMid < EDGE_MID_R) {
+        return { type: 'wall-midpoint', wallId: wall.id };
+      }
+
+      const proj = this.projectPointOnLineSegment(pos, wall.start, wall.end);
+      if (proj) {
+        const dist = Math.hypot(proj[0] - pos[0], proj[1] - pos[1]);
+        if (dist < WALL_HIT_TOL) {
+          return { type: 'wall', id: wall.id };
+        }
+      }
+    }
+
+    // 3. ROOMS
     for (const room of scene.rooms) {
       const pts = room.points;
       if (pts.length < 3) continue;
@@ -130,32 +157,6 @@ export class SelectToolHandler implements ToolHandler {
 
       if (this.isPointInPolygon(pos, pts)) {
         return { type: 'room', id: room.id };
-      }
-    }
-
-    // 3. Walls
-    for (const wall of scene.walls) {
-      const distStart = Math.hypot(wall.start[0] - pos[0], wall.start[1] - pos[1]);
-      const distEnd = Math.hypot(wall.end[0] - pos[0], wall.end[1] - pos[1]);
-      if (distStart < VERTEX_R) {
-        return { type: 'wall-vertex', wallId: wall.id, vertex: 'start' };
-      }
-      if (distEnd < VERTEX_R) {
-        return { type: 'wall-vertex', wallId: wall.id, vertex: 'end' };
-      }
-
-      const mid = [(wall.start[0] + wall.end[0]) / 2, (wall.start[1] + wall.end[1]) / 2];
-      const distMid = Math.hypot(mid[0] - pos[0], mid[1] - pos[1]);
-      if (distMid < EDGE_MID_R) {
-        return { type: 'wall-midpoint', wallId: wall.id };
-      }
-
-      const proj = this.projectPointOnLineSegment(pos, wall.start, wall.end);
-      if (proj) {
-        const dist = Math.hypot(proj[0] - pos[0], proj[1] - pos[1]);
-        if (dist < WALL_HIT_TOL) {
-          return { type: 'wall', id: wall.id };
-        }
       }
     }
 
@@ -189,7 +190,7 @@ export class SelectToolHandler implements ToolHandler {
   }
 
   // --------------------------------------------------------------
-  // Geometria
+  // Geometry helpers
   // --------------------------------------------------------------
   private isPointInPolygon(p: Vec2, polygon: Vec2[]): boolean {
     let inside = false;
@@ -221,7 +222,7 @@ export class SelectToolHandler implements ToolHandler {
   }
 
   // --------------------------------------------------------------
-  // Teclado
+  // Keyboard
   // --------------------------------------------------------------
   private onKeyDown(event: InteractionEvent): void {
     if (event.key === 'Delete' || event.key === 'Backspace') {
@@ -266,9 +267,7 @@ export class SelectToolHandler implements ToolHandler {
 
     const addToSel = event.modifiers.includes('shift') || event.modifiers.includes('ctrl') || event.modifiers.includes('meta');
 
-    if (hit.type === 'room' && !addToSel) {
-      state.zoomToRoom(hit.id);
-    }
+    // NÃO faz zoom automático no clique simples (removido)
 
     switch (hit.type) {
       case 'furniture': {
@@ -554,9 +553,6 @@ export class SelectToolHandler implements ToolHandler {
     return affectedIds;
   }
 
-  // --------------------------------------------------------------
-  // onPointerUp ATUALIZADO - sem rebuildCurrentSceneGeometry redundante
-  // --------------------------------------------------------------
   private onPointerUp(_event: InteractionEvent): void {
     if (!this.isDragging || !this.drag) {
       this.drag = null;
@@ -588,7 +584,6 @@ export class SelectToolHandler implements ToolHandler {
         const room = scene.rooms.find(r => r.id === roomId);
         if (room) {
           state.updateRoom(room.id, { points: room.points });
-          // NÃO chama rebuildCurrentSceneGeometry – o updateRoom já aplica pipeline
         }
         break;
       }
@@ -605,7 +600,6 @@ export class SelectToolHandler implements ToolHandler {
         }
         if (updates.length > 0) {
           state.updateWallsBatch(updates);
-          // NÃO chama rebuildCurrentSceneGeometry
         }
         break;
       }
