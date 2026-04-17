@@ -1,39 +1,51 @@
-// ============================================================
-// CAMINHO: src/features/editor/handlers/tools/RoomToolHandler.ts
-// FUNCIONALIDADE: Implementa a ferramenta de desenho de cômodos
-// por polígono (cliques) e oferece formas prontas com ícones.
-// ============================================================
+# ============================================
+# 5. ROOM TOOL HANDLER REFATORADO
+# ============================================
+
+room_tool_handler = '''// ============================================
+// RoomToolHandler.ts - Ferramenta de desenho de cômodos
+// Refatorado para usar GeometryController
+// ============================================
 
 import type { InteractionEvent } from '@core/interaction/InteractionEngine';
 import type { ToolHandler } from '../ToolHandler';
 import type { PreviewState } from '../ToolContext';
-import type { EditorStore } from '@store/editorStore';
-import { SnapSolver } from '@core/snap/SnapSolver';
+import type { GeometryController } from '@core/geometry/GeometryController';
 import type { Vec2 } from '@auriplan-types';
-import { Square, LayoutGrid, Grid3X3 } from 'lucide-react';
 
 const LAST_POINT_CONNECT_TOLERANCE = 0.4;
 
-// Formas prontas com ícones
+export type RoomToolMode = 'idle' | 'drawing';
+
+export interface RoomToolState {
+  isDrawing: boolean;
+  vertices: Vec2[];
+  previewPoint: Vec2 | null;
+}
+
+// Formas prontas para inserção rápida
 export const ROOM_SHAPES = [
-  { name: 'Quadrado 5x5', points: [[-2.5,-2.5],[2.5,-2.5],[2.5,2.5],[-2.5,2.5]], icon: Square },
-  { name: 'Retângulo 6x4', points: [[-3,-2],[3,-2],[3,2],[-3,2]], icon: LayoutGrid },
-  { name: 'Quarto 4x4', points: [[-2,-2],[2,-2],[2,2],[-2,2]], icon: Square },
-  { name: 'Cozinha 3x4', points: [[-1.5,-2],[1.5,-2],[1.5,2],[-1.5,2]], icon: Grid3X3 },
-  { name: 'Formato L', points: [[-3,-2],[0,-2],[0,0],[3,0],[3,2],[-3,2]], icon: 'l' },
-  { name: 'Formato U', points: [[-3,-2],[3,-2],[3,0],[1,0],[1,2],[-1,2],[-1,0],[-3,0]], icon: 'u' },
-  { name: 'Formato T', points: [[-3,-2],[3,-2],[3,0],[1,0],[1,2],[-1,2],[-1,0],[-3,0]], icon: 't' },
+  { name: 'Quadrado 5x5', points: [[-2.5,-2.5],[2.5,-2.5],[2.5,2.5],[-2.5,2.5]] },
+  { name: 'Retângulo 6x4', points: [[-3,-2],[3,-2],[3,2],[-3,2]] },
+  { name: 'Quarto 4x4', points: [[-2,-2],[2,-2],[2,2],[-2,2]] },
+  { name: 'Cozinha 3x4', points: [[-1.5,-2],[1.5,-2],[1.5,2],[-1.5,2]] },
+  { name: 'Formato L', points: [[-3,-2],[0,-2],[0,0],[3,0],[3,2],[-3,2]] },
+  { name: 'Formato U', points: [[-3,-2],[3,-2],[3,0],[1,0],[1,2],[-1,2],[-1,0],[-3,0]] },
+  { name: 'Formato T', points: [[-3,-2],[3,-2],[3,0],[1,0],[1,2],[-1,2],[-1,0],[-3,0]] },
 ];
 
 export class RoomToolHandler implements ToolHandler {
   private isDrawing = false;
   private vertices: Vec2[] = [];
   private previewPoint: Vec2 | null = null;
-  private store: EditorStore;
+  private geometryController: GeometryController;
   private onPreviewChange: (state: PreviewState) => void;
 
-  constructor(store: EditorStore, onPreviewChange: (state: PreviewState) => void) {
-    this.store = store;
+  constructor(
+    geometryController: GeometryController,
+    onPreviewChange: (state: PreviewState) => void
+  ) {
+    this.geometryController = geometryController;
     this.onPreviewChange = onPreviewChange;
   }
 
@@ -67,16 +79,30 @@ export class RoomToolHandler implements ToolHandler {
     };
   }
 
-  insertShape(shapeName: string, position: Vec2): void {
+  /**
+   * Insere uma forma pré-definida de cômodo
+   */
+  insertShape(shapeName: string, position: Vec2, thickness: number = 0.15): void {
     const shape = ROOM_SHAPES.find(s => s.name === shapeName);
     if (!shape) return;
-    const transformedPoints = shape.points.map(p => [p[0] + position[0], p[1] + position[1]] as Vec2);
-    const state = this.store.getState();
-    state.createWallsFromPolygon(transformedPoints);
+    
+    const transformedPoints = shape.points.map(p => [
+      p[0] + position[0], 
+      p[1] + position[1]
+    ] as Vec2);
+    
+    // ✅ USA GEOMETRY CONTROLLER - cria paredes do polígono
+    this.geometryController.createWallsFromPolygon(transformedPoints, thickness);
   }
 
+  // ============================================
+  // HANDLERS DE EVENTO
+  // ============================================
+
   private onPointerDown(event: InteractionEvent): void {
+    // Usa GeometryController para snap
     const snapped = this.computeSnap(event.position);
+    
     if (!this.isDrawing) {
       this.isDrawing = true;
       this.vertices = [snapped];
@@ -84,58 +110,64 @@ export class RoomToolHandler implements ToolHandler {
     } else {
       const first = this.vertices[0];
       const dist = Math.hypot(snapped[0] - first[0], snapped[1] - first[1]);
+      
       if (this.vertices.length >= 3 && dist < LAST_POINT_CONNECT_TOLERANCE) {
+        // Fecha o polígono e cria paredes
         const closedPolygon = [...this.vertices, first];
-        const state = this.store.getState();
-        state.createWallsFromPolygon(closedPolygon);
+        
+        // ✅ USA GEOMETRY CONTROLLER
+        this.geometryController.createWallsFromPolygon(closedPolygon);
         this.reset();
       } else {
         this.vertices.push(snapped);
         this.previewPoint = snapped;
       }
     }
+    
     this.updatePreview();
   }
 
   private onPointerMove(event: InteractionEvent): void {
     if (!this.isDrawing) return;
+    
+    // Usa GeometryController para snap
     const snapped = this.computeSnap(event.position);
     this.previewPoint = snapped;
+    
     this.updatePreview();
   }
 
   private onKeyDown(event: InteractionEvent): void {
-    if (event.key === 'Escape') this.reset();
+    if (event.key === 'Escape') {
+      this.reset();
+    }
+    
     if (event.key === 'Enter' && this.isDrawing && this.vertices.length >= 3) {
+      // Fecha o polígono com Enter
       const closedPolygon = [...this.vertices, this.vertices[0]];
-      const state = this.store.getState();
-      state.createWallsFromPolygon(closedPolygon);
+      
+      // ✅ USA GEOMETRY CONTROLLER
+      this.geometryController.createWallsFromPolygon(closedPolygon);
       this.reset();
     }
   }
 
+  // ============================================
+  // SNAP (via GeometryController)
+  // ============================================
+
+  private computeSnap(point: Vec2): Vec2 {
+    // Usa o GeometryController para snap centralizado
+    return this.geometryController.snapPoint(point);
+  }
+
+  // ============================================
+  // PREVIEW
+  // ============================================
+
   private updatePreview(): void {
     this.onPreviewChange(this.getPreviewState());
   }
-
-  private computeSnap(point: Vec2): Vec2 {
-    const state = this.store.getState();
-    const scene = state.scenes.find(s => s.id === state.currentSceneId);
-    const walls = scene?.walls ?? [];
-    const snapConfig = state.snap;
-    const gridSize = state.grid.size;
-    const scale = 80;
-    const options = {
-      gridSize,
-      snapTol: snapConfig.distance / scale,
-      enableGrid: snapConfig.grid,
-      enableVertex: snapConfig.endpoints,
-      enableMidpoint: snapConfig.midpoints,
-      enableIntersection: snapConfig.edges,
-      enableWall: snapConfig.perpendicular,
-      enableAngle: snapConfig.angle,
-      zoom: scale,
-    };
-    return SnapSolver.computeSnap(point, walls, undefined, options).point;
-  }
 }
+
+export default RoomToolHandler;
