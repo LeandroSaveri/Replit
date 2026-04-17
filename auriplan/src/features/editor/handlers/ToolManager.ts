@@ -1,6 +1,6 @@
 // ============================================
 // ToolManager.ts - Orquestração de ferramentas
-// Integra GeometryController com Handlers
+// Integra GeometryController com Handlers 
 // ============================================
 
 import type { InteractionEvent } from '@core/interaction/InteractionEngine';
