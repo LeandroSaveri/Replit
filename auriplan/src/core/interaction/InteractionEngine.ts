@@ -1,8 +1,15 @@
-// ============================================
-// Interaction Engine - User input handling
+
+# ============================================
+# 2. INTERACTION ENGINE MODIFICADO
+# ============================================
+
+interaction_engine = '''// ============================================
+// InteractionEngine.ts - User input handling
+// Integrado com GeometryController
 // ============================================
 
 import type { Vec2 } from '@auriplan-types';
+import type { GeometryController } from '@core/geometry/GeometryController';
 
 export type MouseButton = 'left' | 'middle' | 'right';
 export type KeyboardModifier = 'shift' | 'ctrl' | 'alt' | 'meta';
@@ -28,23 +35,27 @@ export interface InteractionEvent {
   button?: MouseButton;
   key?: string;
   modifiers: KeyboardModifier[];
-  // CORREÇÃO: Tornados opcionais para compatibilidade com Canvas2D e outros orquestradores
-  // que criam eventos sintéticos sem acesso ao evento DOM original
+  // Tornados opcionais para compatibilidade com Canvas2D e outros orquestradores
   preventDefault?: () => void;
   stopPropagation?: () => void;
-  // NOVO: Zoom da viewport para snap contextual (adicionado na Fase 3)
+  // Zoom da viewport para snap contextual
   viewportZoom?: number;
 }
 
 export type InteractionHandler = (event: InteractionEvent) => void | boolean;
+
+export interface InteractionEngineOptions {
+  geometryController?: GeometryController;
+}
 
 export class InteractionEngine {
   private state: InteractionState;
   private handlers: Map<string, Set<InteractionHandler>> = new Map();
   private element: HTMLElement | null = null;
   private boundListeners: { [key: string]: EventListener } = {};
+  private geometryController: GeometryController | null = null;
 
-  constructor() {
+  constructor(options: InteractionEngineOptions = {}) {
     this.state = {
       isMouseDown: false,
       isDragging: false,
@@ -58,6 +69,19 @@ export class InteractionEngine {
       pressedKeys: new Set(),
       modifiers: new Set(),
     };
+    
+    this.geometryController = options.geometryController || null;
+  }
+
+  /**
+   * Injeta GeometryController para uso nos handlers
+   */
+  setGeometryController(controller: GeometryController): void {
+    this.geometryController = controller;
+  }
+
+  getGeometryController(): GeometryController | null {
+    return this.geometryController;
   }
 
   // Attach to DOM element
@@ -326,7 +350,7 @@ export class InteractionEngine {
       modifiers: Array.from(this.state.modifiers),
       preventDefault: () => originalEvent.preventDefault(),
       stopPropagation: () => originalEvent.stopPropagation(),
-      ...extras, // aqui pode vir viewportZoom e outras propriedades
+      ...extras,
     };
   }
 
@@ -347,3 +371,5 @@ export class InteractionEngine {
     };
   }
 }
+
+export default InteractionEngine;
