@@ -1,15 +1,13 @@
 // ============================================================
-// CAMINHO: src/features/editor/handlers/ToolContext.ts
+// CAMINHO: src/features/editor/handlers/ToolContext.tsx
 // FUNÇÃO: Prover ToolManager e estado de preview para toda a UI 
 // ============================================================
 
-import React, { createContext, useContext, ReactNode, useMemo, useRef, useEffect, useState } from 'react';
+import React, { createContext, useContext, ReactNode, useMemo, useRef, useEffect, useState, useCallback } from 'react';
 import type { Vec2, Tool } from '@auriplan-types';
-import type { EditorStore } from '@store/editorStore';
+import { useEditorStore, selectCurrentScene } from '@store/editorStore';
 import { ToolManager } from './ToolManager';
-import { createEmptyWallGraphTopology } from '@core/wall/WallGraph'; // nova exportação
-import { selectCurrentTopology } from '@store/editorStore';
-import type { SnapType } from '@core/snap/SnapSolver';
+import { GeometryController } from '@core/geometry/GeometryController';
 
 export type PreviewType = 'wall' | 'polygon' | 'edit' | 'none';
 
@@ -18,7 +16,7 @@ export interface WallPreview {
   start: Vec2;
   end: Vec2;
   snapPoint?: Vec2;
-  snapType?: SnapType;
+  snapType?: string;
 }
 
 export interface PolygonPreview {
@@ -26,7 +24,7 @@ export interface PolygonPreview {
   vertices: Vec2[];
   previewPoint: Vec2 | null;
   snapPoint?: Vec2;
-  snapType?: SnapType;
+  snapType?: string;
 }
 
 export interface EditPreview {
@@ -41,7 +39,7 @@ export interface ToolContextValue {
   toolManager: ToolManager;
   previewState: PreviewState;
   setPreviewState: (state: PreviewState) => void;
-  activeTool: Tool | null;
+  activeTool: Tool;
 }
 
 export const ToolContext = createContext<ToolContextValue | null>(null);
@@ -53,33 +51,71 @@ export function useToolContext() {
 }
 
 interface ToolProviderProps {
-  store: EditorStore;
   children: ReactNode;
 }
 
-export function ToolProvider({ store, children }: ToolProviderProps) {
+export function ToolProvider({ children }: ToolProviderProps) {
   const [previewState, setPreviewState] = useState<PreviewState>(null);
-  const [activeTool, setActiveTool] = useState<Tool | null>(store.getState().tool);
+  const [activeTool, setActiveTool] = useState<Tool>('select');
+  
+  const store = useEditorStore;
+  const currentScene = useEditorStore(selectCurrentScene);
 
+  // Refs para o controller e manager
+  const geometryControllerRef = useRef<GeometryController | null>(null);
   const toolManagerRef = useRef<ToolManager | null>(null);
 
-  const createToolManager = (): ToolManager => {
+  // Callbacks memoizados para o store
+  const getWalls = useCallback(() => currentScene?.walls ?? [], [currentScene]);
+  const getRooms = useCallback(() => currentScene?.rooms ?? [], [currentScene]);
+  const getFurniture = useCallback(() => currentScene?.furniture ?? [], [currentScene]);
+  
+  const onSelect = useCallback((id: string, addToSelection: boolean) => {
+    store.getState().select(id, addToSelection);
+  }, [store]);
+  
+  const onDeselectAll = useCallback(() => {
+    store.getState().deselectAll();
+  }, [store]);
+  
+  const onDelete = useCallback((id: string) => {
     const state = store.getState();
-    // Garante que SEMPRE haja uma topologia (fallback vazio)
-    const topology = selectCurrentTopology(state) ?? createEmptyWallGraphTopology();
+    const scene = currentScene;
+    if (!scene) return;
+    
+    if (scene.walls.some(w => w.id === id)) state.deleteWall(id);
+    else if (scene.rooms.some(r => r.id === id)) state.deleteRoom(id);
+    else if (scene.furniture.some(f => f.id === id)) state.deleteFurniture(id);
+  }, [store, currentScene]);
+  
+  const onZoomToRoom = useCallback((roomId: string) => {
+    store.getState().zoomToRoom(roomId);
+  }, [store]);
 
-    const onPreviewChange = (s: PreviewState) => setPreviewState(s);
-    const onHoverChange = (id: string | null) => {};
-    const onCursorChange = (cursor: string) => {};
-    return new ToolManager(store, onPreviewChange, onHoverChange, onCursorChange, topology);
-  };
-
-  // Inicialização única
-  if (!toolManagerRef.current) {
-    toolManagerRef.current = createToolManager();
+  // Inicialização única do GeometryController e ToolManager
+  if (!geometryControllerRef.current) {
+    geometryControllerRef.current = new GeometryController(
+      () => store.getState(),
+      { debug: process.env.NODE_ENV === 'development' }
+    );
   }
 
-  // useEffect apenas para sincronizar a ferramenta ativa (sem recriação)
+  if (!toolManagerRef.current) {
+    toolManagerRef.current = new ToolManager({
+      geometryController: geometryControllerRef.current,
+      onPreviewChange: setPreviewState,
+      onToolChange: setActiveTool,
+      getWalls,
+      getRooms,
+      getFurniture,
+      onSelect,
+      onDeselectAll,
+      onDelete,
+      onZoomToRoom,
+    });
+  }
+
+  // Sincroniza ferramenta ativa com o store
   useEffect(() => {
     const unsubscribe = store.subscribe(() => {
       const state = store.getState();
@@ -88,7 +124,6 @@ export function ToolProvider({ store, children }: ToolProviderProps) {
         setActiveTool(newTool);
         toolManagerRef.current?.setTool(newTool);
       }
-      // A topologia é atualizada internamente no ToolManager via subscribe próprio
     });
     return unsubscribe;
   }, [store, activeTool]);
