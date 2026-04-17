@@ -1,5 +1,5 @@
 // ============================================================
-// Floor Plan Templates — 5 plantas 2D prontas
+//auriplan/src/features/editor/templates/floorPlanTemplates.ts
 // Coordenadas em metros, eixo y para cima (padrão do editor)
 // ============================================================
 
