@@ -1,169 +1,185 @@
-
+// src/features/editor/handlers/tools/WallToolHandler.ts
 // ============================================
-// WallToolHandler.ts - Desenho de paredes
-// Refatorado para usar GeometryController
+// CORRIGIDO: Batching semântico amarrado aos gestos pointer down/up
 // ============================================
 
-import type { InteractionEvent } from '@core/interaction/InteractionEngine';
-import type { ToolHandler } from '../ToolHandler';
-import type { PreviewState } from '../ToolContext';
-import type { GeometryController } from '@core/geometry/GeometryController';
-import type { Vec2 } from '@auriplan-types';
+import { ToolHandler } from '../ToolHandler';
+import { InteractionEvent } from '@/core/interaction/InteractionEngine';
+import { GeometryController } from '@/core/geometry/GeometryController';
+import { SnapEngine } from '@/core/snap/SnapEngine';
+import { editorStore } from '@/store/editorStore';
+import type { Point2D, Wall } from '@/types';
 
-const MIN_WALL_LENGTH = 0.05;
-
-export type WallToolMode = 'idle' | 'dragging';
-
-export interface WallToolState {
-  mode: WallToolMode;
-  startPoint: Vec2 | null;
-  currentPoint: Vec2 | null;
+interface WallPreview {
+  start: Point2D;
+  end: Point2D;
+  valid: boolean;
+  length: number;
 }
 
-export class WallToolHandler implements ToolHandler {
-  private mode: WallToolMode = 'idle';
-  private startPoint: Vec2 | null = null;
-  private currentPoint: Vec2 | null = null;
+export class WallToolHandler extends ToolHandler {
   private geometryController: GeometryController;
-  private onPreviewChange: (state: PreviewState) => void;
+  private snapEngine: SnapEngine;
+  
+  // Estado de desenho
+  private isDrawing = false;
+  private startPoint: Point2D | null = null;
+  private currentPreview: WallPreview | null = null;
+  private activeWallId: string | null = null;
 
-  constructor(
-    geometryController: GeometryController,
-    onPreviewChange: (state: PreviewState) => void
-  ) {
-    this.geometryController = geometryController;
-    this.onPreviewChange = onPreviewChange;
+  constructor() {
+    super('wall');
+    this.geometryController = new GeometryController();
+    this.snapEngine = new SnapEngine();
   }
 
-  handleEvent(event: InteractionEvent): void {
-    switch (event.type) {
-      case 'mousedown':
-        this.onPointerDown(event);
-        break;
-      case 'mousemove':
-        this.onPointerMove(event);
-        break;
-      case 'mouseup':
-        this.onPointerUp(event);
-        break;
-      case 'keydown':
-        this.onKeyDown(event);
-        break;
+  // ============================================
+  // CICLO DE VIDA DO GESTO - BATCHING AMARRADO
+  // ============================================
+
+  onPointerDown(event: InteractionEvent): void {
+    // Inicia batch semântico no início do gesto
+    this.geometryController.beginBatch('Draw wall');
+    
+    this.isDrawing = true;
+    this.startPoint = this.snapEngine.snap(event.worldPosition);
+    
+    // Cria parede inicial (zero length, será atualizada no drag)
+    try {
+      const wall = this.geometryController.addWall({
+        start: this.startPoint,
+        end: this.startPoint, // Inicialmente zero
+        thickness: this.getWallThickness(),
+        height: this.getWallHeight()
+      });
+      
+      this.activeWallId = wall.id;
+      this.currentPreview = {
+        start: this.startPoint,
+        end: this.startPoint,
+        valid: false,
+        length: 0
+      };
+      
+      this.emit('wallStarted', { wall, startPoint: this.startPoint });
+      
+    } catch (error) {
+      // Falha na criação - cancela o batch
+      this.geometryController.cancelBatch();
+      this.resetState();
+      this.emit('error', error);
     }
   }
 
-  reset(): void {
-    this.mode = 'idle';
-    this.startPoint = null;
-    this.currentPoint = null;
-    this.onPreviewChange(null);
-  }
+  onPointerMove(event: InteractionEvent): void {
+    if (!this.isDrawing || !this.startPoint || !this.activeWallId) return;
 
-  getPreviewState(): PreviewState | null {
-    if (this.mode !== 'dragging' || !this.startPoint || !this.currentPoint) return null;
-    return {
-      type: 'wall',
+    const rawPoint = event.worldPosition;
+    const snappedPoint = this.snapEngine.snap(rawPoint, {
+      orthogonal: event.isShiftDown, // Shift = modo ortogonal
+      fromPoint: this.startPoint
+    });
+
+    // Atualiza preview
+    this.currentPreview = {
       start: this.startPoint,
-      end: this.currentPoint,
+      end: snappedPoint,
+      valid: this.validateWall(this.startPoint, snappedPoint),
+      length: this.calculateLength(this.startPoint, snappedPoint)
     };
+
+    // Atualiza a parede no batch (ainda não commitado)
+    this.geometryController.updateWall(this.activeWallId, {
+      end: snappedPoint
+    });
+
+    this.emit('wallPreview', this.currentPreview);
   }
 
-  // ============================================
-  // HANDLERS DE EVENTO
-  // ============================================
+  onPointerUp(event: InteractionEvent): void {
+    if (!this.isDrawing || !this.startPoint || !this.activeWallId) return;
 
-  private onPointerDown(event: InteractionEvent): void {
-    if (this.mode !== 'idle') return;
-    
-    // Usa GeometryController para snap
-    const snapped = this.snap(event);
-    
-    this.startPoint = snapped;
-    this.currentPoint = snapped;
-    this.mode = 'dragging';
-    
-    this.updatePreview();
-  }
+    const finalPoint = this.snapEngine.snap(event.worldPosition, {
+      orthogonal: event.isShiftDown,
+      fromPoint: this.startPoint
+    });
 
-  private onPointerMove(event: InteractionEvent): void {
-    if (this.mode !== 'dragging' || !this.startPoint) return;
+    const length = this.calculateLength(this.startPoint, finalPoint);
 
-    let pos = event.position;
-    
-    // Snap ortogonal com Shift
-    if (event.modifiers.includes('shift')) {
-      const dx = pos[0] - this.startPoint[0];
-      const dy = pos[1] - this.startPoint[1];
-      if (Math.abs(dx) > Math.abs(dy)) {
-        pos = [this.startPoint[0] + dx, this.startPoint[1]];
-      } else {
-        pos = [this.startPoint[0], this.startPoint[1] + dy];
-      }
+    // Validação final
+    if (length < 0.05) { // Mínimo 5cm
+      // Wall muito curta - cancela e remove
+      this.geometryController.deleteWall(this.activeWallId);
+      this.geometryController.cancelBatch(); // ❌ Descarta todo o batch
+      
+      this.emit('wallCancelled', { reason: 'Too short', length });
+    } else {
+      // Finaliza parede - commit do batch
+      this.geometryController.updateWall(this.activeWallId, {
+        end: finalPoint
+      });
+      
+      this.geometryController.endBatch(); // ✅ Commita histórico único
+      
+      this.emit('wallCompleted', {
+        wallId: this.activeWallId,
+        start: this.startPoint,
+        end: finalPoint,
+        length
+      });
     }
 
-    // Usa GeometryController para snap com contexto (startPoint)
-    const snapResult = this.snapWithDetails(pos, this.startPoint);
-    this.currentPoint = snapResult.point;
-    
-    this.updatePreview(snapResult.point, snapResult.type);
+    this.resetState();
   }
 
-  private onPointerUp(event: InteractionEvent): void {
-    if (this.mode !== 'dragging' || !this.startPoint || !this.currentPoint) {
-      this.reset();
-      return;
+  onPointerCancel(): void {
+    // Gest cancelado (ex: toque com outro dedo, interrupção do sistema)
+    if (this.isDrawing && this.activeWallId) {
+      this.geometryController.deleteWall(this.activeWallId);
+      this.geometryController.cancelBatch(); // ❌ Descarta alterações
     }
-
-    const start = this.startPoint;
-    const end = this.currentPoint;
-    const length = Math.hypot(end[0] - start[0], end[1] - start[1]);
-
-    if (length >= MIN_WALL_LENGTH) {
-      // ✅ USA GEOMETRY CONTROLLER - não chama store diretamente
-      this.geometryController.addWall(start, end);
-    }
-
-    this.reset();
-  }
-
-  private onKeyDown(event: InteractionEvent): void {
-    if (event.key === 'Escape') {
-      this.reset();
-    }
+    this.resetState();
+    this.emit('wallCancelled', { reason: 'Gesture cancelled' });
   }
 
   // ============================================
-  // SNAP (via GeometryController)
+  // MÉTODOS PRIVADOS
   // ============================================
 
-  private snap(event: InteractionEvent): Vec2 {
-    return this.geometryController.snapPoint(event.position);
+  private resetState(): void {
+    this.isDrawing = false;
+    this.startPoint = null;
+    this.currentPreview = null;
+    this.activeWallId = null;
   }
 
-  private snapWithDetails(point: Vec2, startPoint?: Vec2): { point: Vec2; type: any } {
-    const result = this.geometryController.computeSnap(point, startPoint);
-    return { point: result.point, type: result.type };
+  private validateWall(start: Point2D, end: Point2D): boolean {
+    const length = this.calculateLength(start, end);
+    return length >= 0.05; // Mínimo 5cm
+  }
+
+  private calculateLength(a: Point2D, b: Point2D): number {
+    return Math.hypot(b.x - a.x, b.y - a.y);
+  }
+
+  private getWallThickness(): number {
+    return editorStore.getState().settings.defaultWallThickness ?? 0.15;
+  }
+
+  private getWallHeight(): number {
+    return editorStore.getState().settings.defaultWallHeight ?? 2.8;
   }
 
   // ============================================
-  // PREVIEW
+  // LIMPEZA
   // ============================================
 
-  private updatePreview(snapPoint?: Vec2, snapType?: any): void {
-    const baseState = this.getPreviewState();
-    if (!baseState) {
-      this.onPreviewChange(null);
-      return;
+  dispose(): void {
+    if (this.isDrawing) {
+      this.onPointerCancel();
     }
-    
-    const preview: PreviewState = {
-      ...baseState,
-      snapPoint: snapPoint ?? this.currentPoint ?? undefined,
-      snapType: snapType ?? undefined,
-    };
-    
-    this.onPreviewChange(preview);
+    this.geometryController.dispose();
+    this.snapEngine.dispose();
+    super.dispose();
   }
 }
-
-export default WallToolHandler;
