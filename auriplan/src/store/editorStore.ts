@@ -82,7 +82,7 @@ export interface EditorState {
   updateDoor: (id: string, updates: Partial<Door>) => void;
   updateWindow: (id: string, updates: Partial<Window>) => void;
   updateFurniture: (id: string, updates: Partial<Furniture>) => void;
-  
+
   // === DELEÇÃO (sem pipeline) ===
   deleteWall: (id: string) => void;
   deleteRoom: (id: string) => void;
@@ -153,8 +153,15 @@ const initialState = {
   assembleMode: false,
   grid: { visible: true, size: 0.5, color: '#475569', opacity: 0.3 },
   snap: {
-    enabled: true, grid: true, endpoints: true, midpoints: true,
-    edges: true, centers: true, perpendicular: true, angle: true, distance: 0.3,
+    enabled: true,
+    grid: true,
+    endpoints: true,
+    midpoints: true,
+    edges: true,
+    centers: true,
+    perpendicular: true,
+    angle: true,
+    distance: 0.3,
   },
   camera: { position: [0, 0, 10], target: [0, 0, 0], zoom: 1, rotation: 0 },
   history: [],
@@ -184,7 +191,7 @@ export const useEditorStore = create<EditorState>()(
           furniture: [],
           measurements: [],
         };
-        
+
         const newProject: Project = {
           id: uuidv4(),
           name,
@@ -204,12 +211,14 @@ export const useEditorStore = create<EditorState>()(
           state.historyIndex = -1;
           state.selectedIds = [];
         });
-        
+
         get().saveToHistory();
       },
 
       loadTemplate: async (templateId, name) => {
-        const template = (FLOOR_PLAN_TEMPLATES as FloorPlanTemplate[]).find(t => t.id === templateId);
+        const template = (FLOOR_PLAN_TEMPLATES as FloorPlanTemplate[]).find(
+          t => t.id === templateId
+        );
         if (!template) return;
 
         const sceneId = uuidv4();
@@ -242,7 +251,12 @@ export const useEditorStore = create<EditorState>()(
           id: uuidv4(),
           name,
           description: template.description,
-          owner: { id: 'user-1', name: 'Usuário', email: 'user@example.com', role: 'owner' },
+          owner: {
+            id: 'user-1',
+            name: 'Usuário',
+            email: 'user@example.com',
+            role: 'owner',
+          },
           collaborators: [],
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
@@ -253,13 +267,13 @@ export const useEditorStore = create<EditorState>()(
         const { resolveTopology } = await import('@core/wall/TopologyResolver');
         const { buildGraph } = await import('@core/wall/WallGraph');
         const { RoomDetection } = await import('@core/room/RoomDetectionEngine');
-        
-        const topoResult = resolveTopology(newScene.walls, { 
-          aggressive: false, 
-          preserveShortWalls: true 
+
+        const topoResult = resolveTopology(newScene.walls, {
+          aggressive: false,
+          preserveShortWalls: true,
         });
         newScene.walls = topoResult.walls;
-        
+
         const graph = buildGraph(newScene.walls);
         newScene.rooms = RoomDetection.detectRooms(graph, newScene.walls);
 
@@ -271,7 +285,7 @@ export const useEditorStore = create<EditorState>()(
           state.historyIndex = -1;
           state.selectedIds = [];
         });
-        
+
         get().saveToHistory();
       },
 
@@ -285,7 +299,8 @@ export const useEditorStore = create<EditorState>()(
         });
       },
 
-      exportProject: () => JSON.stringify({ project: get().project, scenes: get().scenes }, null, 2),
+      exportProject: () =>
+        JSON.stringify({ project: get().project, scenes: get().scenes }, null, 2),
 
       importProject: (data: string) => {
         try {
@@ -301,8 +316,8 @@ export const useEditorStore = create<EditorState>()(
           });
           get().saveToHistory();
           return true;
-        } catch { 
-          return false; 
+        } catch {
+          return false;
         }
       },
 
@@ -319,11 +334,11 @@ export const useEditorStore = create<EditorState>()(
           furniture: [],
           measurements: [],
         };
-        
+
         set(state => {
           state.scenes.push(newScene);
         });
-        
+
         get().saveToHistory();
       },
 
@@ -337,7 +352,7 @@ export const useEditorStore = create<EditorState>()(
             delete state._topologyCache[id];
           }
         });
-        
+
         get().saveToHistory();
       },
 
@@ -350,6 +365,7 @@ export const useEditorStore = create<EditorState>()(
       // ==========================================
       // OPERAÇÕES DE CENA - Wrappers Simples
       // Chamados APENAS pelo GeometryController
+      // CORREÇÃO: Sem saveToHistory (o controller gerencia)
       // ==========================================
       setSceneWalls: (sceneId: string, walls: Wall[]) => {
         set(state => {
@@ -358,7 +374,7 @@ export const useEditorStore = create<EditorState>()(
             scene.walls = walls;
           }
         });
-        get().saveToHistory();
+        // REMOVIDO: get().saveToHistory(); - Agora é gerenciado pelo controller
       },
 
       setSceneRooms: (sceneId: string, rooms: Room[]) => {
@@ -368,7 +384,7 @@ export const useEditorStore = create<EditorState>()(
             scene.rooms = rooms;
           }
         });
-        get().saveToHistory();
+        // REMOVIDO: get().saveToHistory(); - Agora é gerenciado pelo controller
       },
 
       setSceneDoors: (sceneId: string, doors: Door[]) => {
@@ -404,7 +420,10 @@ export const useEditorStore = create<EditorState>()(
       // ==========================================
       // PROPRIEDADES NÃO-GEOMÉTRICAS
       // ==========================================
-      updateWallProperties: (id: string, updates: Partial<Omit<Wall, 'start' | 'end'>>) => {
+      updateWallProperties: (
+        id: string,
+        updates: Partial<Omit<Wall, 'start' | 'end'>>
+      ) => {
         set(state => {
           const scene = getCurrentScene(state);
           const wall = scene?.walls.find(w => w.id === id);
@@ -487,7 +506,7 @@ export const useEditorStore = create<EditorState>()(
         set(state => {
           const scene = getCurrentScene(state);
           if (!scene) return;
-          
+
           const door = scene.doors.find(d => d.id === id);
           if (door) {
             const wall = scene.walls.find(w => w.id === door.wallId);
@@ -504,7 +523,7 @@ export const useEditorStore = create<EditorState>()(
         set(state => {
           const scene = getCurrentScene(state);
           if (!scene) return;
-          
+
           const windowObj = scene.windows.find(w => w.id === id);
           if (windowObj) {
             const wall = scene.walls.find(w => w.id === windowObj.wallId);
@@ -544,10 +563,10 @@ export const useEditorStore = create<EditorState>()(
         set(state => {
           const scene = getCurrentScene(state);
           if (!scene) return;
-          
+
           const newDoor: Door = { id: uuidv4(), ...door };
           scene.doors.push(newDoor);
-          
+
           const wall = scene.walls.find(w => w.id === door.wallId);
           if (wall) {
             wall.openingIds ??= [];
@@ -563,10 +582,10 @@ export const useEditorStore = create<EditorState>()(
         set(state => {
           const scene = getCurrentScene(state);
           if (!scene) return;
-          
+
           const newWindow: Window = { id: uuidv4(), ...window };
           scene.windows.push(newWindow);
-          
+
           const wall = scene.walls.find(w => w.id === window.wallId);
           if (wall) {
             wall.openingIds ??= [];
@@ -621,9 +640,9 @@ export const useEditorStore = create<EditorState>()(
           if (!scene) return;
           const room = scene.rooms.find(r => r.id === id);
           if (!room) return;
-          
+
           room.points = points.map(p => [...p] as Vec2);
-          
+
           // Recalcula área e perímetro
           let area = 0;
           for (let i = 0; i < points.length; i++) {
@@ -631,7 +650,7 @@ export const useEditorStore = create<EditorState>()(
             area += points[i][0] * points[j][1] - points[j][0] * points[i][1];
           }
           room.area = Math.abs(area) / 2;
-          
+
           let perimeter = 0;
           for (let i = 0; i < points.length; i++) {
             const j = (i + 1) % points.length;
@@ -649,12 +668,12 @@ export const useEditorStore = create<EditorState>()(
         set(state => {
           const scene = getCurrentScene(state);
           if (!scene) return;
-          
+
           const { splitWallAtPoint } = require('@core/wall/WallSplitEngine');
           const result = splitWallAtPoint(scene.walls, wallId, point);
-          
+
           if (result.removedWallIds.length === 0) return;
-          
+
           // Reatribui aberturas
           const { segments } = result;
           const findSegmentForPosition = (positionOnWall: number) => {
@@ -672,14 +691,17 @@ export const useEditorStore = create<EditorState>()(
             if (door.wallId === wallId) {
               let totalLength = 0;
               for (const seg of segments) {
-                totalLength += Math.hypot(seg.end[0] - seg.start[0], seg.end[1] - seg.start[1]);
+                totalLength += Math.hypot(
+                  seg.end[0] - seg.start[0],
+                  seg.end[1] - seg.start[1]
+                );
               }
               const t = totalLength > 0 ? door.position / totalLength : 0;
               const targetSeg = findSegmentForPosition(t);
               if (targetSeg) {
                 door.wallId = targetSeg.wallId;
                 const segLength = Math.hypot(
-                  targetSeg.end[0] - targetSeg.start[0], 
+                  targetSeg.end[0] - targetSeg.start[0],
                   targetSeg.end[1] - targetSeg.start[1]
                 );
                 const localT = (t - targetSeg.tStart) / (targetSeg.tEnd - targetSeg.tStart);
@@ -693,14 +715,17 @@ export const useEditorStore = create<EditorState>()(
             if (win.wallId === wallId) {
               let totalLength = 0;
               for (const seg of segments) {
-                totalLength += Math.hypot(seg.end[0] - seg.start[0], seg.end[1] - seg.start[1]);
+                totalLength += Math.hypot(
+                  seg.end[0] - seg.start[0],
+                  seg.end[1] - seg.start[1]
+                );
               }
               const t = totalLength > 0 ? win.position / totalLength : 0;
               const targetSeg = findSegmentForPosition(t);
               if (targetSeg) {
                 win.wallId = targetSeg.wallId;
                 const segLength = Math.hypot(
-                  targetSeg.end[0] - targetSeg.start[0], 
+                  targetSeg.end[0] - targetSeg.start[0],
                   targetSeg.end[1] - targetSeg.start[1]
                 );
                 const localT = (t - targetSeg.tStart) / (targetSeg.tEnd - targetSeg.tStart);
@@ -711,7 +736,7 @@ export const useEditorStore = create<EditorState>()(
 
           // Atualiza walls
           scene.walls = result.updatedWalls;
-          
+
           // Atualiza openingIds
           for (const seg of segments) {
             const newWall = scene.walls.find(w => w.id === seg.wallId);
@@ -732,7 +757,7 @@ export const useEditorStore = create<EditorState>()(
             }
           }
         });
-        
+
         get().saveToHistory();
       },
 
@@ -769,31 +794,45 @@ export const useEditorStore = create<EditorState>()(
       // UI
       // ==========================================
       setViewMode: (mode: ViewMode) => {
-        set(state => { state.viewMode = mode; });
+        set(state => {
+          state.viewMode = mode;
+        });
       },
 
       setTool: (tool: Tool) => {
-        set(state => { state.tool = tool; });
+        set(state => {
+          state.tool = tool;
+        });
       },
 
       toggleGrid: () => {
-        set(state => { state.grid.visible = !state.grid.visible; });
+        set(state => {
+          state.grid.visible = !state.grid.visible;
+        });
       },
 
       toggleSnap: () => {
-        set(state => { state.snap.enabled = !state.snap.enabled; });
+        set(state => {
+          state.snap.enabled = !state.snap.enabled;
+        });
       },
 
       setGrid: (grid: Partial<GridSettings>) => {
-        set(state => { state.grid = { ...state.grid, ...grid }; });
+        set(state => {
+          state.grid = { ...state.grid, ...grid };
+        });
       },
 
       setSnap: (snap: Partial<SnapSettings>) => {
-        set(state => { state.snap = { ...state.snap, ...snap }; });
+        set(state => {
+          state.snap = { ...state.snap, ...snap };
+        });
       },
 
       setCamera: (camera: Partial<CameraState>) => {
-        set(state => { state.camera = { ...state.camera, ...camera }; });
+        set(state => {
+          state.camera = { ...state.camera, ...camera };
+        });
       },
 
       panCamera: (dx: number, dy: number) => {
@@ -828,13 +867,16 @@ export const useEditorStore = create<EditorState>()(
         const state = get();
         const scene = getCurrentScene(state);
         if (!scene) return;
-        
+
         const room = scene.rooms.find(r => r.id === roomId);
         if (!room) return;
 
         const points = room.points;
-        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-        
+        let minX = Infinity,
+          minY = Infinity,
+          maxX = -Infinity,
+          maxY = -Infinity;
+
         for (const p of points) {
           minX = Math.min(minX, p[0]);
           minY = Math.min(minY, p[1]);
@@ -855,7 +897,9 @@ export const useEditorStore = create<EditorState>()(
       },
 
       setAssembleMode: (enabled: boolean) => {
-        set(state => { state.assembleMode = enabled; });
+        set(state => {
+          state.assembleMode = enabled;
+        });
       },
 
       // ==========================================
@@ -926,7 +970,7 @@ export const useEditorStore = create<EditorState>()(
         set(state => {
           const scene = getCurrentScene(state);
           if (!scene) return;
-          
+
           const original = scene.furniture.find(f => f.id === id);
           if (!original) return;
 
@@ -941,10 +985,10 @@ export const useEditorStore = create<EditorState>()(
             position: [px + 0.5, py + 0.5, pz ?? 0] as [number, number, number],
             name: `${original.name} (cópia)`,
           };
-          
+
           scene.furniture.push(cloned);
         });
-        
+
         get().saveToHistory();
       },
 
@@ -958,7 +1002,7 @@ export const useEditorStore = create<EditorState>()(
 
         const offset = 2.0;
         const newPoints = original.points.map(p => [p[0] + offset, p[1]] as Vec2);
-        
+
         const newRoom: Room = {
           ...original,
           id: uuidv4(),
@@ -980,32 +1024,32 @@ export const useEditorStore = create<EditorState>()(
 );
 
 // ==================== SELECTORS ====================
-export const selectCurrentScene = (state: EditorState) => 
+export const selectCurrentScene = (state: EditorState) =>
   state.scenes.find(s => s.id === state.currentSceneId);
 
 export const selectSelectedItems = (state: EditorState) => {
   const scene = selectCurrentScene(state);
   if (!scene) return [];
-  
+
   const items: (Wall | Room | Door | Window | Furniture)[] = [];
-  
+
   for (const id of state.selectedIds) {
     const wall = scene.walls.find(w => w.id === id);
     if (wall) items.push(wall);
-    
+
     const room = scene.rooms.find(r => r.id === id);
     if (room) items.push(room);
-    
+
     const door = scene.doors.find(d => d.id === id);
     if (door) items.push(door);
-    
+
     const windowObj = scene.windows.find(w => w.id === id);
     if (windowObj) items.push(windowObj);
-    
+
     const furniture = scene.furniture.find(f => f.id === id);
     if (furniture) items.push(furniture);
   }
-  
+
   return items;
 };
 
@@ -1014,9 +1058,9 @@ export const selectProjectStats = (state: EditorState) => {
   if (!scene) {
     return { walls: 0, rooms: 0, doors: 0, windows: 0, furniture: 0, area: 0 };
   }
-  
+
   const area = scene.rooms.reduce((acc, room) => acc + (room.area || 0), 0);
-  
+
   return {
     walls: scene.walls.length,
     rooms: scene.rooms.length,
