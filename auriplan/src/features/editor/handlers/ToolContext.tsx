@@ -1,6 +1,6 @@
 // ============================================================
 // CAMINHO: src/features/editor/handlers/ToolContext.ts
-// FUNÇÃO: Prover ToolManager e estado de preview para toda a UI
+// FUNÇÃO: Prover ToolManager e estado de preview para toda a UI 
 // ============================================================
 
 import React, { createContext, useContext, ReactNode, useMemo, useRef, useEffect, useState } from 'react';
