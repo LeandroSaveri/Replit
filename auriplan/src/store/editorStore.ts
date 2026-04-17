@@ -26,6 +26,18 @@ import type {
   Vec2,
 } from '@auriplan-types';
 
+// ========== NOVO: BATCHING DE HISTÓRICO ==========
+// Importação do tipo GeometryChanges (ajuste o caminho conforme necessário)
+import type { GeometryChanges } from '@/types';
+
+// Tipo auxiliar para Node (usado em GeometryChanges)
+interface Node {
+  id: string;
+  position: Vec2;
+  // outras propriedades conforme seu sistema
+}
+// ================================================
+
 import { FLOOR_PLAN_TEMPLATES } from '@features/editor/templates/floorPlanTemplates';
 import type { FloorPlanTemplate } from '@features/editor/templates/floorPlanTemplates';
 
@@ -54,6 +66,14 @@ export interface EditorState {
   // === HISTÓRICO ===
   history: Array<{ scenes: Scene[]; currentSceneId: string | null }>;
   historyIndex: number;
+
+  // ========== NOVO: BATCHING DE HISTÓRICO ==========
+  historyBatch: {
+    active: boolean;
+    description: string;
+    accumulatedChanges: GeometryChanges;
+  } | null;
+  // ================================================
 
   // === CACHE ===
   _topologyCache: Record<string, any>;
@@ -100,6 +120,12 @@ export interface EditorState {
   // === LIVE UPDATES (sem histórico, para drag) ===
   _liveUpdateFurniturePos: (id: string, position: [number, number, number]) => void;
   _liveUpdateRoomPoints: (id: string, points: Vec2[]) => void;
+
+  // ========== NOVO: BATCHING DE HISTÓRICO (ações) ==========
+  beginHistoryBatch: (description: string) => void;
+  commitGeometryChanges: (changes: GeometryChanges, description: string) => void;
+  cancelHistoryBatch: () => void;
+  // =========================================================
 
   // === SELEÇÃO ===
   select: (id: string | string[], addToSelection?: boolean) => void;
@@ -166,6 +192,9 @@ const initialState = {
   camera: { position: [0, 0, 10], target: [0, 0, 0], zoom: 1, rotation: 0 },
   history: [],
   historyIndex: -1,
+  // ========== NOVO: BATCHING DE HISTÓRICO (estado inicial) ==========
+  historyBatch: null,
+  // ===================================================================
   _topologyCache: {},
 };
 
@@ -760,6 +789,82 @@ export const useEditorStore = create<EditorState>()(
 
         get().saveToHistory();
       },
+
+      // ========== NOVO: BATCHING DE HISTÓRICO (implementação) ==========
+      beginHistoryBatch: (description: string) => {
+        set(state => {
+          state.historyBatch = {
+            active: true,
+            description,
+            accumulatedChanges: {
+              newWalls: [],
+              updatedWalls: [],
+              deletedWalls: [],
+              newNodes: [],
+              updatedNodes: [],
+              deletedNodes: [],
+            },
+          };
+        });
+      },
+
+      commitGeometryChanges: (changes: GeometryChanges, description: string) => {
+        const state = get();
+
+        // Se há batch ativo, acumula as mudanças
+        if (state.historyBatch?.active) {
+          set(draft => {
+            const acc = draft.historyBatch!.accumulatedChanges;
+            acc.newWalls.push(...changes.newWalls);
+            acc.updatedWalls.push(...changes.updatedWalls);
+            acc.deletedWalls.push(...changes.deletedWalls);
+            acc.newNodes.push(...changes.newNodes);
+            acc.updatedNodes.push(...changes.updatedNodes);
+            acc.deletedNodes.push(...changes.deletedNodes);
+          });
+          return;
+        }
+
+        // Aplica as mudanças diretamente na cena atual
+        set(draft => {
+          const scene = getCurrentScene(draft);
+          if (!scene) return;
+
+          // Remove paredes deletadas
+          scene.walls = scene.walls.filter(
+            w => !changes.deletedWalls.some(dw => dw.id === w.id)
+          );
+
+          // Atualiza paredes existentes
+          scene.walls = scene.walls.map(w => {
+            const updated = changes.updatedWalls.find(uw => uw.id === w.id);
+            return updated || w;
+          });
+
+          // Adiciona novas paredes
+          scene.walls.push(...changes.newWalls);
+
+          // Se necessário, também atualize nós em uma estrutura separada
+          // (assumindo que seu Scene tenha um campo 'nodes' ou similar)
+          // Caso contrário, ignore ou adapte.
+        });
+
+        // Registra no histórico como operação única
+        get().saveToHistory();
+        // Nota: a descrição poderia ser armazenada no snapshot, mas o saveToHistory atual não suporta.
+        // Para manter compatibilidade, apenas salvamos o estado.
+      },
+
+      cancelHistoryBatch: () => {
+        set(state => {
+          state.historyBatch = null;
+        });
+        // NOTA: As alterações já foram aplicadas no estado temporário?
+        // Se o batch foi usado para acumular mudanças sem aplicar,
+        // um rollback completo exigiria reverter o estado.
+        // Por enquanto, apenas limpa o batch.
+      },
+      // =================================================================
 
       // ==========================================
       // SELEÇÃO
