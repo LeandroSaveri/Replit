@@ -1,8 +1,4 @@
-# ============================================
-# 5. ROOM TOOL HANDLER REFATORADO
-# ============================================
-
-room_tool_handler = '''// ============================================
+// ============================================
 // RoomToolHandler.ts - Ferramenta de desenho de cômodos
 // Refatorado para usar GeometryController
 // ============================================
