@@ -2,6 +2,7 @@
 // SelectToolHandler.ts - Edição interativa tipo MagicPlan
 // Refatorado para usar GeometryController
 // Suporta: rooms, walls, furniture, drag, hover, delete
+// CORREÇÃO: Removida dependência de WallTopology
 // ============================================
 
 import type { InteractionEvent } from '@core/interaction/InteractionEngine';
@@ -35,18 +36,12 @@ type DragState =
   | { kind: 'wall-push'; wallId: string; origStart: Vec2; origEnd: Vec2; ds: Vec2; affectedWallIds: string[] }
   | { kind: 'wall-move'; wallId: string; origStart: Vec2; origEnd: Vec2; ds: Vec2; affectedWallIds: string[] };
 
-export interface WallTopology {
-  getWallsConnectedToVertex(vertex: Vec2, excludeWallId?: string): Array<{ id: string; start: Vec2; end: Vec2 }>;
-  getWallsConnectedToWall(wallId: string): Array<{ id: string; start: Vec2; end: Vec2 }>;
-  updateWallGeometry(wallId: string, newStart: Vec2, newEnd: Vec2): void;
-}
-
 export interface SelectToolHandlerOptions {
   geometryController: GeometryController;
   onPreviewChange: (state: PreviewState) => void;
   onHoverChange?: (id: string | null) => void;
   onCursorChange?: (cursor: string) => void;
-  getTopology?: () => WallTopology | undefined;
+  // REMOVIDO: getTopology - não existe no GeometryController
   getWalls?: () => Wall[];
   getRooms?: () => Room[];
   getFurniture?: () => Furniture[];
@@ -61,7 +56,7 @@ export class SelectToolHandler implements ToolHandler {
   private onPreviewChange: (state: PreviewState) => void;
   private onHoverChange: (id: string | null) => void;
   private onCursorChange: (cursor: string) => void;
-  private getTopology: () => WallTopology | undefined;
+  // REMOVIDO: private getTopology
   private getWalls: () => Wall[];
   private getRooms: () => Room[];
   private getFurniture: () => Furniture[];
@@ -81,7 +76,7 @@ export class SelectToolHandler implements ToolHandler {
     this.onPreviewChange = options.onPreviewChange;
     this.onHoverChange = options.onHoverChange || (() => {});
     this.onCursorChange = options.onCursorChange || (() => {});
-    this.getTopology = options.getTopology || (() => undefined);
+    // REMOVIDO: this.getTopology
     this.getWalls = options.getWalls || (() => []);
     this.getRooms = options.getRooms || (() => []);
     this.getFurniture = options.getFurniture || (() => []);
@@ -112,10 +107,10 @@ export class SelectToolHandler implements ToolHandler {
   getPreviewState(): PreviewState | null { return null; }
 
   // ============================================
-  // HIT TEST
+  // HIT TEST (público para uso externo)
   // ============================================
-
-  private hitTest(pos: Vec2): HitResult {
+  
+  hitTest(pos: Vec2): HitResult {
     const furniture = this.getFurniture();
     const rooms = this.getRooms();
     const walls = this.getWalls();
@@ -249,12 +244,35 @@ export class SelectToolHandler implements ToolHandler {
   }
 
   // ============================================
+  // UTILIDADE: Encontrar paredes conectadas
+  // ============================================
+  
+  /**
+   * Encontra paredes conectadas a um vértice (substitui WallTopology)
+   */
+  private getWallsConnectedToVertex(vertex: Vec2, excludeWallId?: string): Array<{ id: string; start: Vec2; end: Vec2 }> {
+    const walls = this.getWalls();
+    const connected: Array<{ id: string; start: Vec2; end: Vec2 }> = [];
+    
+    for (const wall of walls) {
+      if (wall.id === excludeWallId) continue;
+      
+      // Verifica se o wall.start ou wall.end coincide com o vértice
+      if (this.arePointsEqual(wall.start, vertex) || this.arePointsEqual(wall.end, vertex)) {
+        connected.push({ id: wall.id, start: wall.start, end: wall.end });
+      }
+    }
+    
+    return connected;
+  }
+
+  // ============================================
   // TECLADO
   // ============================================
 
   private onKeyDown(event: InteractionEvent): void {
     if (event.key === 'Delete' || event.key === 'Backspace') {
-      // Deleta objetos selecionados via callbacks
+      // Implementar deleção se necessário
     }
     if (event.key === 'Escape') {
       this.onDeselectAll();
@@ -354,17 +372,9 @@ export class SelectToolHandler implements ToolHandler {
         this.onSelect(hit.wallId, addToSel);
         const origPos: Vec2 = hit.vertex === 'start' ? [...wall.start] as Vec2 : [...wall.end] as Vec2;
         
-        const topology = this.getTopology();
-        const affectedIds: string[] = [hit.wallId];
-        
-        if (topology) {
-          const connected = topology.getWallsConnectedToVertex(origPos, hit.wallId);
-          for (const conn of connected) {
-            if (!affectedIds.includes(conn.id)) {
-              affectedIds.push(conn.id);
-            }
-          }
-        }
+        // CORREÇÃO: Usa método local em vez de getTopology
+        const connected = this.getWallsConnectedToVertex(origPos, hit.wallId);
+        const affectedIds: string[] = [hit.wallId, ...connected.map(w => w.id)];
         
         this.drag = {
           kind: 'wall-vertex',
