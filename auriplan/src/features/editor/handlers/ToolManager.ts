@@ -5,32 +5,62 @@
 
 import type { InteractionEvent } from '@core/interaction/InteractionEngine';
 import type { GeometryController } from '@core/geometry/GeometryController';
-import type { WallToolHandler } from './tools/WallToolHandler';
-import type { SelectToolHandler } from './tools/SelectToolHandler';
-import type { RoomToolHandler } from './tools/RoomToolHandler';
 import type { PreviewState } from './ToolContext';
+import type { Tool } from '@auriplan-types';
 
-export type ToolType = 'select' | 'wall' | 'room' | 'door' | 'window' | 'furniture';
+export type ToolType = Tool;
 
 export interface ToolManagerOptions {
   geometryController: GeometryController;
   onPreviewChange: (state: PreviewState) => void;
+  onHoverChange?: (id: string | null) => void;
+  onCursorChange?: (cursor: string) => void;
   onToolChange?: (tool: ToolType) => void;
+  // Callbacks do store para SelectToolHandler
+  getWalls: () => any[];
+  getRooms: () => any[];
+  getFurniture: () => any[];
+  onSelect: (id: string, addToSelection: boolean) => void;
+  onDeselectAll: () => void;
+  onDelete?: (id: string) => void;
+  onZoomToRoom?: (roomId: string) => void;
 }
 
 export class ToolManager {
   private geometryController: GeometryController;
   private onPreviewChange: (state: PreviewState) => void;
+  private onHoverChange: (id: string | null) => void;
+  private onCursorChange: (cursor: string) => void;
   private onToolChange?: (tool: ToolType) => void;
   
   private currentTool: ToolType = 'select';
-  private handlers: Map<ToolType, WallToolHandler | SelectToolHandler | RoomToolHandler | null> = new Map();
-  private currentHandler: WallToolHandler | SelectToolHandler | RoomToolHandler | null = null;
+  private handlers: Map<ToolType, any> = new Map();
+  private currentHandler: any = null;
+
+  // Store callbacks
+  private getWalls: () => any[];
+  private getRooms: () => any[];
+  private getFurniture: () => any[];
+  private onSelect: (id: string, addToSelection: boolean) => void;
+  private onDeselectAll: () => void;
+  private onDelete: (id: string) => void;
+  private onZoomToRoom: (roomId: string) => void;
 
   constructor(options: ToolManagerOptions) {
     this.geometryController = options.geometryController;
     this.onPreviewChange = options.onPreviewChange;
+    this.onHoverChange = options.onHoverChange || (() => {});
+    this.onCursorChange = options.onCursorChange || (() => {});
     this.onToolChange = options.onToolChange;
+    
+    // Store callbacks
+    this.getWalls = options.getWalls;
+    this.getRooms = options.getRooms;
+    this.getFurniture = options.getFurniture;
+    this.onSelect = options.onSelect;
+    this.onDeselectAll = options.onDeselectAll;
+    this.onDelete = options.onDelete || (() => {});
+    this.onZoomToRoom = options.onZoomToRoom || (() => {});
     
     this.initializeHandlers();
   }
@@ -43,6 +73,7 @@ export class ToolManager {
     this.handlers.set('door', null);
     this.handlers.set('window', null);
     this.handlers.set('furniture', null);
+    this.handlers.set('measure', null);
   }
 
   /**
@@ -74,8 +105,8 @@ export class ToolManager {
   private createHandler(tool: ToolType): void {
     switch (tool) {
       case 'wall': {
-        const WallToolHandlerClass = require('./tools/WallToolHandler').WallToolHandler;
-        const handler = new WallToolHandlerClass(
+        const { WallToolHandler } = require('./tools/WallToolHandler');
+        const handler = new WallToolHandler(
           this.geometryController,
           this.onPreviewChange
         );
@@ -83,46 +114,32 @@ export class ToolManager {
         break;
       }
       case 'select': {
-        // SelectToolHandler requer callbacks adicionais - deve ser configurado externamente
-        // ou usar factory method
+        const { SelectToolHandler } = require('./tools/SelectToolHandler');
+        const handler = new SelectToolHandler({
+          geometryController: this.geometryController,
+          onPreviewChange: this.onPreviewChange,
+          onHoverChange: this.onHoverChange,
+          onCursorChange: this.onCursorChange,
+          getWalls: this.getWalls,
+          getRooms: this.getRooms,
+          getFurniture: this.getFurniture,
+          onSelect: this.onSelect,
+          onDeselectAll: this.onDeselectAll,
+          onDelete: this.onDelete,
+          onZoomToRoom: this.onZoomToRoom,
+        });
+        this.handlers.set('select', handler);
         break;
       }
       case 'room': {
-        const RoomToolHandlerClass = require('./tools/RoomToolHandler').RoomToolHandler;
-        const handler = new RoomToolHandlerClass(
+        const { RoomToolHandler } = require('./tools/RoomToolHandler');
+        const handler = new RoomToolHandler(
           this.geometryController,
           this.onPreviewChange
         );
         this.handlers.set('room', handler);
         break;
       }
-    }
-  }
-
-  /**
-   * Configura o SelectToolHandler com callbacks do store
-   */
-  configureSelectHandler(options: {
-    onHoverChange: (id: string | null) => void;
-    onCursorChange: (cursor: string) => void;
-    getTopology: () => any;
-    getWalls: () => any[];
-    getRooms: () => any[];
-    getFurniture: () => any[];
-    onSelect: (id: string, addToSelection: boolean) => void;
-    onDeselectAll: () => void;
-    onZoomToRoom: (roomId: string) => void;
-  }): void {
-    const SelectToolHandlerClass = require('./tools/SelectToolHandler').SelectToolHandler;
-    const handler = new SelectToolHandlerClass({
-      geometryController: this.geometryController,
-      onPreviewChange: this.onPreviewChange,
-      ...options
-    });
-    this.handlers.set('select', handler);
-    
-    if (this.currentTool === 'select') {
-      this.currentHandler = handler;
     }
   }
 
@@ -159,6 +176,13 @@ export class ToolManager {
    */
   getCurrentTool(): ToolType {
     return this.currentTool;
+  }
+
+  /**
+   * Obtém handler atual
+   */
+  getCurrentHandler(): any {
+    return this.currentHandler;
   }
 
   /**
