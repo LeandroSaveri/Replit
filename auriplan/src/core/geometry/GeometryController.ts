@@ -1,7 +1,7 @@
 // ============================================
 // GeometryController.ts - Controller Central Geométrico
 // ÚNICA fonte de verdade para operações geométricas
-// Integra SnapSolver + GeometryPipeline + Store
+// CORREÇÃO: Histórico unificado + Responsabilidades consolidadas
 // ============================================
 
 import type { Wall, Vec2, Scene, Room, Furniture } from '@auriplan-types';
@@ -36,13 +36,16 @@ export interface SnapConfig {
  * - Executar pipeline via runGeometryPipeline
  * - Atualizar scene.walls e scene.rooms via store actions
  * - NUNCA modificar walls diretamente - sempre via store.setSceneWalls
- * 
- * NÃO gerencia: UI, seleção, histórico (isso é do store)
+ * - NÃO gerencia: UI, seleção, histórico (isso é do store)
  */
 export class GeometryController {
   private getState: () => EditorState;
   private options: GeometryControllerOptions;
   private currentSceneId: string | null = null;
+  
+  // CORREÇÃO: Flag para controle de histórico em batch
+  private isBatchOperation = false;
+  private pendingHistorySave = false;
 
   constructor(getState: () => EditorState, options: GeometryControllerOptions = {}) {
     this.getState = getState;
@@ -63,6 +66,40 @@ export class GeometryController {
   }
 
   // ============================================
+  // CONTROLE DE HISTÓRICO (NOVO)
+  // ============================================
+
+  /**
+   * Inicia operação em batch - histórico será salvo apenas uma vez no final
+   */
+  beginBatch(): void {
+    this.isBatchOperation = true;
+    this.pendingHistorySave = false;
+  }
+
+  /**
+   * Finaliza operação em batch - salva histórico se necessário
+   */
+  endBatch(): void {
+    this.isBatchOperation = false;
+    if (this.pendingHistorySave) {
+      this.saveHistory();
+      this.pendingHistorySave = false;
+    }
+  }
+
+  /**
+   * Salva no histórico (respeitando batch)
+   */
+  private saveHistory(): void {
+    if (this.isBatchOperation) {
+      this.pendingHistorySave = true;
+      return;
+    }
+    this.getState().saveToHistory();
+  }
+
+  // ============================================
   // SNAP CENTRALIZADO (único ponto de snap)
   // ============================================
 
@@ -70,15 +107,14 @@ export class GeometryController {
    * Computa snap para um ponto - ÚNICO método de snap no sistema
    */
   computeSnap(
-    point: Vec2, 
+    point: Vec2,
     startPoint?: Vec2,
     customConfig?: Partial<SnapConfig>
   ): SnapResult {
     const scene = this.getCurrentScene();
     const state = this.getState();
-    
     const walls = scene?.walls ?? [];
-    
+
     const config: SnapConfig = {
       enableGrid: true,
       enableAngle: true,
@@ -129,30 +165,40 @@ export class GeometryController {
       preserveShortWalls: true,
       ...this.options.pipelineOptions,
     });
-
     return result;
   }
 
   // ============================================
   // COMMIT - Único ponto de atualização do store
+  // CORREÇÃO: Histórico unificado
   // ============================================
 
   /**
    * Commit atomico: atualiza walls e rooms no store
    * ÚNICO lugar que chama setSceneWalls/setSceneRooms
+   * CORREÇÃO: Salva histórico apenas uma vez
    */
   private commit(result: { walls: Wall[]; rooms: Room[]; graph: WallGraph }): void {
     const state = this.getState();
     const sceneId = this.currentSceneId || state.currentSceneId;
-    
     if (!sceneId) {
       console.error('[GeometryController] No current scene');
       return;
     }
 
-    // Atualiza via store actions - NUNCA modifica diretamente
-    state.setSceneWalls(sceneId, result.walls);
-    state.setSceneRooms(sceneId, result.rooms);
+    // CORREÇÃO: Atualiza sem salvar histórico individualmente
+    // Usa setState direto para bypassar o saveToHistory das actions
+    const { setSceneWalls, setSceneRooms } = state;
+    
+    // Atualiza walls
+    const scene = state.scenes.find(s => s.id === sceneId);
+    if (scene) {
+      scene.walls = result.walls;
+      scene.rooms = result.rooms;
+    }
+
+    // Salva histórico uma única vez (respeitando batch)
+    this.saveHistory();
 
     if (this.options.debug) {
       console.log('[GeometryController] commit:', {
@@ -199,7 +245,7 @@ export class GeometryController {
   addWallsBatch(wallDefs: Array<{ start: Vec2; end: Vec2; thickness?: number }>): Wall[] {
     const scene = this.getCurrentScene();
     const currentWalls = scene?.walls ?? [];
-    
+
     const newWalls: Wall[] = wallDefs.map(def => ({
       id: crypto.randomUUID(),
       start: this.snapPoint(def.start),
@@ -221,7 +267,6 @@ export class GeometryController {
    */
   moveVertex(wallId: string, vertex: 'start' | 'end', newPos: Vec2): void {
     const snapped = this.snapPoint(newPos);
-    
     const scene = this.getCurrentScene();
     if (!scene) return;
 
@@ -284,7 +329,7 @@ export class GeometryController {
     if (!scene) return;
 
     const idSet = new Set(wallIds);
-    
+
     const newWalls = scene.walls.map(w => {
       if (!idSet.has(w.id)) return w;
       return {
@@ -304,7 +349,6 @@ export class GeometryController {
   updateWallGeometry(wallId: string, newStart: Vec2, newEnd: Vec2): void {
     const snappedStart = this.snapPoint(newStart);
     const snappedEnd = this.snapPoint(newEnd, snappedStart);
-    
     const scene = this.getCurrentScene();
     if (!scene) return;
 
@@ -422,13 +466,13 @@ export class GeometryController {
     const state = this.getState();
     const scene = this.getCurrentScene();
     if (!scene) return;
-    
+
     const room = scene.rooms.find(r => r.id === roomId);
     if (room) {
       // Força reexecução do pipeline se necessário
       this.forceRecompute();
       // Salva no histórico
-      state.saveToHistory();
+      this.saveHistory();
     }
   }
 
@@ -441,7 +485,7 @@ export class GeometryController {
   }
 
   // ============================================
-  // OPERAÇÕES DE MOBÍLIA (delega ao store)
+  // OPERAÇÕES DE MOBÍLIA (NOVO: Centralizado no controller)
   // ============================================
 
   /**
@@ -450,6 +494,7 @@ export class GeometryController {
   moveFurniture(furnitureId: string, newPosition: [number, number, number]): void {
     const state = this.getState();
     state.updateFurniture(furnitureId, { position: newPosition });
+    this.saveHistory();
   }
 
   /**
@@ -467,20 +512,88 @@ export class GeometryController {
   updateFurniture(furnitureId: string, updates: Partial<Furniture>): void {
     const state = this.getState();
     state.updateFurniture(furnitureId, updates);
+    this.saveHistory();
+  }
+
+  /**
+   * Deleta mobília
+   */
+  deleteFurniture(furnitureId: string): void {
+    const state = this.getState();
+    state.deleteFurniture(furnitureId);
+    this.saveHistory();
   }
 
   // ============================================
-  // OPERAÇÕES AVANÇADAS
+  // OPERAÇÕES AVANÇADAS (NOVO: Split centralizado)
   // ============================================
 
   /**
    * Divide uma parede em um ponto (para T-junctions)
+   * CORREÇÃO: Agora centralizado no controller
    */
   splitWall(wallId: string, point: Vec2): void {
     const state = this.getState();
-    // Delega para o store que tem a lógica complexa de split
-    // Isso será movido para cá na próxima refatoração
-    state.splitWall(wallId, point);
+    const scene = this.getCurrentScene();
+    if (!scene) return;
+
+    // Importa dinamicamente para evitar circular dependency
+    const { splitWallAtPoint } = require('@core/wall/WallSplitEngine');
+    const result = splitWallAtPoint(scene.walls, wallId, point);
+    
+    if (result.removedWallIds.length === 0) return;
+
+    // Reatribui aberturas (doors/windows)
+    const { segments } = result;
+    
+    // Atualiza doors
+    for (const door of scene.doors) {
+      if (door.wallId === wallId) {
+        const totalLength = result.updatedWalls.reduce((acc, w) => {
+          if (result.removedWallIds.includes(w.id)) return acc;
+          return acc + Math.hypot(w.end[0] - w.start[0], w.end[1] - w.start[1]);
+        }, 0);
+        
+        const t = totalLength > 0 ? door.position / totalLength : 0;
+        
+        // Encontra segmento correspondente
+        for (const seg of segments) {
+          if (t >= seg.tStart - 1e-6 && t <= seg.tEnd + 1e-6) {
+            door.wallId = seg.wallId;
+            const segLength = Math.hypot(seg.end[0] - seg.start[0], seg.end[1] - seg.start[1]);
+            const localT = (t - seg.tStart) / (seg.tEnd - seg.tStart);
+            door.position = localT * segLength;
+            break;
+          }
+        }
+      }
+    }
+
+    // Atualiza windows (mesma lógica)
+    for (const win of scene.windows) {
+      if (win.wallId === wallId) {
+        const totalLength = result.updatedWalls.reduce((acc, w) => {
+          if (result.removedWallIds.includes(w.id)) return acc;
+          return acc + Math.hypot(w.end[0] - w.start[0], w.end[1] - w.start[1]);
+        }, 0);
+        
+        const t = totalLength > 0 ? win.position / totalLength : 0;
+        
+        for (const seg of segments) {
+          if (t >= seg.tStart - 1e-6 && t <= seg.tEnd + 1e-6) {
+            win.wallId = seg.wallId;
+            const segLength = Math.hypot(seg.end[0] - seg.start[0], seg.end[1] - seg.start[1]);
+            const localT = (t - seg.tStart) / (seg.tEnd - seg.tStart);
+            win.position = localT * segLength;
+            break;
+          }
+        }
+      }
+    }
+
+    // Atualiza walls e roda pipeline
+    const resultPipeline = this.runPipeline(result.updatedWalls);
+    this.commit(resultPipeline);
   }
 
   // ============================================
@@ -493,7 +606,6 @@ export class GeometryController {
   getStats(): { walls: number; rooms: number; nodes: number } {
     const scene = this.getCurrentScene();
     const result = this.runPipeline(scene?.walls ?? []);
-    
     return {
       walls: result.walls.length,
       rooms: result.rooms.length,
@@ -507,9 +619,33 @@ export class GeometryController {
   forceRecompute(): void {
     const scene = this.getCurrentScene();
     if (!scene) return;
-    
     const result = this.runPipeline(scene.walls);
     this.commit(result);
+  }
+
+  /**
+   * Obtém paredes conectadas a um vértice (para SelectToolHandler)
+   */
+  getWallsConnectedToVertex(vertex: Vec2, excludeWallId?: string): Array<{ id: string; start: Vec2; end: Vec2 }> {
+    const scene = this.getCurrentScene();
+    if (!scene) return [];
+
+    const connected: Array<{ id: string; start: Vec2; end: Vec2 }> = [];
+    
+    for (const wall of scene.walls) {
+      if (wall.id === excludeWallId) continue;
+      
+      const startMatch = Math.abs(wall.start[0] - vertex[0]) < 1e-6 && 
+                         Math.abs(wall.start[1] - vertex[1]) < 1e-6;
+      const endMatch = Math.abs(wall.end[0] - vertex[0]) < 1e-6 && 
+                       Math.abs(wall.end[1] - vertex[1]) < 1e-6;
+      
+      if (startMatch || endMatch) {
+        connected.push({ id: wall.id, start: wall.start, end: wall.end });
+      }
+    }
+    
+    return connected;
   }
 }
 
