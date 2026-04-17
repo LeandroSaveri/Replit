@@ -1,18 +1,14 @@
-# ============================================
-# 1. GEOMETRY CONTROLLER CORRIGIDO
-# ============================================
-
-geometry_controller = '''// ============================================
+// ============================================
 // GeometryController.ts - Controller Central Geométrico
+// ÚNICA fonte de verdade para operações geométricas
 // Integra SnapSolver + GeometryPipeline + Store
 // ============================================
 
-import type { Wall, Vec2, Scene, Furniture } from '@auriplan-types';
+import type { Wall, Vec2, Scene, Room, Furniture } from '@auriplan-types';
 import { SnapSolver, type SnapOptions, type SnapResult } from '@core/snap/SnapSolver';
 import { runGeometryPipeline, type GeometryPipelineOptions } from '@core/pipeline/GeometryPipeline';
-import type { EditorStore } from '@store/editorStore';
 import type { WallGraph } from '@core/wall/WallGraph';
-import type { Room } from '@core/room/RoomDetectionEngine';
+import type { EditorState } from '@store/editorStore';
 
 export interface GeometryControllerOptions {
   debug?: boolean;
@@ -35,19 +31,21 @@ export interface SnapConfig {
  * GeometryController - Centralizador de todas as operações geométricas
  * 
  * Responsabilidades:
- * - Centralizar TODA lógica geométrica
+ * - Centralizar TODA lógica geométrica de paredes e cômodos
  * - Aplicar snap via SnapSolver (único sistema de snap)
  * - Executar pipeline via runGeometryPipeline
- * - Atualizar scene.walls e scene.rooms via store
- * - NUNCA modificar walls diretamente - sempre via store actions
+ * - Atualizar scene.walls e scene.rooms via store actions
+ * - NUNCA modificar walls diretamente - sempre via store.setSceneWalls
+ * 
+ * NÃO gerencia: UI, seleção, histórico (isso é do store)
  */
 export class GeometryController {
-  private store: EditorStore;
+  private getState: () => EditorState;
   private options: GeometryControllerOptions;
   private currentSceneId: string | null = null;
 
-  constructor(store: EditorStore, options: GeometryControllerOptions = {}) {
-    this.store = store;
+  constructor(getState: () => EditorState, options: GeometryControllerOptions = {}) {
+    this.getState = getState;
     this.options = options;
   }
 
@@ -60,7 +58,7 @@ export class GeometryController {
   }
 
   getCurrentScene(): Scene | undefined {
-    const state = this.store.getState();
+    const state = this.getState();
     return state.scenes.find(s => s.id === (this.currentSceneId || state.currentSceneId));
   }
 
@@ -77,7 +75,7 @@ export class GeometryController {
     customConfig?: Partial<SnapConfig>
   ): SnapResult {
     const scene = this.getCurrentScene();
-    const state = this.store.getState();
+    const state = this.getState();
     
     const walls = scene?.walls ?? [];
     
@@ -110,7 +108,7 @@ export class GeometryController {
   }
 
   /**
-   * Snap simplificado - retorna apenas o ponto
+   * Snap simplificado - retorna apenas o ponto snapped
    */
   snapPoint(point: Vec2, startPoint?: Vec2, customConfig?: Partial<SnapConfig>): Vec2 {
     return this.computeSnap(point, startPoint, customConfig).point;
@@ -136,7 +134,37 @@ export class GeometryController {
   }
 
   // ============================================
-  // OPERAÇÕES DE PAREDE
+  // COMMIT - Único ponto de atualização do store
+  // ============================================
+
+  /**
+   * Commit atomico: atualiza walls e rooms no store
+   * ÚNICO lugar que chama setSceneWalls/setSceneRooms
+   */
+  private commit(result: { walls: Wall[]; rooms: Room[]; graph: WallGraph }): void {
+    const state = this.getState();
+    const sceneId = this.currentSceneId || state.currentSceneId;
+    
+    if (!sceneId) {
+      console.error('[GeometryController] No current scene');
+      return;
+    }
+
+    // Atualiza via store actions - NUNCA modifica diretamente
+    state.setSceneWalls(sceneId, result.walls);
+    state.setSceneRooms(sceneId, result.rooms);
+
+    if (this.options.debug) {
+      console.log('[GeometryController] commit:', {
+        walls: result.walls.length,
+        rooms: result.rooms.length,
+        sceneId,
+      });
+    }
+  }
+
+  // ============================================
+  // OPERAÇÕES DE PAREDE (todas passam por runPipeline + commit)
   // ============================================
 
   /**
@@ -213,7 +241,7 @@ export class GeometryController {
     const scene = this.getCurrentScene();
     if (!scene) return;
 
-    let wallMap = new Map(scene.walls.map(w => [w.id, { ...w }]));
+    const wallMap = new Map(scene.walls.map(w => [w.id, { ...w }]));
 
     for (const update of updates) {
       const wall = wallMap.get(update.wallId);
@@ -332,8 +360,16 @@ export class GeometryController {
     this.commit(result);
   }
 
+  /**
+   * Atualiza propriedades não-geométricas de uma parede
+   */
+  updateWallProperties(wallId: string, updates: Partial<Omit<Wall, 'start' | 'end'>>): void {
+    const state = this.getState();
+    state.updateWallProperties(wallId, updates);
+  }
+
   // ============================================
-  // OPERAÇÕES DE CÔMODO
+  // OPERAÇÕES DE CÔMODO (via pipeline automático)
   // ============================================
 
   /**
@@ -370,64 +406,81 @@ export class GeometryController {
   }
 
   /**
-   * Atualiza pontos de um cômodo (propaga para paredes)
+   * Atualiza pontos de um cômodo - APENAS propriedades, não geometria
+   * A geometria das paredes é gerenciada pelos métodos de parede
    */
-  updateRoomPoints(roomId: string, newPoints: Vec2[]): void {
-    // Atualiza o cômodo no store
-    this.store.getState().updateRoom(roomId, { points: newPoints });
+  updateRoomPoints(roomId: string, points: Vec2[]): void {
+    // Atualiza via store - isso é live update, não precisa de pipeline
+    const state = this.getState();
+    state._liveUpdateRoomPoints(roomId, points);
+  }
+
+  /**
+   * Commit final de atualização de cômodo (salva no histórico)
+   */
+  commitRoomUpdate(roomId: string): void {
+    const state = this.getState();
+    const scene = this.getCurrentScene();
+    if (!scene) return;
     
-    // O pipeline já foi executado se as paredes foram atualizadas
-    // Se necessário, podemos forçar re-detecção de cômodos aqui
+    const room = scene.rooms.find(r => r.id === roomId);
+    if (room) {
+      // Força reexecução do pipeline se necessário
+      this.forceRecompute();
+      // Salva no histórico
+      state.saveToHistory();
+    }
+  }
+
+  /**
+   * Atualiza propriedades não-geométricas de um cômodo
+   */
+  updateRoomProperties(roomId: string, updates: Partial<Omit<Room, 'points'>>): void {
+    const state = this.getState();
+    state.updateRoomProperties(roomId, updates);
   }
 
   // ============================================
-  // OPERAÇÕES DE MOBÍLIA
+  // OPERAÇÕES DE MOBÍLIA (delega ao store)
   // ============================================
 
   /**
-   * Move mobília
+   * Move mobília - delega ao store
    */
-  moveFurniture(furnitureId: string, newPosition: Vec2 | [number, number, number]): void {
-    this.store.getState().updateFurniture(furnitureId, { position: newPosition });
+  moveFurniture(furnitureId: string, newPosition: [number, number, number]): void {
+    const state = this.getState();
+    state.updateFurniture(furnitureId, { position: newPosition });
   }
 
   /**
    * Atualiza posição de mobília em tempo real (live update)
    */
   liveUpdateFurniture(furnitureId: string, position: [number, number, number]): void {
-    const state = this.store.getState();
-    // Usa método interno do store se disponível, senão updateFurniture normal
-    if (state._liveUpdateFurniturePos) {
-      state._liveUpdateFurniturePos(furnitureId, position);
-    } else {
-      state.updateFurniture(furnitureId, { position });
-    }
+    const state = this.getState();
+    // Usa método interno do store para live update (sem histórico)
+    state._liveUpdateFurniturePos(furnitureId, position);
+  }
+
+  /**
+   * Atualiza propriedades de mobília
+   */
+  updateFurniture(furnitureId: string, updates: Partial<Furniture>): void {
+    const state = this.getState();
+    state.updateFurniture(furnitureId, updates);
   }
 
   // ============================================
-  // COMMIT - Único ponto de atualização do store
+  // OPERAÇÕES AVANÇADAS
   // ============================================
 
-  private commit(result: { walls: Wall[]; rooms: Room[]; graph: WallGraph }): void {
-    const state = this.store.getState();
-    const sceneId = this.currentSceneId || state.currentSceneId;
-    
-    if (!sceneId) {
-      console.error('[GeometryController] No current scene');
-      return;
-    }
-
-    // Atualiza via store actions - NUNCA modifica diretamente
-    state.updateSceneWalls(sceneId, result.walls);
-    state.updateSceneRooms(sceneId, result.rooms);
-
-    if (this.options.debug) {
-      console.log('[GeometryController] commit:', {
-        walls: result.walls.length,
-        rooms: result.rooms.length,
-        sceneId,
-      });
-    }
+  /**
+   * Divide uma parede em um ponto (para T-junctions)
+   */
+  splitWall(wallId: string, point: Vec2): void {
+    const state = this.getState();
+    // Delega para o store que tem a lógica complexa de split
+    // Isso será movido para cá na próxima refatoração
+    state.splitWall(wallId, point);
   }
 
   // ============================================
@@ -461,5 +514,3 @@ export class GeometryController {
 }
 
 export default GeometryController;
-
-print("✅ GeometryController.ts criado")
