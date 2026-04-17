@@ -1,13 +1,13 @@
 // ============================================================
 // Canvas2D.tsx – Renderização 2D, zoom com pinça, delegação total ao ToolManager
 // Suporte a long press para alternar visibilidade de paredes
+// CORREÇÃO: Usa GeometryController em vez de store diretamente
 // ============================================================
 
 import { useRef, useEffect, useState, useCallback, useLayoutEffect } from 'react';
 import { useEditorStore, selectCurrentScene } from '@store/editorStore';
 import { Render2DEngine } from '@engine/render2d/Render2DEngine';
 import { useToolContext } from '../handlers/ToolContext';
-import { ROOM_SHAPES, RoomToolHandler } from '../handlers';
 import type { Vec2 } from '@auriplan-types';
 import { SNAP_COLORS } from '@core/snap/SnapSolver';
 import type { InteractionEvent } from '@core/interaction/InteractionEngine';
@@ -28,6 +28,7 @@ export function Canvas2D() {
   const containerRef = useRef<HTMLDivElement>(null);
   const renderEngineRef = useRef<Render2DEngine | null>(null);
   const animFrameRef = useRef<number>(0);
+  const geometryControllerRef = useRef<any>(null);
 
   const scaleRef = useRef(40);
   const panRef = useRef<Vec2>([0, 0]);
@@ -57,6 +58,14 @@ export function Canvas2D() {
   const selectedIds = useEditorStore(state => state.selectedIds);
 
   const { toolManager, previewState, activeTool } = useToolContext();
+
+  // Obtém referência ao GeometryController do ToolManager
+  useEffect(() => {
+    if (toolManager) {
+      // @ts-ignore - acessando propriedade privada para compatibilidade
+      geometryControllerRef.current = toolManager['geometryController'];
+    }
+  }, [toolManager]);
 
   const walls = currentScene?.walls ?? [];
   const rooms = currentScene?.rooms ?? [];
@@ -372,14 +381,12 @@ export function Canvas2D() {
       const hit = (toolManager as any).currentHandler?.hitTest?.(worldPos);
       if (hit?.type === 'wall') {
         const wallId = hit.id;
-        const scene = currentScene;
-        if (scene) {
-          const wall = scene.walls.find(w => w.id === wallId);
-          if (wall) {
-            const newVisibility = !wall.visible;
-            store.getState().updateWall(wallId, { visible: newVisibility });
-            requestRenderFrame();
-          }
+        // ✅ CORREÇÃO: Usa GeometryController em vez de store direto
+        if (geometryControllerRef.current) {
+          geometryControllerRef.current.updateWallProperties(wallId, { 
+            visible: !walls.find(w => w.id === wallId)?.visible 
+          });
+          requestRenderFrame();
         }
       }
       longPressTimerRef.current = null;
@@ -529,7 +536,10 @@ export function Canvas2D() {
 
   const commitRename = () => {
     if (!renameRoom) return;
-    store.getState().updateRoom(renameRoom.id, { name: renameRoom.name });
+    // ✅ CORREÇÃO: Usa GeometryController em vez de store direto
+    if (geometryControllerRef.current) {
+      geometryControllerRef.current.updateRoomProperties(renameRoom.id, { name: renameRoom.name });
+    }
     setRenameRoom(null);
     requestRenderFrame();
   };
@@ -567,7 +577,10 @@ export function Canvas2D() {
               ((clickPos[0] - wall.start[0]) * ax + (clickPos[1] - wall.start[1]) * ay) / len2
             ));
             const mid: Vec2 = [wall.start[0] + ax * t, wall.start[1] + ay * t];
-            state.splitWall(wallId, mid);
+            // ✅ CORREÇÃO: Usa GeometryController
+            if (geometryControllerRef.current) {
+              geometryControllerRef.current.splitWall(wallId, mid);
+            }
             state.deselectAll();
           }});
         }
@@ -586,7 +599,12 @@ export function Canvas2D() {
           const furn = scene.furniture.find(f => f.id === furnId);
           if (furn) {
             const cur = Array.isArray(furn.rotation) ? furn.rotation[1] : 0;
-            state.updateFurniture(furnId, { rotation: [0, (cur + Math.PI / 2) % (Math.PI * 2), 0] });
+            // ✅ CORREÇÃO: Usa GeometryController
+            if (geometryControllerRef.current) {
+              geometryControllerRef.current.updateFurniture(furnId, { 
+                rotation: [0, (cur + Math.PI / 2) % (Math.PI * 2), 0] 
+              });
+            }
           }
         }});
         actions.push({ label: 'Duplicar', action: () => state.duplicateFurniture(furnId) });
@@ -627,14 +645,6 @@ export function Canvas2D() {
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [store, resetView, toolManager]);
 
-  const insertShape = (shapeName: string) => {
-    const handler = toolManager.getCurrentHandler();
-    if (handler instanceof RoomToolHandler) {
-      handler.insertShape(shapeName, [0, 0] as Vec2);
-      requestRenderFrame();
-    }
-  };
-
   return (
     <div ref={containerRef} className="w-full h-full relative overflow-hidden bg-slate-100">
       <canvas
@@ -651,38 +661,6 @@ export function Canvas2D() {
         onDoubleClick={handleDoubleClick}
         onContextMenu={handleContextMenu}
       />
-
-      {tool === 'room' && (
-        <div className="absolute top-3 left-3 bg-white/95 backdrop-blur-sm rounded-xl shadow-lg border border-slate-200 p-2 z-20 w-52">
-          <div className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-2 px-2">
-            Formas prontas
-          </div>
-          <div className="grid grid-cols-3 gap-2">
-            {ROOM_SHAPES.map(shape => {
-              const IconComponent = typeof shape.icon === 'string' ? null : shape.icon;
-              return (
-                <button
-                  key={shape.name}
-                  onClick={() => insertShape(shape.name)}
-                  className="flex flex-col items-center p-2 rounded-lg hover:bg-blue-50 transition-colors"
-                  title={shape.name}
-                >
-                  {IconComponent ? (
-                    <IconComponent className="w-6 h-6 text-blue-500 mb-1" />
-                  ) : (
-                    <div className="w-6 h-6 flex items-center justify-center text-blue-500 font-bold mb-1">
-                      {shape.icon}
-                    </div>
-                  )}
-                  <span className="text-[10px] text-slate-600 text-center leading-tight">
-                    {shape.name}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      )}
 
       <div className="hidden md:block absolute bottom-4 left-4 bg-white/80 backdrop-blur-sm px-3 py-1.5 rounded-lg text-xs text-slate-600 border border-slate-200 shadow-sm z-10">
         1 : {(100 / scale * 10).toFixed(0)} &nbsp;|&nbsp; {scale.toFixed(0)} px/m
