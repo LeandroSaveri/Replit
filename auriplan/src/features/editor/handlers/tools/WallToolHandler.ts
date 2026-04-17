@@ -1,185 +1,250 @@
 // src/features/editor/handlers/tools/WallToolHandler.ts
 // ============================================
-// CORRIGIDO: Batching semântico amarrado aos gestos pointer down/up
+// WallToolHandler - Desenho interativo de paredes
+// Suporte a modo contínuo (sequência) e fechamento automático
 // ============================================
 
 import { ToolHandler } from '../ToolHandler';
 import { InteractionEvent } from '@/core/interaction/InteractionEngine';
-import { GeometryController } from '@/core/geometry/GeometryController';
-import { SnapEngine } from '@/core/snap/SnapEngine';
-import { editorStore } from '@/store/editorStore';
-import type { Point2D, Wall } from '@/types';
+import { GeometryController } from '@/core/controllers/GeometryController';
+import { useEditorStore } from '@/store/editorStore';
+import type { Vec2, Wall } from '@auriplan-types';
 
-interface WallPreview {
-  start: Point2D;
-  end: Point2D;
-  valid: boolean;
-  length: number;
+// Constantes
+const MIN_WALL_LENGTH = 0.05; // 5 cm
+const CLOSE_DISTANCE_THRESHOLD = 0.3; // 30 cm para fechamento de cômodo
+
+export interface WallDrawingState {
+  mode: 'idle' | 'drawing';
+  points: Vec2[];               // Pontos já fixados (vértices)
+  currentPreviewEnd: Vec2 | null; // Ponto atual do mouse (snapped)
+  activeWallIds: string[];      // IDs das paredes criadas neste ciclo
+  firstPoint: Vec2 | null;      // Guardado para detecção de fechamento
 }
 
 export class WallToolHandler extends ToolHandler {
-  private geometryController: GeometryController;
-  private snapEngine: SnapEngine;
+  private controller: GeometryController;
   
-  // Estado de desenho
-  private isDrawing = false;
-  private startPoint: Point2D | null = null;
-  private currentPreview: WallPreview | null = null;
-  private activeWallId: string | null = null;
+  // Estado de desenho contínuo
+  private drawingState: WallDrawingState = {
+    mode: 'idle',
+    points: [],
+    currentPreviewEnd: null,
+    activeWallIds: [],
+    firstPoint: null,
+  };
 
   constructor() {
     super('wall');
-    this.geometryController = new GeometryController();
-    this.snapEngine = new SnapEngine();
+    // Obtém o controller como singleton (use sua implementação real)
+    this.controller = new GeometryController(() => useEditorStore.getState());
   }
 
   // ============================================
-  // CICLO DE VIDA DO GESTO - BATCHING AMARRADO
+  // CICLO DE VIDA DO GESTO
   // ============================================
 
   onPointerDown(event: InteractionEvent): void {
-    // Inicia batch semântico no início do gesto
-    this.geometryController.beginBatch('Draw wall');
-    
-    this.isDrawing = true;
-    this.startPoint = this.snapEngine.snap(event.worldPosition);
-    
-    // Cria parede inicial (zero length, será atualizada no drag)
-    try {
-      const wall = this.geometryController.addWall({
-        start: this.startPoint,
-        end: this.startPoint, // Inicialmente zero
-        thickness: this.getWallThickness(),
-        height: this.getWallHeight()
-      });
-      
-      this.activeWallId = wall.id;
-      this.currentPreview = {
-        start: this.startPoint,
-        end: this.startPoint,
-        valid: false,
-        length: 0
-      };
-      
-      this.emit('wallStarted', { wall, startPoint: this.startPoint });
-      
-    } catch (error) {
-      // Falha na criação - cancela o batch
-      this.geometryController.cancelBatch();
-      this.resetState();
-      this.emit('error', error);
+    const point = this.getSnappedPoint(event.worldPosition);
+
+    if (this.drawingState.mode === 'idle') {
+      // Inicia nova sequência de desenho
+      this.startDrawingSequence(point);
+    } else {
+      // Adiciona próximo vértice na sequência
+      this.addNextVertex(point);
     }
   }
 
   onPointerMove(event: InteractionEvent): void {
-    if (!this.isDrawing || !this.startPoint || !this.activeWallId) return;
+    if (this.drawingState.mode !== 'drawing') return;
 
     const rawPoint = event.worldPosition;
-    const snappedPoint = this.snapEngine.snap(rawPoint, {
-      orthogonal: event.isShiftDown, // Shift = modo ortogonal
-      fromPoint: this.startPoint
-    });
+    const snapped = this.getSnappedPoint(rawPoint, this.getLastFixedPoint());
 
     // Atualiza preview
-    this.currentPreview = {
-      start: this.startPoint,
-      end: snappedPoint,
-      valid: this.validateWall(this.startPoint, snappedPoint),
-      length: this.calculateLength(this.startPoint, snappedPoint)
-    };
+    this.drawingState.currentPreviewEnd = snapped;
 
-    // Atualiza a parede no batch (ainda não commitado)
-    this.geometryController.updateWall(this.activeWallId, {
-      end: snappedPoint
-    });
+    // Se há uma parede "fantasma" ativa (última parede em edição), atualiza-a
+    if (this.drawingState.activeWallIds.length > 0) {
+      const lastWallId = this.drawingState.activeWallIds[this.drawingState.activeWallIds.length - 1];
+      const lastFixedPoint = this.getLastFixedPoint();
+      if (lastFixedPoint) {
+        this.controller.updateWallGeometry(lastWallId, lastFixedPoint, snapped);
+      }
+    }
 
-    this.emit('wallPreview', this.currentPreview);
+    this.emitPreview();
   }
 
   onPointerUp(event: InteractionEvent): void {
-    if (!this.isDrawing || !this.startPoint || !this.activeWallId) return;
+    // Em modo contínuo, a ação já foi executada no pointerDown.
+    // Aqui podemos apenas confirmar que o gesto terminou.
+  }
 
-    const finalPoint = this.snapEngine.snap(event.worldPosition, {
-      orthogonal: event.isShiftDown,
-      fromPoint: this.startPoint
-    });
+  onDoubleTap(event: InteractionEvent): void {
+    // Duplo toque finaliza a sequência sem fechar o polígono
+    if (this.drawingState.mode === 'drawing') {
+      this.finishDrawingSequence(false);
+    }
+  }
 
-    const length = this.calculateLength(this.startPoint, finalPoint);
+  // ============================================
+  // MÉTODOS DE DESENHO CONTÍNUO
+  // ============================================
 
-    // Validação final
-    if (length < 0.05) { // Mínimo 5cm
-      // Wall muito curta - cancela e remove
-      this.geometryController.deleteWall(this.activeWallId);
-      this.geometryController.cancelBatch(); // ❌ Descarta todo o batch
-      
-      this.emit('wallCancelled', { reason: 'Too short', length });
+  private startDrawingSequence(firstPoint: Vec2): void {
+    // Inicia batch no controller
+    this.controller.beginBatch();
+
+    this.drawingState = {
+      mode: 'drawing',
+      points: [firstPoint],
+      currentPreviewEnd: firstPoint, // inicialmente mesmo ponto
+      activeWallIds: [],
+      firstPoint: firstPoint,
+    };
+
+    // Não cria parede ainda; aguarda o próximo ponto.
+    this.emit('drawingStarted', { firstPoint });
+    this.emitPreview();
+  }
+
+  private addNextVertex(point: Vec2): void {
+    const lastPoint = this.getLastFixedPoint();
+    if (!lastPoint) return;
+
+    // Verifica se estamos fechando o polígono (próximo ao primeiro ponto)
+    const distanceToFirst = this.drawingState.firstPoint 
+      ? Math.hypot(point[0] - this.drawingState.firstPoint[0], point[1] - this.drawingState.firstPoint[1])
+      : Infinity;
+
+    const shouldClose = distanceToFirst < CLOSE_DISTANCE_THRESHOLD && this.drawingState.points.length >= 3;
+
+    if (shouldClose) {
+      // Fecha o polígono: cria parede final ligando ao primeiro ponto
+      this.createWallBetween(lastPoint, this.drawingState.firstPoint!);
+      // Finaliza a sequência e executa pipeline para criar cômodos
+      this.finishDrawingSequence(true);
+      return;
+    }
+
+    // Cria parede entre o último ponto fixo e o novo ponto
+    this.createWallBetween(lastPoint, point);
+
+    // Adiciona o novo ponto à lista de pontos fixos
+    this.drawingState.points.push(point);
+
+    // Atualiza preview: agora o preview sai do novo ponto
+    this.drawingState.currentPreviewEnd = point;
+
+    this.emit('vertexAdded', { point, index: this.drawingState.points.length - 1 });
+  }
+
+  private createWallBetween(start: Vec2, end: Vec2): Wall | null {
+    const length = Math.hypot(end[0] - start[0], end[1] - start[1]);
+    if (length < MIN_WALL_LENGTH) {
+      this.emit('wallTooShort', { start, end, length });
+      return null;
+    }
+
+    const wall = this.controller.addWall(start, end, this.getWallThickness());
+    this.drawingState.activeWallIds.push(wall.id);
+    return wall;
+  }
+
+  private finishDrawingSequence(closed: boolean): void {
+    if (this.drawingState.mode !== 'drawing') return;
+
+    // Finaliza batch e commita histórico
+    this.controller.endBatch();
+
+    if (closed) {
+      this.emit('roomClosed', { points: this.drawingState.points });
     } else {
-      // Finaliza parede - commit do batch
-      this.geometryController.updateWall(this.activeWallId, {
-        end: finalPoint
-      });
-      
-      this.geometryController.endBatch(); // ✅ Commita histórico único
-      
-      this.emit('wallCompleted', {
-        wallId: this.activeWallId,
-        start: this.startPoint,
-        end: finalPoint,
-        length
-      });
+      this.emit('sequenceFinished', { points: this.drawingState.points });
     }
 
-    this.resetState();
+    this.resetDrawingState();
   }
 
-  onPointerCancel(): void {
-    // Gest cancelado (ex: toque com outro dedo, interrupção do sistema)
-    if (this.isDrawing && this.activeWallId) {
-      this.geometryController.deleteWall(this.activeWallId);
-      this.geometryController.cancelBatch(); // ❌ Descarta alterações
-    }
-    this.resetState();
-    this.emit('wallCancelled', { reason: 'Gesture cancelled' });
+  private cancelDrawing(): void {
+    if (this.drawingState.mode !== 'drawing') return;
+
+    // Remove todas as paredes criadas nesta sequência
+    this.drawingState.activeWallIds.forEach(id => {
+      this.controller.deleteWall(id);
+    });
+    this.controller.cancelBatch();
+
+    this.emit('drawingCancelled');
+    this.resetDrawingState();
+  }
+
+  private resetDrawingState(): void {
+    this.drawingState = {
+      mode: 'idle',
+      points: [],
+      currentPreviewEnd: null,
+      activeWallIds: [],
+      firstPoint: null,
+    };
+    this.emitPreview();
   }
 
   // ============================================
-  // MÉTODOS PRIVADOS
+  // HELPERS
   // ============================================
 
-  private resetState(): void {
-    this.isDrawing = false;
-    this.startPoint = null;
-    this.currentPreview = null;
-    this.activeWallId = null;
+  private getSnappedPoint(point: Vec2, startPoint?: Vec2): Vec2 {
+    // Usa o snap do GeometryController (que já considera configurações da store)
+    return this.controller.snapPoint(point, startPoint);
   }
 
-  private validateWall(start: Point2D, end: Point2D): boolean {
-    const length = this.calculateLength(start, end);
-    return length >= 0.05; // Mínimo 5cm
+  private getLastFixedPoint(): Vec2 | null {
+    return this.drawingState.points.length > 0 
+      ? this.drawingState.points[this.drawingState.points.length - 1] 
+      : null;
   }
 
-  private calculateLength(a: Point2D, b: Point2D): number {
-    return Math.hypot(b.x - a.x, b.y - a.y);
+  private emitPreview(): void {
+    this.emit('preview', {
+      points: this.drawingState.points,
+      previewEnd: this.drawingState.currentPreviewEnd,
+    });
   }
 
   private getWallThickness(): number {
-    return editorStore.getState().settings.defaultWallThickness ?? 0.15;
-  }
-
-  private getWallHeight(): number {
-    return editorStore.getState().settings.defaultWallHeight ?? 2.8;
+    // Pode vir da store ou de configuração
+    return 0.15;
   }
 
   // ============================================
-  // LIMPEZA
+  // INTERFACE PÚBLICA ADICIONAL
+  // ============================================
+
+  /**
+   * Força o término da sequência atual (chamado por botão "Concluir")
+   */
+  public completeDrawing(): void {
+    if (this.drawingState.mode === 'drawing') {
+      this.finishDrawingSequence(false);
+    }
+  }
+
+  /**
+   * Cancela a sequência atual
+   */
+  public cancel(): void {
+    this.cancelDrawing();
+  }
+
+  // ============================================
+  // LIFECYCLE
   // ============================================
 
   dispose(): void {
-    if (this.isDrawing) {
-      this.onPointerCancel();
-    }
-    this.geometryController.dispose();
-    this.snapEngine.dispose();
+    this.cancelDrawing();
     super.dispose();
   }
 }
