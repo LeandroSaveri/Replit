@@ -254,14 +254,7 @@ export class SelectToolHandler implements ToolHandler {
 
   private onKeyDown(event: InteractionEvent): void {
     if (event.key === 'Delete' || event.key === 'Backspace') {
-      // Deleta objetos selecionados
-      const walls = this.getWalls();
-      const rooms = this.getRooms();
-      const furniture = this.getFurniture();
-      
-      // Implementação: deleta paredes selecionadas
-      // Nota: A lógica de seleção deve ser gerenciada pelo store
-      // Aqui chamamos o callback genérico
+      // Deleta objetos selecionados via callbacks
     }
     if (event.key === 'Escape') {
       this.onDeselectAll();
@@ -443,7 +436,6 @@ export class SelectToolHandler implements ToolHandler {
     const dx = pos[0] - this.drag.ds[0];
     const dy = pos[1] - this.drag.ds[1];
 
-    // Snap para operações de parede
     let snappedPos = pos;
     let snapType: SnapType | null = null;
     
@@ -493,7 +485,7 @@ export class SelectToolHandler implements ToolHandler {
           drag.origPos[1] + (snappedPos[1] - drag.ds[1])
         ];
         
-        // ✅ USA GEOMETRY CONTROLLER
+        // USA GEOMETRY CONTROLLER
         this.geometryController.moveVertex(drag.wallId, drag.vertex, newPos);
         break;
       }
@@ -510,7 +502,7 @@ export class SelectToolHandler implements ToolHandler {
         const newStart: Vec2 = [drag.origStart[0] + deltaPerp[0], drag.origStart[1] + deltaPerp[1]];
         const newEnd: Vec2 = [drag.origEnd[0] + deltaPerp[0], drag.origEnd[1] + deltaPerp[1]];
         
-        // ✅ USA GEOMETRY CONTROLLER
+        // USA GEOMETRY CONTROLLER
         this.geometryController.updateWallGeometry(drag.wallId, newStart, newEnd);
         break;
       }
@@ -521,7 +513,7 @@ export class SelectToolHandler implements ToolHandler {
         const newStart: Vec2 = [drag.origStart[0] + deltaX, drag.origStart[1] + deltaY];
         const newEnd: Vec2 = [drag.origEnd[0] + deltaX, drag.origEnd[1] + deltaY];
         
-        // ✅ USA GEOMETRY CONTROLLER
+        // USA GEOMETRY CONTROLLER
         this.geometryController.updateWallGeometry(drag.wallId, newStart, newEnd);
         break;
       }
@@ -550,7 +542,6 @@ export class SelectToolHandler implements ToolHandler {
       return;
     }
 
-    const walls = this.getWalls();
     const rooms = this.getRooms();
 
     switch (this.drag.kind) {
@@ -572,7 +563,6 @@ export class SelectToolHandler implements ToolHandler {
       case 'wall-push':
       case 'wall-move': {
         // Commit já feito durante o drag via GeometryController
-        // O pipeline já processou as alterações
         break;
       }
     }
