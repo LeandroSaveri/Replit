@@ -1,9 +1,4 @@
-
-# ============================================
-# 4. SELECT TOOL HANDLER REFATORADO
-# ============================================
-
-select_tool_handler = '''// ============================================
+// ============================================
 // SelectToolHandler.ts - Edição interativa tipo MagicPlan
 // Refatorado para usar GeometryController
 // Suporta: rooms, walls, furniture, drag, hover, delete
