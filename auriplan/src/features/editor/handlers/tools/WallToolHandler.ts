@@ -1,26 +1,41 @@
-// src/features/editor/handlers/tools/WallToolHandler.ts
-// Desenho de paredes com arrasto, snap ao grid e ortogonal (Shift)
+
+# ============================================
+# 3. WALL TOOL HANDLER REFATORADO
+# ============================================
+
+wall_tool_handler = '''// ============================================
+// WallToolHandler.ts - Desenho de paredes
+// Refatorado para usar GeometryController
+// ============================================
 
 import type { InteractionEvent } from '@core/interaction/InteractionEngine';
 import type { ToolHandler } from '../ToolHandler';
 import type { PreviewState } from '../ToolContext';
-import type { EditorStore } from '@store/editorStore';
-import { SnapSolver } from '@core/snap/SnapSolver';
+import type { GeometryController } from '@core/geometry/GeometryController';
 import type { Vec2 } from '@auriplan-types';
 
 const MIN_WALL_LENGTH = 0.05;
 
-type Mode = 'idle' | 'dragging';
+export type WallToolMode = 'idle' | 'dragging';
+
+export interface WallToolState {
+  mode: WallToolMode;
+  startPoint: Vec2 | null;
+  currentPoint: Vec2 | null;
+}
 
 export class WallToolHandler implements ToolHandler {
-  private mode: Mode = 'idle';
+  private mode: WallToolMode = 'idle';
   private startPoint: Vec2 | null = null;
   private currentPoint: Vec2 | null = null;
-  private store: EditorStore;
+  private geometryController: GeometryController;
   private onPreviewChange: (state: PreviewState) => void;
 
-  constructor(store: EditorStore, onPreviewChange: (state: PreviewState) => void) {
-    this.store = store;
+  constructor(
+    geometryController: GeometryController,
+    onPreviewChange: (state: PreviewState) => void
+  ) {
+    this.geometryController = geometryController;
     this.onPreviewChange = onPreviewChange;
   }
 
@@ -50,15 +65,27 @@ export class WallToolHandler implements ToolHandler {
 
   getPreviewState(): PreviewState | null {
     if (this.mode !== 'dragging' || !this.startPoint || !this.currentPoint) return null;
-    return { type: 'wall', start: this.startPoint, end: this.currentPoint };
+    return {
+      type: 'wall',
+      start: this.startPoint,
+      end: this.currentPoint,
+    };
   }
+
+  // ============================================
+  // HANDLERS DE EVENTO
+  // ============================================
 
   private onPointerDown(event: InteractionEvent): void {
     if (this.mode !== 'idle') return;
+    
+    // Usa GeometryController para snap
     const snapped = this.snap(event);
+    
     this.startPoint = snapped;
     this.currentPoint = snapped;
     this.mode = 'dragging';
+    
     this.updatePreview();
   }
 
@@ -66,6 +93,7 @@ export class WallToolHandler implements ToolHandler {
     if (this.mode !== 'dragging' || !this.startPoint) return;
 
     let pos = event.position;
+    
     // Snap ortogonal com Shift
     if (event.modifiers.includes('shift')) {
       const dx = pos[0] - this.startPoint[0];
@@ -77,8 +105,10 @@ export class WallToolHandler implements ToolHandler {
       }
     }
 
-    const snapResult = this.snapWithDetails(event, this.startPoint);
+    // Usa GeometryController para snap com contexto (startPoint)
+    const snapResult = this.snapWithDetails(pos, this.startPoint);
     this.currentPoint = snapResult.point;
+    
     this.updatePreview(snapResult.point, snapResult.type);
   }
 
@@ -93,7 +123,8 @@ export class WallToolHandler implements ToolHandler {
     const length = Math.hypot(end[0] - start[0], end[1] - start[1]);
 
     if (length >= MIN_WALL_LENGTH) {
-      this.store.getState().addWallsBatch([{ start, end }]);
+      // ✅ USA GEOMETRY CONTROLLER - não chama store diretamente
+      this.geometryController.addWall(start, end);
     }
 
     this.reset();
@@ -105,44 +136,38 @@ export class WallToolHandler implements ToolHandler {
     }
   }
 
+  // ============================================
+  // SNAP (via GeometryController)
+  // ============================================
+
+  private snap(event: InteractionEvent): Vec2 {
+    return this.geometryController.snapPoint(event.position);
+  }
+
+  private snapWithDetails(point: Vec2, startPoint?: Vec2): { point: Vec2; type: any } {
+    const result = this.geometryController.computeSnap(point, startPoint);
+    return { point: result.point, type: result.type };
+  }
+
+  // ============================================
+  // PREVIEW
+  // ============================================
+
   private updatePreview(snapPoint?: Vec2, snapType?: any): void {
     const baseState = this.getPreviewState();
     if (!baseState) {
       this.onPreviewChange(null);
       return;
     }
+    
     const preview: PreviewState = {
       ...baseState,
       snapPoint: snapPoint ?? this.currentPoint ?? undefined,
       snapType: snapType ?? undefined,
     };
+    
     this.onPreviewChange(preview);
   }
-
-  private snap(event: InteractionEvent, startPoint?: Vec2): Vec2 {
-    return this.snapWithDetails(event, startPoint).point;
-  }
-
-  private snapWithDetails(event: InteractionEvent, startPoint?: Vec2): { point: Vec2; type: any } {
-    const state = this.store.getState();
-    const scene = state.scenes.find(s => s.id === state.currentSceneId);
-    const walls = scene?.walls ?? [];
-    const snapConfig = state.snap;
-    const gridSize = state.grid.size;
-    const zoom = event.viewportZoom ?? 1;
-
-    const options = {
-      gridSize,
-      snapTol: snapConfig.distance,
-      enableGrid: true,               // força grid sempre ligado para alinhar
-      enableVertex: snapConfig.endpoints,
-      enableMidpoint: snapConfig.midpoints,
-      enableIntersection: snapConfig.edges,
-      enableWall: snapConfig.perpendicular,
-      enableAngle: snapConfig.angle,
-      zoom,
-    };
-    const result = SnapSolver.computeSnap(event.position, walls, startPoint, options);
-    return { point: result.point, type: result.type };
-  }
 }
+
+export default WallToolHandler;
