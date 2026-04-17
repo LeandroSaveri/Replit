@@ -1,138 +1,178 @@
-// ============================================================
-// ToolManager — gerencia a ferramenta ativa e delega eventos
-// Suporte a pan/zoom integrado (pan com ferramenta 'pan' ou tecla espaço)
-// ============================================================
 
-import type { Tool, Vec2 } from '@auriplan-types';
+# ============================================
+# 6. TOOL MANAGER (Integração dos Handlers)
+# ============================================
+
+tool_manager = '''// ============================================
+// ToolManager.ts - Orquestração de ferramentas
+// Integra GeometryController com Handlers
+// ============================================
+
 import type { InteractionEvent } from '@core/interaction/InteractionEngine';
-import type { ToolHandler } from './ToolHandler';
+import type { GeometryController } from '@core/geometry/GeometryController';
+import type { WallToolHandler } from './tools/WallToolHandler';
+import type { SelectToolHandler } from './tools/SelectToolHandler';
+import type { RoomToolHandler } from './tools/RoomToolHandler';
 import type { PreviewState } from './ToolContext';
-import type { EditorStore } from '@store/editorStore';
-import { WallToolHandler } from './tools/WallToolHandler';
-import { SelectToolHandler } from './tools/SelectToolHandler';
-import { RoomToolHandler } from './tools/RoomToolHandler';
-import { WallGraphTopology } from '@core/wall/WallGraph';
+
+export type ToolType = 'select' | 'wall' | 'room' | 'door' | 'window' | 'furniture';
+
+export interface ToolManagerOptions {
+  geometryController: GeometryController;
+  onPreviewChange: (state: PreviewState) => void;
+  onToolChange?: (tool: ToolType) => void;
+}
 
 export class ToolManager {
-  private currentHandler: ToolHandler | null = null;
-  private currentTool: Tool | null = null;
+  private geometryController: GeometryController;
   private onPreviewChange: (state: PreviewState) => void;
-  private onHoverChange: (id: string | null) => void;
-  private onCursorChange: (cursor: string) => void;
-  private store: EditorStore;
-  private unsubscribe?: () => void;
-  private wallTopology: WallGraphTopology | null = null;
+  private onToolChange?: (tool: ToolType) => void;
+  
+  private currentTool: ToolType = 'select';
+  private handlers: Map<ToolType, WallToolHandler | SelectToolHandler | RoomToolHandler | null> = new Map();
+  private currentHandler: WallToolHandler | SelectToolHandler | RoomToolHandler | null = null;
 
-  // Estado interno para pan
-  private cameraPanStart: Vec2 | null = null;
-
-  constructor(
-    store: EditorStore,
-    onPreviewChange: (state: PreviewState) => void,
-    onHoverChange: (id: string | null) => void = () => {},
-    onCursorChange: (cursor: string) => void = () => {},
-  ) {
-    this.store = store;
-    this.onPreviewChange = onPreviewChange;
-    this.onHoverChange = onHoverChange;
-    this.onCursorChange = onCursorChange;
-
-    const scene = store.getState().scenes.find(s => s.id === store.getState().currentSceneId);
-    if (scene) {
-      this.wallTopology = new WallGraphTopology(scene.walls);
-    }
-
-    this.setTool(store.getState().tool);
-    this.unsubscribe = store.subscribe(() => {
-      const newTool = store.getState().tool;
-      if (newTool !== this.currentTool) {
-        this.setTool(newTool);
-      }
-      const currentScene = store.getState().scenes.find(s => s.id === store.getState().currentSceneId);
-      if (currentScene && this.wallTopology) {
-        this.wallTopology.updateWalls(currentScene.walls);
-      }
-    });
+  constructor(options: ToolManagerOptions) {
+    this.geometryController = options.geometryController;
+    this.onPreviewChange = options.onPreviewChange;
+    this.onToolChange = options.onToolChange;
+    
+    this.initializeHandlers();
   }
 
-  setTool(tool: Tool): void {
-    if (this.currentTool === tool && this.currentHandler) return;
-    this.currentTool = tool;
-
-    switch (tool) {
-      case 'wall':
-        this.currentHandler = new WallToolHandler(this.store, this.onPreviewChange);
-        break;
-      case 'select':
-        this.currentHandler = new SelectToolHandler(
-          this.store,
-          this.onPreviewChange,
-          this.onHoverChange,
-          this.onCursorChange,
-          () => this.wallTopology || undefined,
-        );
-        break;
-      case 'room':
-        this.currentHandler = new RoomToolHandler(this.store, this.onPreviewChange);
-        break;
-      default:
-        this.currentHandler = null;
-    }
-    this.currentHandler?.reset();
-    this.onPreviewChange(null);
-    this.onHoverChange(null);
+  private initializeHandlers(): void {
+    // Inicializa handlers sob demanda
+    this.handlers.set('select', null);
+    this.handlers.set('wall', null);
+    this.handlers.set('room', null);
+    this.handlers.set('door', null);
+    this.handlers.set('window', null);
+    this.handlers.set('furniture', null);
   }
 
-  handleEvent(event: InteractionEvent): void {
-    // Tenta delegar ao handler da ferramenta ativa
-    let consumed = false;
+  /**
+   * Define a ferramenta ativa
+   */
+  setTool(tool: ToolType): void {
+    // Reseta handler anterior
     if (this.currentHandler) {
-      // Assumimos que o handler possui um método handleEvent que retorna boolean indicando se consumiu
-      // Caso contrário, tratamos como consumido sempre.
-      const result = this.currentHandler.handleEvent(event);
-      consumed = result !== false; // se retornar false explicitamente, não consumiu
+      this.currentHandler.reset();
     }
 
-    if (consumed) return;
-
-    // Se não foi consumido, verifica se deve ativar o pan
-    const state = this.store.getState();
-    const isPanTool = state.tool === 'pan';
-    // Verifica se a tecla espaço está pressionada (assumindo que foi adicionada aos modificadores no evento)
-    const isSpacePressed = event.modifiers?.includes('space') ?? false;
-
-    if (isPanTool || isSpacePressed) {
-      this.handlePan(event);
+    this.currentTool = tool;
+    
+    // Lazy load dos handlers
+    if (!this.handlers.get(tool)) {
+      this.createHandler(tool);
+    }
+    
+    this.currentHandler = this.handlers.get(tool) || null;
+    
+    if (this.onToolChange) {
+      this.onToolChange(tool);
     }
   }
 
-  private handlePan(event: InteractionEvent): void {
-    switch (event.type) {
-      case 'mousedown':
-        this.cameraPanStart = event.position;
+  /**
+   * Cria handler sob demanda
+   */
+  private createHandler(tool: ToolType): void {
+    switch (tool) {
+      case 'wall': {
+        const WallToolHandlerClass = require('./tools/WallToolHandler').WallToolHandler;
+        const handler = new WallToolHandlerClass(
+          this.geometryController,
+          this.onPreviewChange
+        );
+        this.handlers.set('wall', handler);
         break;
-      case 'mousemove':
-        if (this.cameraPanStart) {
-          const dx = event.position[0] - this.cameraPanStart[0];
-          const dy = event.position[1] - this.cameraPanStart[1];
-          // A store possui o método panCamera(dx, dy)
-          this.store.getState().panCamera?.(dx, dy);
-          this.cameraPanStart = event.position;
-        }
+      }
+      case 'select': {
+        // SelectToolHandler requer callbacks adicionais - deve ser configurado externamente
+        // ou usar factory method
         break;
-      case 'mouseup':
-        this.cameraPanStart = null;
+      }
+      case 'room': {
+        const RoomToolHandlerClass = require('./tools/RoomToolHandler').RoomToolHandler;
+        const handler = new RoomToolHandlerClass(
+          this.geometryController,
+          this.onPreviewChange
+        );
+        this.handlers.set('room', handler);
         break;
+      }
     }
   }
 
-  getCurrentHandler(): ToolHandler | null {
-    return this.currentHandler;
+  /**
+   * Configura o SelectToolHandler com callbacks do store
+   */
+  configureSelectHandler(options: {
+    onHoverChange: (id: string | null) => void;
+    onCursorChange: (cursor: string) => void;
+    getTopology: () => any;
+    getWalls: () => any[];
+    getRooms: () => any[];
+    getFurniture: () => any[];
+    onSelect: (id: string, addToSelection: boolean) => void;
+    onDeselectAll: () => void;
+    onZoomToRoom: (roomId: string) => void;
+  }): void {
+    const SelectToolHandlerClass = require('./tools/SelectToolHandler').SelectToolHandler;
+    const handler = new SelectToolHandlerClass({
+      geometryController: this.geometryController,
+      onPreviewChange: this.onPreviewChange,
+      ...options
+    });
+    this.handlers.set('select', handler);
+    
+    if (this.currentTool === 'select') {
+      this.currentHandler = handler;
+    }
   }
 
-  destroy(): void {
-    this.unsubscribe?.();
-    this.currentHandler?.reset();
-    this.currentHandler = null;
+  /**
+   * Processa evento de interação
+   */
+  handleEvent(event: InteractionEvent): void {
+    if (this.currentHandler) {
+      this.currentHandler.handleEvent(event);
+    }
+  }
+
+  /**
+   * Obtém estado de preview atual
+   */
+  getPreviewState(): PreviewState | null {
+    if (this.currentHandler) {
+      return this.currentHandler.getPreviewState();
+    }
+    return null;
+  }
+
+  /**
+   * Reseta ferramenta atual
+   */
+  resetCurrentTool(): void {
+    if (this.currentHandler) {
+      this.currentHandler.reset();
+    }
+  }
+
+  /**
+   * Obtém ferramenta atual
+   */
+  getCurrentTool(): ToolType {
+    return this.currentTool;
+  }
+
+  /**
+   * Verifica se está em modo de desenho
+   */
+  isDrawing(): boolean {
+    const preview = this.getPreviewState();
+    return preview !== null;
   }
 }
+
+export default ToolManager;
