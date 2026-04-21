@@ -8,6 +8,7 @@ export type {
   EditorAction,
   EditorActionWithMetadata,
   CommandProcessingResult,
+  CommandProcessingResult as AIProcessResult,
   Point2D,
   Point3D,
 } from './contracts/EditorActionContract';
@@ -42,5 +43,5 @@ export type {
   LightingRequest,
 } from './services/AIService';
 
-// Aliases para compatibilidade
-export { FloorPlanGenerator as default } from './generators/floorplan/FloorPlanGenerator';
+// Alias de default para compatibilidade
+export { default } from './generators/floorplan/FloorPlanGenerator';

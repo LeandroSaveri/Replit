@@ -4,18 +4,11 @@
 // OTIMIZADO: detecção de nós com hash espacial já O(n)
 // ============================================
 
-import type { Wall, Vec2 } from '@auriplan-types';
+import type { Wall, Vec2, Room } from '@auriplan-types';
 import type { WallGraph } from '@core/wall/WallGraph';
 import { vec2 } from '@core/math/vector';
 import { v4 as uuidv4 } from 'uuid';
 import { NODE_TOL, EPS, MIN_ROOM_AREA, MAX_AREA_THRESHOLD } from '@core/geometry/geometryConstants';
-
-export interface Room {
-  id: string;
-  points: Vec2[];
-  area: number;
-  center: Vec2;
-}
 
 function normalizePolygon(indices: number[]): number[] {
   if (indices.length === 0) return [];

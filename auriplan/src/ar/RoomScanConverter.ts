@@ -18,7 +18,7 @@ export interface ConversionOptions {
 }
 
 // Internal representation (kept private, not exposed)
-interface FloorPlanData {
+export interface FloorPlanData {
   id: string;
   name: string;
   width: number;
@@ -33,7 +33,7 @@ interface FloorPlanData {
   };
 }
 
-interface WallData {
+export interface WallData {
   id: string;
   start: { x: number; y: number };
   end: { x: number; y: number };
@@ -41,7 +41,7 @@ interface WallData {
   height: number;
 }
 
-interface RoomData {
+export interface RoomData {
   id: string;
   name: string;
   type: string;

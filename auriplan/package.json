@@ -5,10 +5,12 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc --noEmit && vite build",
+    "build": "npm run typecheck:core && vite build",
     "build:ci": "vite build",
     "preview": "vite preview",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "npm run typecheck:core",
+    "typecheck:core": "tsc --noEmit -p tsconfig.core.json",
+    "typecheck:full": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
     "@radix-ui/react-context-menu": "^2.2.7",

@@ -48,6 +48,12 @@ export class GeometryController {
   // CORREÇÃO: Flag para controle de histórico em batch
   private isBatchOperation = false;
   private pendingHistorySave = false;
+  private readonly defaultWallVisuals = {
+    color: '#d1d5db',
+    material: 'drywall',
+    visible: true,
+    locked: false,
+  } as const;
 
   constructor(getState: () => EditorState, options: GeometryControllerOptions = {}) {
     this.getState = getState;
@@ -221,6 +227,7 @@ export class GeometryController {
       thickness,
       height: 2.8,
       type: 'wall',
+      ...this.defaultWallVisuals,
     };
 
     const scene = this.getCurrentScene();
@@ -247,6 +254,7 @@ export class GeometryController {
       thickness: def.thickness ?? 0.15,
       height: 2.8,
       type: 'wall',
+      ...this.defaultWallVisuals,
     }));
 
     const allWalls = [...currentWalls, ...newWalls];
@@ -430,6 +438,7 @@ export class GeometryController {
         thickness,
         height: 2.8,
         type: 'wall',
+        ...this.defaultWallVisuals,
       });
     }
 
@@ -567,6 +576,34 @@ export class GeometryController {
     }
     
     return connected;
+  }
+
+  // ============================================
+  // COMPAT APIs LEGADAS (Fase 1)
+  // ============================================
+
+  updateWall(wallId: string, updates: Partial<Wall>): void {
+    const scene = this.getCurrentScene();
+    if (!scene) return;
+    const wall = scene.walls.find(w => w.id === wallId);
+    if (!wall) return;
+
+    const start = updates.start ?? wall.start;
+    const end = updates.end ?? wall.end;
+    this.updateWallGeometry(wallId, start, end);
+    this.updateWallProperties(wallId, updates);
+  }
+
+  updateNode(_nodeId: string, _newPosition: Vec2): void {
+    // Mantido para compatibilidade: a atualização de nó é tratada por moveVertex/updateWallGeometry.
+  }
+
+  cancelBatch(): void {
+    this.endBatch();
+  }
+
+  dispose(): void {
+    this.endBatch();
   }
 }
 

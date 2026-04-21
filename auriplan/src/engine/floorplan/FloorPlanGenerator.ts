@@ -20,12 +20,20 @@ export interface RoomLayout {
 }
 
 export interface GeneratedFloorPlan {
+  id?: string;
   title: string;
   description: string;
   totalArea: number;
   footprintW: number;
   footprintD: number;
   rooms: RoomLayout[];
+  walls?: Array<{
+    id: string;
+    start: { x: number; y: number };
+    end: { x: number; y: number };
+    thickness: number;
+  }>;
+  furniture?: unknown[];
   warnings: string[];
 }
 

@@ -4,6 +4,7 @@
 
 import type { Wall, Vec2 } from '@auriplan-types';
 import { SNAP_TOL, NODE_TOL, EPS } from '@core/geometry/geometryConstants';
+import { segmentIntersection, isPointOnSegment } from '@core/math/vector';
 
 // ============================================
 // TIPOS E ENUMERAÇÕES
@@ -19,6 +20,9 @@ export type SnapType =
 
 export interface SnapResult {
   point: Vec2;
+  // Compat legada para handlers antigos
+  x?: number;
+  y?: number;
   type: SnapType | null;
   sourceWall?: Wall;
   priority: number;
@@ -47,7 +51,7 @@ const ANGLE_SNAP_STEPS = Math.PI / 4; // 45° em radianos
 const MIN_DISTANCE_FOR_ANGLE_SNAP = 1e-4;
 
 // Prioridades hierárquicas (menor número = maior prioridade)
-const SNAP_PRIORITIES: Record<SnapType, number> = {
+export const SNAP_PRIORITIES: Record<SnapType, number> = {
   vertex: 1,
   intersection: 2,
   midpoint: 3,
@@ -151,41 +155,6 @@ function projectPointOnLine(p: Vec2, a: Vec2, b: Vec2): Vec2 {
   return [a[0] + t * abx, a[1] + t * aby];
 }
 
-function isPointOnSegment(p: Vec2, a: Vec2, b: Vec2, tol: number = EPS): boolean {
-  const abx = b[0] - a[0];
-  const aby = b[1] - a[1];
-  const apx = p[0] - a[0];
-  const apy = p[1] - a[1];
-
-  const cross = abx * apy - aby * apx;
-  if (Math.abs(cross) > tol) return false;
-
-  const dot = apx * abx + apy * aby;
-  if (dot < -tol) return false;
-
-  const len2 = abx * abx + aby * aby;
-  if (dot > len2 + tol) return false;
-
-  return true;
-}
-
-function segmentIntersection(a1: Vec2, a2: Vec2, b1: Vec2, b2: Vec2): Vec2 | null {
-  const dax = a2[0] - a1[0];
-  const day = a2[1] - a1[1];
-  const dbx = b2[0] - b1[0];
-  const dby = b2[1] - b1[1];
-
-  const denom = dax * dby - day * dbx;
-  if (Math.abs(denom) < EPS) return null;
-
-  const s = ((a1[1] - b1[1]) * dbx - (a1[0] - b1[0]) * dby) / denom;
-  const t = ((a1[1] - b1[1]) * dax - (a1[0] - b1[0]) * day) / denom;
-
-  if (s < -EPS || s > 1 + EPS || t < -EPS || t > 1 + EPS) return null;
-
-  return [a1[0] + s * dax, a1[1] + s * day];
-}
-
 function snapToGrid(point: Vec2, gridSize: number): Vec2 {
   return [
     Math.round(point[0] / gridSize) * gridSize,
@@ -237,6 +206,8 @@ function collectVertexSnaps(cursor: Vec2, walls: Wall[], tolSq: number): SnapRes
       if (distSq <= tolSq) {
         snaps.push({
           point,
+          x: point[0],
+          y: point[1],
           type: 'vertex',
           priority: SNAP_PRIORITIES.vertex,
           distance: Math.sqrt(distSq),
@@ -254,7 +225,7 @@ function collectIntersectionSnaps(cursor: Vec2, walls: Wall[], tolSq: number): S
 
   for (let i = 0; i < walls.length; i++) {
     for (let j = i + 1; j < walls.length; j++) {
-      const p = segmentIntersection(walls[i].start, walls[i].end, walls[j].start, walls[j].end);
+      const p = segmentIntersection(walls[i].start, walls[i].end, walls[j].start, walls[j].end, EPS);
       if (!p) continue;
 
       const key = `${Math.round(p[0] * 1e6)},${Math.round(p[1] * 1e6)}`;
@@ -265,6 +236,8 @@ function collectIntersectionSnaps(cursor: Vec2, walls: Wall[], tolSq: number): S
       if (distSq <= tolSq) {
         snaps.push({
           point: p,
+          x: p[0],
+          y: p[1],
           type: 'intersection',
           priority: SNAP_PRIORITIES.intersection,
           distance: Math.sqrt(distSq),
@@ -283,6 +256,8 @@ function collectMidpointSnaps(cursor: Vec2, walls: Wall[], tolSq: number): SnapR
     if (distSq <= tolSq) {
       snaps.push({
         point: mid,
+        x: mid[0],
+        y: mid[1],
         type: 'midpoint',
         priority: SNAP_PRIORITIES.midpoint,
         distance: Math.sqrt(distSq),
@@ -303,6 +278,8 @@ function collectWallSnaps(cursor: Vec2, walls: Wall[], tolSq: number): SnapResul
     if (distSq <= tolSq) {
       snaps.push({
         point: proj,
+        x: proj[0],
+        y: proj[1],
         type: 'wall',
         priority: SNAP_PRIORITIES.wall,
         distance: Math.sqrt(distSq),
@@ -335,6 +312,8 @@ function calculateAngleSnap(startPoint: Vec2, cursor: Vec2, snapTol: number): Sn
 
   return {
     point: snappedPoint,
+    x: snappedPoint[0],
+    y: snappedPoint[1],
     type: 'angle',
     priority: SNAP_PRIORITIES.angle,
     distance: snapDist,
@@ -347,6 +326,8 @@ function calculateGridSnap(cursor: Vec2, gridSize: number, tolSq: number): SnapR
   if (distSq <= tolSq) {
     return {
       point: gridPoint,
+      x: gridPoint[0],
+      y: gridPoint[1],
       type: 'grid',
       priority: SNAP_PRIORITIES.grid,
       distance: Math.sqrt(distSq),
@@ -412,7 +393,7 @@ export function computeSnap(
     if (gridSnap) return gridSnap;
   }
 
-  return { point: cursor, type: null, priority: Infinity, distance: 0 };
+  return { point: cursor, x: cursor[0], y: cursor[1], type: null, priority: Infinity, distance: 0 };
 }
 
 // ============================================

@@ -7,13 +7,31 @@
 /* * ============================================
  * VECTORS
  * ============================================ */
-export type Vec2 = [number, number];
-export type Vec3 = [number, number, number];
+export type Vec2 = number[] & { x?: number; y?: number };
+export type Vec3 = number[] & { x?: number; y?: number; z?: number };
 
 /* * ============================================
  * METADATA
  * ============================================ */
 export type Metadata = Record<string, any>;
+
+/**
+ * Conjunto de mudanças geométricas acumuladas para batching de histórico.
+ */
+export interface GeometryChanges {
+  addedWallIds?: string[];
+  removedWallIds?: string[];
+  updatedWallIds?: string[];
+  addedRoomIds?: string[];
+  removedRoomIds?: string[];
+  updatedRoomIds?: string[];
+  newWalls?: Wall[];
+  updatedWalls?: Wall[];
+  deletedWalls?: Array<{ id: string }>;
+  newNodes?: Array<{ id: string; position: Vec2 }>;
+  updatedNodes?: Array<{ id: string; position: Vec2 }>;
+  deletedNodes?: Array<{ id: string }>;
+}
 
 /* * ============================================
  * USER
@@ -106,6 +124,7 @@ export interface Wall {
   end: Vec2;
   thickness: number;
   height: number;
+  type?: string;
   color: string;
   material: string;
   visible: boolean;
@@ -131,7 +150,7 @@ export type RoomType = 'living' | 'bedroom' | 'kitchen' | 'bathroom' | 'dining' 
 
 export interface Room {
   id: string;
-  name: string;
+  name?: string;
   points: Vec2[];
   type?: RoomType;
   wallColor?: string;
@@ -139,6 +158,7 @@ export interface Room {
   ceilingColor?: string;
   height?: number;
   area?: number;
+  center?: Vec2;
   perimeter?: number;
   visible?: boolean;
   locked?: boolean;

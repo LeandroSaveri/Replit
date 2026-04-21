@@ -52,6 +52,7 @@ export function useToolContext() {
 
 interface ToolProviderProps {
   children: ReactNode;
+  store?: unknown;
 }
 
 export function ToolProvider({ children }: ToolProviderProps) {

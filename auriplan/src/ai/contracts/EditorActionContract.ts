@@ -23,6 +23,7 @@ export interface Dimensions {
 export interface CreateWallAction {
   type: 'createWall';
   payload: {
+    id?: string;
     start: Point2D;
     end: Point2D;
     thickness?: number;
@@ -33,8 +34,10 @@ export interface CreateWallAction {
 export interface CreateRoomAction {
   type: 'createRoom';
   payload: {
+    id?: string;
     points: Point2D[];
     name?: string;
+    type?: string;
     roomType?: string;
     floorMaterial?: string;
   };
@@ -131,6 +134,16 @@ export interface LoadFloorPlanAction {
   };
 }
 
+export interface SetMetadataAction {
+  type: 'setMetadata';
+  payload: {
+    source?: string;
+    scanId?: string;
+    confidence?: number;
+    [key: string]: unknown;
+  };
+}
+
 // União discriminada de todas as ações possíveis
 export type EditorAction =
   | CreateWallAction
@@ -140,7 +153,8 @@ export type EditorAction =
   | UpdateRoomAction
   | MoveFurnitureAction
   | DeleteElementAction
-  | LoadFloorPlanAction;
+  | LoadFloorPlanAction
+  | SetMetadataAction;
 
 // Metadados comuns para ações geradas por IA
 export interface AIActionMetadata {

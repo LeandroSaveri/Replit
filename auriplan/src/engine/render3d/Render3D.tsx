@@ -11,7 +11,7 @@ export interface Render3DHandle {
   raycastGround: (clientX: number, clientY: number) => [number, number] | null;
 }
 
-interface Render3DProps {
+export interface Render3DProps {
   width: number;
   height: number;
   className?: string;

@@ -4,7 +4,7 @@
 // Altura das abas com transição suave
 // ============================================
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, type ElementType } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Layers, Plus, MoreVertical, ChevronDown, ChevronRight,
@@ -33,7 +33,7 @@ interface SidebarProps {
 }
 
 interface LayerItemProps {
-  icon: (props: { className?: string }) => JSX.Element;
+  icon: ElementType;
   name: string;
   count: number;
   visible: boolean;
@@ -44,7 +44,7 @@ interface LayerItemProps {
 
 interface ToolGroup {
   label: string;
-  tools: Array<{ id: Tool; icon: React.ElementType; label: string; shortcut: string }>;
+  tools: Array<{ id: Tool; icon: ElementType; label: string; shortcut: string }>;
 }
 
 const toolGroups: ToolGroup[] = [
