@@ -10,7 +10,7 @@ export * from './math/vector';
 // ============================================
 // PIPELINE CANÔNICO (Fase 4)
 // ============================================
-export { runGeometryPipeline } from './pipeline/GeometryPipeline';
+export { runGeometryPipeline, computeWallsFingerprint } from './pipeline/GeometryPipeline';
 export { applyGeometryPipeline } from './pipeline/applyGeometryPipeline';
 
 // Snap canônico
@@ -51,3 +51,6 @@ export { GridEngine } from './grid/GridEngine';
 export { InteractionEngine } from './interaction/InteractionEngine';
 export { ExportEngine } from './export/ExportEngine';
 export { ImportEngine } from './import/ImportEngine';
+
+// Projeto e persistência
+export * from './project';

@@ -1,18 +1,8 @@
-
-# ============================================
-# 2. INTERACTION ENGINE MODIFICADO
-# ============================================
-
-interaction_engine = '''// ============================================
-// InteractionEngine.ts - User input handling
-// Integrado com GeometryController
-// ============================================
-
 import type { Vec2 } from '@auriplan-types';
 import type { GeometryController } from '@core/geometry/GeometryController';
 
 export type MouseButton = 'left' | 'middle' | 'right';
-export type KeyboardModifier = 'shift' | 'ctrl' | 'alt' | 'meta';
+export type KeyboardModifier = 'shift' | 'ctrl' | 'alt' | 'meta' | string;
 
 export interface InteractionState {
   isMouseDown: boolean;
@@ -31,6 +21,8 @@ export interface InteractionState {
 export interface InteractionEvent {
   type: 'mousedown' | 'mousemove' | 'mouseup' | 'click' | 'dblclick' | 'wheel' | 'keydown' | 'keyup';
   position: Vec2;
+  /** Compat legada: alguns handlers ainda esperam worldPosition. */
+  worldPosition?: Vec2;
   delta?: Vec2;
   button?: MouseButton;
   key?: string;
@@ -347,6 +339,7 @@ export class InteractionEngine {
     return {
       type,
       position,
+      worldPosition: position,
       modifiers: Array.from(this.state.modifiers),
       preventDefault: () => originalEvent.preventDefault(),
       stopPropagation: () => originalEvent.stopPropagation(),

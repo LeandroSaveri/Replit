@@ -250,6 +250,64 @@ export function linesIntersect(
   };
 }
 
+/** Check if point lies on segment [a,b] with tolerance */
+export function isPointOnSegment(point: Vec2, a: Vec2, b: Vec2, epsilon = EPS): boolean {
+  const ab = vec2.sub(b, a);
+  const ap = vec2.sub(point, a);
+  const cross = vec2.cross(ab, ap);
+  if (Math.abs(cross) > epsilon) return false;
+
+  const dot = vec2.dot(ap, ab);
+  if (dot < -epsilon) return false;
+
+  const lenSq = vec2.lengthSq(ab);
+  if (dot > lenSq + epsilon) return false;
+
+  return true;
+}
+
+/**
+ * Segment intersection com tratamento robusto para:
+ * - cruzamento clássico;
+ * - toque em endpoint (interseção em "T");
+ * - colinearidade com sobreposição (retorna ponto determinístico).
+ */
+export function segmentIntersection(a1: Vec2, a2: Vec2, b1: Vec2, b2: Vec2, epsilon = EPS): Vec2 | null {
+  const d1 = vec2.sub(a2, a1);
+  const d2 = vec2.sub(b2, b1);
+  const denom = vec2.cross(d1, d2);
+  const diff = vec2.sub(b1, a1);
+
+  if (Math.abs(denom) > epsilon) {
+    const t = vec2.cross(diff, d2) / denom;
+    const u = vec2.cross(diff, d1) / denom;
+    if (t < -epsilon || t > 1 + epsilon || u < -epsilon || u > 1 + epsilon) {
+      return null;
+    }
+    return [a1[0] + t * d1[0], a1[1] + t * d1[1]];
+  }
+
+  // Paralelas: só há interseção se forem colineares
+  if (Math.abs(vec2.cross(diff, d1)) > epsilon) return null;
+
+  const candidates: Vec2[] = [];
+  const points: Vec2[] = [a1, a2, b1, b2];
+  for (const p of points) {
+    if (isPointOnSegment(p, a1, a2, epsilon) && isPointOnSegment(p, b1, b2, epsilon)) {
+      candidates.push([p[0], p[1]]);
+    }
+  }
+
+  if (candidates.length === 0) return null;
+
+  candidates.sort((p, q) => {
+    if (Math.abs(p[0] - q[0]) > epsilon) return p[0] - q[0];
+    return p[1] - q[1];
+  });
+
+  return candidates[0];
+}
+
 /** Get a vector perpendicular to the given vector */
 export function perpendicularVector(v: Vec2): Vec2 {
   return vec2.perpendicular(v);

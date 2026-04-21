@@ -96,6 +96,12 @@ export interface EditorState {
   // === OPERAÇÕES DE OBJETOS INDIVIDUAIS (não geométricas) ===
   updateWallProperties: (id: string, updates: Partial<Omit<Wall, 'start' | 'end'>>) => void;
   updateRoomProperties: (id: string, updates: Partial<Omit<Room, 'points'>>) => void;
+  // Compat APIs legadas (Fase 1)
+  updateWall: (id: string, updates: Partial<Wall>) => void;
+  updateRoom: (id: string, updates: Partial<Room>) => void;
+  addRoom: (room: Partial<Room> & { points: Vec2[] } | Vec2[], options?: Partial<Room> | string) => string;
+  addWallsBatch: (walls: Array<Partial<Wall> & { start: Vec2; end: Vec2 }>) => string[];
+  createWallsFromPolygon: (points: Vec2[], thickness?: number) => string[];
   updateDoor: (id: string, updates: Partial<Door>) => void;
   updateWindow: (id: string, updates: Partial<Window>) => void;
   updateFurniture: (id: string, updates: Partial<Furniture>) => void;
@@ -186,7 +192,7 @@ const initialState = {
     angle: true,
     distance: 0.3,
   },
-  camera: { position: [0, 0, 10], target: [0, 0, 0], zoom: 1, rotation: 0 },
+  camera: { position: [0, 0, 10] as [number, number, number], target: [0, 0, 0] as [number, number, number], zoom: 1, rotation: 0 },
   history: [],
   historyIndex: -1,
   historyBatch: null,
@@ -462,6 +468,79 @@ export const useEditorStore = create<EditorState>()(
           }
         });
         get().saveToHistory();
+      },
+
+      // ==========================================
+      // COMPATIBILIDADE LEGADA (Fase 1)
+      // ==========================================
+      updateWall: (id, updates) => {
+        get().updateWallProperties(id, updates);
+      },
+
+      updateRoom: (id, updates) => {
+        get().updateRoomProperties(id, updates);
+      },
+
+      addRoom: (roomOrPoints, options) => {
+        const room = Array.isArray(roomOrPoints)
+          ? ({
+              points: roomOrPoints,
+              ...(typeof options === 'string' ? { name: options } : (options ?? {})),
+            } as Partial<Room> & { points: Vec2[] })
+          : roomOrPoints;
+        const id = room.id ?? uuidv4();
+        set(state => {
+          const scene = getCurrentScene(state);
+          if (!scene) return;
+          scene.rooms.push({
+            id,
+            name: room.name ?? 'Room',
+            points: room.points,
+            type: room.type,
+            area: room.area,
+            center: room.center,
+            perimeter: room.perimeter,
+            metadata: room.metadata,
+          });
+        });
+        get().saveToHistory();
+        return id;
+      },
+
+      addWallsBatch: (walls) => {
+        const ids: string[] = [];
+        set(state => {
+          const scene = getCurrentScene(state);
+          if (!scene) return;
+          for (const w of walls) {
+            const id = w.id ?? uuidv4();
+            ids.push(id);
+            scene.walls.push({
+              id,
+              start: w.start,
+              end: w.end,
+              thickness: w.thickness ?? 0.15,
+              height: w.height ?? 2.8,
+              type: w.type ?? 'wall',
+              color: w.color ?? '#d1d5db',
+              material: w.material ?? 'drywall',
+              visible: w.visible ?? true,
+              locked: w.locked ?? false,
+              metadata: w.metadata,
+            });
+          }
+        });
+        get().saveToHistory();
+        return ids;
+      },
+
+      createWallsFromPolygon: (points, thickness = 0.15) => {
+        if (points.length < 2) return [];
+        const wallDefs: Array<Partial<Wall> & { start: Vec2; end: Vec2 }> = [];
+        for (let i = 0; i < points.length - 1; i++) {
+          wallDefs.push({ start: points[i], end: points[i + 1], thickness });
+        }
+        return get().addWallsBatch(wallDefs);
       },
 
       updateDoor: (id, updates) => {

@@ -311,7 +311,7 @@ function TopHeader({
 
       {/* Avatar */}
       <div className="w-8 h-8 rounded-full overflow-hidden cursor-pointer ring-2 ring-offset-2 ring-offset-transparent"
-        style={{ ringColor: 'rgba(91,140,255,0.4)' }}>
+        style={{ boxShadow: '0 0 0 2px rgba(91,140,255,0.4)' }}>
         <div className="w-full h-full flex items-center justify-center text-white text-sm font-bold"
           style={{ background: 'linear-gradient(135deg,#5B8CFF,#8B5CF6)' }}>
           L
@@ -879,7 +879,7 @@ function InnerApp() {
     setView('loading');
     const found = FLOOR_PLAN_TEMPLATES.find(t => t.id === templateId);
     if (found) {
-      try { loadTemplate(found); } catch {}
+      try { loadTemplate(found.id, found.name); } catch {}
     } else {
       try { createProject(templateId, DEFAULT_OWNER, ''); } catch {}
     }

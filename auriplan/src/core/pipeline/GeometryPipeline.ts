@@ -4,7 +4,7 @@
 // ============================================
 
 import type { Wall, Vec2 } from '@auriplan-types';
-import type { Room } from '@core/room/RoomDetectionEngine';
+import type { Room } from '@auriplan-types';
 import type { WallGraph } from '@core/wall/WallGraph';
 import { resolveTopology } from '@core/wall/TopologyResolver';
 import { splitWallsAtIntersections } from '@core/wall/WallSplitEngine';
